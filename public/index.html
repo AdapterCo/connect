@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adapter Connect - CRM WhatsApp com IA</title>
+  <link rel="stylesheet" href="css/style.css?v=1.0.2">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- SIDEBAR NAVIGATION -->
+    <aside class="sidebar">
+      <div class="logo-area">
+        <div class="logo-icon">A</div>
+        <div class="logo-text">
+          <h1>Adapter Connect</h1>
+          <span>CRM WhatsApp com IA</span>
+        </div>
+      </div>
+      
+      <nav class="nav-links">
+        <div class="nav-item active" data-view="dashboard" id="nav-dashboard">
+          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          Dashboard
+        </div>
+        <div class="nav-item" data-view="crm" id="nav-crm">
+          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20.25 8.511c.083.293.125.599.125.904v9.085c0 1.242-1.008 2.25-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V9.415c0-.305.042-.61.125-.904m16.375 0l-7.5-3.562a2.25 2.25 0 00-1.75 0L3.75 8.51m16.5 0v1.5a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25v-1.5m16.5 0a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 8.51m8.25 5.25v5.25m-3-2.25h6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          Chats / Funil
+        </div>
+        <div class="nav-item" data-view="kanban" id="nav-kanban">
+          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9 4.5v15m6-15v15m-12-3h18M3 9h18" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          Pipeline (Kanban)
+        </div>
+        <div class="nav-item" data-view="connect-whatsapp" id="nav-connect-whatsapp">
+          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-6 15h9M9 18h6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          Conexões WhatsApp
+        </div>
+        <div class="nav-item" data-view="config-ai" id="nav-config-ai">
+          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.813 15.904L9 21m8.913-5.096L17 21M9.543 3.01c1.502-1.51 3.87-1.541 5.422-.1l-1.07 1.07M9.543 3.01c-1.503 1.51-1.531 3.885-.099 5.437l1.07-1.07M9.543 3.01L14.73 8.2M17.062 8.347c1.502-1.51 3.87-1.541 5.422-.1l-1.07 1.07M17.062 8.347c-1.503 1.51-1.53 3.885-.099 5.437l1.07-1.07M17.062 8.347L22.25 13.5M12 9.75v-3m0 9v3m-3-6H6m9 0h3" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          Configurações IA
+        </div>
+        <div class="nav-item" data-view="config-mp" id="nav-config-mp">
+          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-5.625-12h17.25c.621 0 1.125.504 1.125 1.125v13.5c0 .621-.504 1.125-1.125 1.125H3.375A1.125 1.125 0 012.25 18V4.875c0-.621.504-1.125 1.125-1.125z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          Recebimentos / MP
+        </div>
+        <div class="nav-item" data-view="team" id="nav-team" style="display: none;">
+          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.109A11.386 11.386 0 0110.089 21c-2.243 0-4.352-.647-6.124-1.768v-.109m0 .109a1.183 1.183 0 01-1-1.183v-2.203a5.977 5.977 0 014.714-5.893m0 0a3.978 3.978 0 012.286-4.665M6.75 7.5a3 3 0 116 0 3 3 0 01-6 0zm11.25 1.5a2.25 2.25 0 114.5 0 2.25 2.25 0 01-4.5 0z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          Gestão de Equipe
+        </div>
+        <div class="nav-item" data-view="reports" id="nav-reports" style="display: none;">
+          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" stroke-linecap="round" stroke-linejoin="round"></path><path d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          Relatórios / Métricas
+        </div>
+        <div class="nav-item" data-view="logs" id="nav-logs">
+          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          Terminal de Logs
+        </div>
+      </nav>
+      
+      <div class="sidebar-footer" style="padding-top: 16px; border-top: 1px solid var(--border-color); font-size: 13px; text-align: left; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="client-avatar" id="user-avatar" style="width: 30px; height: 30px; font-size: 12px; margin: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background-color: var(--primary-glow); border: 1px solid var(--primary); color: #fff;">U</div>
+          <div style="flex-grow: 1; overflow: hidden;">
+            <div id="user-name" style="font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px;">Nome</div>
+            <div id="user-role" style="font-size: 9px; color: var(--text-muted); text-transform: uppercase;">Atendente</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center; justify-content: space-between;">
+          <select id="user-status-select" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: #fff; border-radius: 4px; padding: 4px 6px; font-size: 11px; cursor: pointer; outline: none; flex-grow: 1; font-family: var(--font-body);">
+            <option value="online">🟢 Online</option>
+            <option value="offline">⚫ Offline</option>
+          </select>
+          <button id="logout-btn" style="background: none; border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer; font-weight: 600; font-family: var(--font-body);">Sair</button>
+        </div>
+        <div style="font-size: 10px; color: var(--text-dimmed); text-align: center; margin-top: 4px;">
+          Adapter Connect v1.0.2
+        </div>
+      </div>
+    </aside>
+    
+    <!-- MAIN VIEWPORT -->
+    <main class="main-viewport">
+      
+      <!-- TOP BAR -->
+      <header class="top-bar">
+        <div class="top-bar-title">
+          <h2 id="view-title">Dashboard</h2>
+        </div>
+        
+        <div class="top-bar-actions">
+          <div class="badge-ai-status active" id="header-ai-badge">Atendente Virtual: ATIVADO</div>
+        </div>
+      </header>
+      
+      <!-- CONTENT AREA -->
+      <section class="content-area">
+        
+        <!-- DASHBOARD VIEW -->
+        <div id="view-dashboard" class="view-section active">
+          <div class="dashboard-grid">
+            <div class="stat-card">
+              <div class="stat-icon primary">
+                <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="stat-total-chats">0</div>
+                <div class="stat-label">Total de Chats</div>
+              </div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-icon iniciada">
+                <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 4v16m8-8H4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="stat-status-iniciada">0</div>
+                <div class="stat-label">Status: Iniciada</div>
+              </div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-icon interesse">
+                <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="stat-status-interesse">0</div>
+                <div class="stat-label">Interesse de Compra</div>
+              </div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-icon finalizada">
+                <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9 12.75L11.25 15 15 9.75M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="stat-status-finalizada">0</div>
+                <div class="stat-label">Compras Finalizadas</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="dashboard-details">
+            <!-- FUNNEL OVERVIEW -->
+            <div class="glass-card">
+              <div class="card-header">
+                <h3>Funil de Vendas Recentes</h3>
+                <span class="form-helper">Conversão dos Leads via IA</span>
+              </div>
+              <div style="height: 300px; display: flex; align-items: flex-end; justify-content: space-around; padding: 20px 0;">
+                <div style="text-align: center; width: 20%;">
+                  <div id="bar-iniciada" style="background: linear-gradient(0deg, var(--status-iniciada-bg), var(--status-iniciada)); width: 100%; height: 50%; border-radius: 6px 6px 0 0; transition: height 0.5s ease;"></div>
+                  <div style="margin-top: 10px; font-weight: 600; font-size: 13px;">Iniciada</div>
+                </div>
+                <div style="text-align: center; width: 20%;">
+                  <div id="bar-interesse" style="background: linear-gradient(0deg, var(--status-interesse-bg), var(--status-interesse)); width: 100%; height: 30%; border-radius: 6px 6px 0 0; transition: height 0.5s ease;"></div>
+                  <div style="margin-top: 10px; font-weight: 600; font-size: 13px;">Interesse</div>
+                </div>
+                <div style="text-align: center; width: 20%;">
+                  <div id="bar-finalizada" style="background: linear-gradient(0deg, var(--status-finalizada-bg), var(--status-finalizada)); width: 100%; height: 20%; border-radius: 6px 6px 0 0; transition: height 0.5s ease;"></div>
+                  <div style="margin-top: 10px; font-weight: 600; font-size: 13px;">Finalizada</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- RECENT LOGS -->
+            <div class="glass-card">
+              <div class="card-header">
+                <h3>Últimas Ações</h3>
+              </div>
+              <div id="dashboard-recent-logs" style="display: flex; flex-direction: column; gap: 12px; height: 300px; overflow-y: auto;">
+                <!-- Filled dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- CRM CHAT VIEW -->
+        <div id="view-crm" class="view-section">
+          <div class="crm-layout" style="grid-template-columns: 320px 1fr;">
+            <!-- Sidebar with list of contacts -->
+            <div class="crm-sidebar">
+              <div class="crm-search">
+                <input type="text" id="crm-search-input" placeholder="Buscar cliente...">
+                <div style="display: flex; gap: 8px;">
+                  <button class="crm-add-btn" id="crm-add-client-btn" style="flex: 1.2;">+ Novo Cliente</button>
+                  <select id="crm-sector-filter" class="status-select" style="flex: 1; padding: 6px; font-size: 11px; height: 38px;">
+                    <option value="">Setores: Todos</option>
+                    <option value="none">Sem Setor</option>
+                    <option value="sales">Vendas</option>
+                    <option value="support">Suporte</option>
+                    <option value="finance">Financeiro</option>
+                  </select>
+                </div>
+                <div class="filter-tabs" style="display: flex; border-bottom: 1px solid var(--border-color); padding-top: 4px; gap: 2px; flex-wrap: wrap;">
+                  <button class="filter-tab active" data-filter="my" style="background:none; border:none; color:var(--text-muted); padding: 8px 4px; font-size:11px; font-weight:600; cursor:pointer; flex: 1; text-align:center; border-bottom: 2px solid transparent; font-family: var(--font-body); white-space: nowrap;">Meus</button>
+                  <button class="filter-tab" data-filter="queue" style="background:none; border:none; color:var(--text-muted); padding: 8px 4px; font-size:11px; font-weight:600; cursor:pointer; flex: 1; text-align:center; border-bottom: 2px solid transparent; font-family: var(--font-body); white-space: nowrap;">Fila</button>
+                  <button class="filter-tab" data-filter="favorite" style="background:none; border:none; color:var(--text-muted); padding: 8px 4px; font-size:11px; font-weight:600; cursor:pointer; flex: 1; text-align:center; border-bottom: 2px solid transparent; font-family: var(--font-body); white-space: nowrap;">★ Favs</button>
+                  <button class="filter-tab" data-filter="archive" style="background:none; border:none; color:var(--text-muted); padding: 8px 4px; font-size:11px; font-weight:600; cursor:pointer; flex: 1; text-align:center; border-bottom: 2px solid transparent; font-family: var(--font-body); white-space: nowrap;">📁 Arq</button>
+                  <button class="filter-tab" id="filter-all-tab" data-filter="all" style="background:none; border:none; color:var(--text-muted); padding: 8px 4px; font-size:11px; font-weight:600; cursor:pointer; flex: 1; text-align:center; border-bottom: 2px solid transparent; font-family: var(--font-body); display: none; white-space: nowrap;">Todos</button>
+                </div>
+              </div>
+              <div class="client-list" id="crm-client-list">
+                <!-- Loaded dynamically -->
+              </div>
+            </div>
+            
+            <!-- Chat Window -->
+            <div class="chat-window">
+              <div id="chat-active-state" style="display: none;">
+                
+                <div class="chat-header" style="height: auto; min-height: 70px; padding: 12px 24px; flex-wrap: wrap; gap: 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); background-color: rgba(15, 21, 36, 0.2);">
+                  <div class="chat-header-info" style="display: flex; align-items: center; gap: 12px;">
+                    <div class="client-avatar" id="chat-header-avatar">?</div>
+                    <div>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <h4 id="chat-header-name" style="margin: 0; font-weight: 700; color: #fff;">Nome do Cliente</h4>
+                        <span id="chat-favorite-star" style="cursor: pointer; font-size: 16px; color: var(--text-dimmed); transition: transform 0.2s ease;" title="Favoritar">☆</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
+                        <span class="client-phone" id="chat-header-phone" style="margin: 0; font-size: 12px; color: var(--text-muted);">551199999999</span>
+                        <div id="chat-header-tags" style="display: flex; gap: 4px; flex-wrap: wrap; align-items: center;">
+                          <!-- Tags rendered here -->
+                        </div>
+                        <button id="add-tag-btn" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 9px; cursor: pointer; font-family: var(--font-body); font-weight: 600;">+ Tag</button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <!-- Chat Assignment -->
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+                      <span class="form-helper">Atendido por:</span>
+                      <span id="chat-assigned-user-name" style="font-weight: 600; color: #fff;">Carregando...</span>
+                      <button id="chat-claim-btn" class="btn-primary" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer;">Capturar</button>
+                      <select id="chat-assign-select" class="status-select" style="padding: 4px 6px; font-size: 11px; display: none;">
+                        <!-- Filled dynamically for admins -->
+                      </select>
+                    </div>
+
+                    <!-- AI Active Toggle for this chat -->
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+                      <span class="form-helper">IA Ativa:</span>
+                      <label class="switch-sm">
+                        <input type="checkbox" id="chat-ai-active-toggle">
+                        <span class="slider"></span>
+                      </label>
+                    </div>
+
+                    <div class="chat-status-area" style="display: flex; align-items: center; gap: 6px;">
+                      <span class="form-helper" style="font-size: 12px;">Setor:</span>
+                      <select class="status-select" id="chat-sector-select" style="padding: 4px 6px; font-size: 11px;">
+                        <option value="">Sem Setor</option>
+                        <option value="sales">Vendas</option>
+                        <option value="support">Suporte</option>
+                        <option value="finance">Financeiro</option>
+                      </select>
+                    </div>
+
+                    <div class="chat-status-area" style="display: flex; align-items: center; gap: 6px;">
+                      <span class="form-helper" style="font-size: 12px;">Funil:</span>
+                      <select class="status-select" id="chat-status-select" style="padding: 4px 6px; font-size: 11px;">
+                        <option value="iniciada">Iniciada</option>
+                        <option value="interesse em compra">Interesse em Compra</option>
+                        <option value="finalizada">Finalizada</option>
+                      </select>
+                    </div>
+
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                      <button id="chat-archive-btn" class="btn-secondary" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; height: 28px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-family: var(--font-body);">Arquivar</button>
+                      <button id="chat-block-btn" style="background: none; border: 1px solid rgba(239, 68, 68, 0.4); color: #ef4444; padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; height: 28px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-family: var(--font-body);">Bloquear</button>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="chat-messages" id="chat-messages-container">
+                  <!-- Filled dynamically -->
+                </div>
+                
+                <div class="chat-input-area">
+                  <div class="input-mode-tabs" style="display: flex; gap: 8px; margin-bottom: 8px; font-size: 11px;">
+                    <button id="mode-msg-btn" class="input-mode-tab active" style="background: rgba(99, 102, 241, 0.15); border: 1px solid var(--primary); color: #fff; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-weight: 600; font-family: var(--font-body); outline: none; transition: var(--transition-smooth);">💬 Mensagem (WhatsApp)</button>
+                    <button id="mode-note-btn" class="input-mode-tab" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-weight: 600; font-family: var(--font-body); outline: none; transition: var(--transition-smooth);">📝 Nota Interna (Privada)</button>
+                  </div>
+                  <div class="input-row" style="display: flex; align-items: center; gap: 8px;">
+                    <button class="chat-utility-btn" id="chat-attach-btn" title="Anexar arquivo/mídia" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 6px; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: var(--transition-smooth); outline: none;">
+                      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.364 5.636a9 9 0 010 12.728l-8.485 8.485a6 6 0 01-8.486-8.486L9.879 9.88a4 4 0 015.656 5.656l-8.485 8.485a2 2 0 01-2.828-2.828l8.485-8.485" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                    </button>
+                    <button class="chat-utility-btn" id="chat-schedule-btn" title="Agendar mensagem" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 6px; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: var(--transition-smooth); outline: none;">
+                      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                    </button>
+                    <input type="file" id="chat-file-input" style="display: none;">
+                    <textarea id="chat-message-input" placeholder="Digite uma resposta manual (enviará diretamente para o WhatsApp real)..." style="flex-grow: 1;"></textarea>
+                    <button class="chat-action-btn" id="chat-send-btn">
+                      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                    </button>
+                  </div>
+                  <div class="chat-options-row">
+                    <div class="quick-actions-list">
+                      <button class="quick-btn charge-btn" id="chat-quick-charge-btn">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-5.625-12h17.25c.621 0 1.125.504 1.125 1.125v13.5c0 .621-.504 1.125-1.125 1.125H3.375A1.125 1.125 0 012.25 18V4.875c0-.621.504-1.125 1.125-1.125z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                        Gerar Cobrança MP Real
+                      </button>
+                      <button class="quick-btn" id="chat-view-scheduled-btn" style="border-color: rgba(99, 102, 241, 0.4); color: var(--primary);">
+                        ⏰ Ver Agendadas
+                      </button>
+                      <button class="quick-btn" onclick="insertQuickMessage('Olá! Como posso ajudar você hoje?')">Mensagem Inicial</button>
+                      <button class="quick-btn" onclick="insertQuickMessage('Seu link de pagamento foi gerado. Aguardamos a aprovação!')">Aviso Cobrança</button>
+                    </div>
+                  </div>
+                </div>
+                
+              </div>
+              
+              <!-- State when no chat is selected -->
+              <div id="chat-empty-state" class="chat-no-selection">
+                <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025 4.486 4.486 0 01-2.179-3.963C3.75 10.25 7.77 6.5 12.75 6.5S21 10.25 21 12z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                <p>Selecione uma conversa na lista lateral para visualizar e interagir.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PIPELINE KANBAN VIEW -->
+        <div id="view-kanban" class="view-section">
+          <div class="kanban-board" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; height: calc(100vh - 180px); overflow-x: auto; padding: 10px 0; min-height: 0;">
+            <!-- Column 1: Iniciada -->
+            <div class="kanban-column" id="kanban-col-iniciada" style="background: rgba(15, 21, 36, 0.3); border: 1px solid var(--border-color); border-radius: var(--border-radius-lg); padding: 16px; display: flex; flex-direction: column; height: 100%; min-height: 0;">
+              <div class="kanban-column-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--status-iniciada);">
+                <h3 style="font-size: 14px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                  <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--status-iniciada);"></span>
+                  Iniciada / Novo
+                </h3>
+                <span class="badge" id="kanban-count-iniciada" style="background: var(--status-iniciada-bg); color: var(--status-iniciada); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">0</span>
+              </div>
+              <div class="kanban-cards-container" id="kanban-cards-iniciada" ondragover="allowDrop(event)" ondrop="drop(event, 'iniciada')" style="flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; min-height: 150px; padding: 4px;">
+                <!-- Cards loaded dynamically -->
+              </div>
+            </div>
+
+            <!-- Column 2: Interesse em compra -->
+            <div class="kanban-column" id="kanban-col-interesse" style="background: rgba(15, 21, 36, 0.3); border: 1px solid var(--border-color); border-radius: var(--border-radius-lg); padding: 16px; display: flex; flex-direction: column; height: 100%; min-height: 0;">
+              <div class="kanban-column-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--status-interesse);">
+                <h3 style="font-size: 14px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                  <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--status-interesse);"></span>
+                  Interesse em Compra
+                </h3>
+                <span class="badge" id="kanban-count-interesse" style="background: var(--status-interesse-bg); color: var(--status-interesse); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">0</span>
+              </div>
+              <div class="kanban-cards-container" id="kanban-cards-interesse" ondragover="allowDrop(event)" ondrop="drop(event, 'interesse em compra')" style="flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; min-height: 150px; padding: 4px;">
+                <!-- Cards loaded dynamically -->
+              </div>
+            </div>
+
+            <!-- Column 3: Finalizada -->
+            <div class="kanban-column" id="kanban-col-finalizada" style="background: rgba(15, 21, 36, 0.3); border: 1px solid var(--border-color); border-radius: var(--border-radius-lg); padding: 16px; display: flex; flex-direction: column; height: 100%; min-height: 0;">
+              <div class="kanban-column-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--status-finalizada);">
+                <h3 style="font-size: 14px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                  <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--status-finalizada);"></span>
+                  Finalizada / Pago
+                </h3>
+                <span class="badge" id="kanban-count-finalizada" style="background: var(--status-finalizada-bg); color: var(--status-finalizada); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">0</span>
+              </div>
+              <div class="kanban-cards-container" id="kanban-cards-finalizada" ondragover="allowDrop(event)" ondrop="drop(event, 'finalizada')" style="flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; min-height: 150px; padding: 4px;">
+                <!-- Cards loaded dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONNECT WHATSAPP VIEW -->
+        <div id="view-connect-whatsapp" class="view-section">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div>
+              <h2 style="font-size: 20px; font-weight: 700; color: #fff;">Conexões WhatsApp (Múltiplos Números)</h2>
+              <p class="form-helper" style="margin-top: 4px;">Cadastre e gerencie múltiplos chips de WhatsApp integrados ao CRM.</p>
+            </div>
+          </div>
+
+          <!-- Add Instance Form -->
+          <div class="glass-card" style="padding: 20px; margin-bottom: 24px;">
+            <div style="display: flex; gap: 12px; align-items: flex-end;">
+              <div class="form-group" style="margin-bottom: 0; flex-grow: 1;">
+                <label for="new-instance-name">Nome Identificador da Conexão</label>
+                <input type="text" id="new-instance-name" placeholder="Ex: WhatsApp Vendas, Suporte RJ, Chip Principal...">
+              </div>
+              <button class="btn-primary" id="add-instance-btn" style="height: 46px; padding: 0 24px; white-space: nowrap; font-weight: 600;">
+                ➕ Adicionar Conexão
+              </button>
+            </div>
+          </div>
+
+          <!-- Grid of instances -->
+          <div class="dashboard-grid" id="whatsapp-instances-grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 24px;">
+            <!-- Loaded dynamically -->
+          </div>
+
+          <!-- QR Code Modal -->
+          <div class="modal-overlay" id="instance-qr-modal">
+            <div class="modal-content" style="max-width: 400px; text-align: center;">
+              <div class="modal-header" style="padding: 16px 20px;">
+                <h3 id="instance-qr-title" style="margin: 0; font-size: 16px;">Conectar WhatsApp</h3>
+                <button class="modal-close" id="instance-qr-close-btn">&times;</button>
+              </div>
+              <div class="modal-body" style="padding: 24px;">
+                <div id="instance-qr-loading" style="padding: 20px;">
+                  <div style="font-size: 14px; color: var(--text-muted); margin-bottom: 20px;">Carregando QR Code...</div>
+                  <div class="loader"></div>
+                </div>
+                
+                <div id="instance-qr-display" style="display: none;">
+                  <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">
+                    Abra o WhatsApp no celular > Aparelhos Conectados > Conectar Aparelho e aponte a câmera para o QR Code abaixo.
+                  </p>
+                  <div style="background: white; padding: 16px; display: inline-block; border-radius: 12px; box-shadow: var(--shadow-glow); margin-bottom: 16px;">
+                    <img id="instance-qr-img" src="" alt="QR Code" style="width: 220px; height: 220px; display: block; margin: 0 auto;">
+                  </div>
+                  <div id="instance-qr-status" style="font-size: 12px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px;">Aguardando leitura...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI CONFIG VIEW -->
+        <div id="view-config-ai" class="view-section">
+          <div class="config-layout glass-card">
+            <div class="card-header">
+              <h3>Configuração do Atendente Virtual (IA)</h3>
+            </div>
+            
+            <div class="toggle-container">
+              <div class="toggle-info">
+                <h4>Ativar Atendente Virtual (IA)</h4>
+                <p>Permite que a inteligência artificial responda aos clientes e atualize os status automaticamente.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="ai-enabled-toggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+            
+            <div class="form-group">
+              <label for="ai-provider-select">Provedor de IA</label>
+              <select id="ai-provider-select">
+                <option value="mock">(Recomendado para Testes) Modo Demonstrativo (Mock)</option>
+                <option value="gemini">Google Gemini (Gemini 1.5 Flash)</option>
+                <option value="openai">OpenAI ChatGPT (GPT-4o-Mini)</option>
+                <option value="grok">xAI Grok (Grok-4.3)</option>
+              </select>
+              <span class="form-helper">Selecione o motor de IA que responderá às interações.</span>
+            </div>
+            
+            <!-- API Key fields (shown/hidden conditionally) -->
+            <div class="form-group key-field" id="gemini-key-group" style="display:none;">
+              <label for="gemini-key-input">Gemini API Key</label>
+              <input type="password" id="gemini-key-input" placeholder="Inserir chave do Google AI Studio (AIzaSy...)">
+              <span class="form-helper">Crie uma chave gratuita no <a href="https://aistudio.google.com/" target="_blank" style="color:var(--primary);">Google AI Studio</a>.</span>
+            </div>
+            
+            <div class="form-group key-field" id="openai-key-group" style="display:none;">
+              <label for="openai-key-input">OpenAI API Key</label>
+              <input type="password" id="openai-key-input" placeholder="Inserir chave da OpenAI (sk-...)">
+            </div>
+            
+            <div class="form-group key-field" id="grok-key-group" style="display:none;">
+              <label for="grok-key-input">Grok API Key</label>
+              <input type="password" id="grok-key-input" placeholder="Inserir chave da xAI (xai-...)">
+            </div>
+
+            <!-- Customizable AI Model Names -->
+            <div class="form-group key-field" id="gemini-model-group" style="display:none;">
+              <label for="gemini-model-input">Nome do Modelo Gemini</label>
+              <input type="text" id="gemini-model-input" placeholder="Ex: gemini-2.5-flash">
+            </div>
+            
+            <div class="form-group key-field" id="openai-model-group" style="display:none;">
+              <label for="openai-model-input">Nome do Modelo OpenAI</label>
+              <input type="text" id="openai-model-input" placeholder="Ex: gpt-4o-mini">
+            </div>
+            
+            <div class="form-group key-field" id="grok-model-group" style="display:none;">
+              <label for="grok-model-input">Nome do Modelo Grok (xAI)</label>
+              <input type="text" id="grok-model-input" placeholder="Ex: grok-4.3">
+              <span class="form-helper">Por padrão, a aplicação usará a API de Respostas do Grok (/v1/responses) com o modelo especificado.</span>
+            </div>
+            
+            <div class="form-group">
+              <label for="system-prompt-input">Prompt de Sistema (Instruções da IA)</label>
+              <textarea id="system-prompt-input" rows="12" style="font-family: monospace; font-size: 13px;"></textarea>
+              <span class="form-helper">Defina detalhadamente as regras de negócio, preços de produtos e como o bot deve conduzir a conversa. **Nota**: O prompt deve instruir a IA a retornar o JSON de controle.</span>
+            </div>
+            
+            <button class="save-btn" id="save-ai-settings-btn">Salvar Configurações de IA</button>
+          </div>
+        </div>
+        
+        <!-- MERCADO PAGO CONFIG VIEW -->
+        <div id="view-config-mp" class="view-section">
+          <div class="config-layout glass-card">
+            <div class="card-header">
+              <h3>Integração com Mercado Pago</h3>
+            </div>
+            
+            <div class="toggle-container">
+              <div class="toggle-info">
+                <h4>Ativar Recebimento Automático (Cobranças)</h4>
+                <p>Permite que a IA gere links do Mercado Pago e envie nas conversas para o cliente realizar o pagamento.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="mp-enabled-toggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+            
+            <div class="form-group">
+              <label for="mp-access-token-input">Mercado Pago Access Token</label>
+              <input type="password" id="mp-access-token-input" placeholder="Inserir Access Token (APP_USR-...)">
+              <span class="form-helper">Configure o seu Access Token de Produção ou Sandbox oficial do Mercado Pago.</span>
+            </div>
+            
+            <div class="form-group">
+              <label>Link de Webhook para API Real</label>
+              <input type="text" readonly value="https://connect.adapterco.com.br/api/webhook/mercadopago" style="background-color: rgba(255,255,255,0.02); color: var(--text-muted); cursor: not-allowed;">
+              <span class="form-helper">Configure este endereço no painel de desenvolvedor do Mercado Pago para receber notificações reais de pagamento de forma instantânea.</span>
+            </div>
+            
+            <button class="save-btn" id="save-mp-settings-btn">Salvar Configurações de Recebimento</button>
+          </div>
+        </div>
+        
+        <!-- TERMINAL LOGS VIEW -->
+        <div id="view-logs" class="view-section">
+          <div class="glass-card">
+            <div class="card-header">
+              <h3>Ações e logs do Sistema em Tempo Real</h3>
+              <button class="btn-secondary" id="clear-logs-btn" style="padding: 6px 12px; font-size:12px;">Limpar Logs</button>
+            </div>
+            
+            <div class="logs-terminal" id="logs-container">
+              <!-- Logs loaded dynamically -->
+            </div>
+          </div>
+        </div>
+
+        <!-- TEAM MANAGEMENT VIEW -->
+        <div id="view-team" class="view-section">
+          <div class="config-layout glass-card">
+            <div class="card-header">
+              <h3>Gestão de Equipe (Atendentes Humanos)</h3>
+              <span class="form-helper">Gerencie os atendentes e controle suas funções e permissões no sistema.</span>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; margin-top: 20px;">
+              <!-- Left side: Register attendant -->
+              <div class="glass-card" style="padding: 20px; border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.01);">
+                <h4 style="font-size: 14px; margin-bottom: 20px; color: var(--primary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">Cadastrar Novo Atendente</h4>
+                <div class="form-group">
+                  <label for="reg-name">Nome Completo</label>
+                  <input type="text" id="reg-name" placeholder="Ex: Lucas Mendes">
+                </div>
+                <div class="form-group">
+                  <label for="reg-username">Usuário (Login)</label>
+                  <input type="text" id="reg-username" placeholder="Ex: lucas">
+                </div>
+                <div class="form-group">
+                  <label for="reg-password">Senha Provisória</label>
+                  <input type="password" id="reg-password" placeholder="Digite uma senha">
+                </div>
+                <div class="form-group">
+                  <label for="reg-role">Função / Nível de Acesso</label>
+                  <select id="reg-role">
+                    <option value="seller">Vendedor</option>
+                    <option value="support">Suporte</option>
+                    <option value="other">Outro</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="admin">Administrador</option>
+                  </select>
+                </div>
+                <button class="save-btn" id="reg-save-btn" style="width: 100%; margin-top: 10px;">Cadastrar Atendente</button>
+              </div>
+              
+              <!-- Right side: Attendants list -->
+              <div class="glass-card" style="padding: 20px; border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.01); display: flex; flex-direction: column;">
+                <h4 style="font-size: 14px; margin-bottom: 20px; color: var(--primary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">Equipe Cadastrada</h4>
+                <div id="admin-users-list" style="display: flex; flex-direction: column; gap: 12px; max-height: 400px; overflow-y: auto; padding-right: 6px; flex-grow: 1;">
+                  <!-- Loaded dynamically -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- REPORTS MANAGEMENT VIEW -->
+        <div id="view-reports" class="view-section">
+          <!-- KPIs Section -->
+          <div class="dashboard-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+            <div class="stat-card">
+              <div class="stat-icon primary" style="display:flex; align-items:center; justify-content:center;">
+                💬
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="rep-total-chats">0</div>
+                <div class="stat-label">Total de Chats</div>
+              </div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-icon interesse" style="display:flex; align-items:center; justify-content:center;">
+                ⚡
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="rep-tmr-humano">0s</div>
+                <div class="stat-label">TMR Médio (Humano)</div>
+              </div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-icon finalizada" style="display:flex; align-items:center; justify-content:center;">
+                🤖
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="rep-tmr-ai">0s</div>
+                <div class="stat-label">TMR Médio (IA)</div>
+              </div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-icon" style="background: rgba(139, 92, 246, 0.1); color: rgb(139, 92, 246); display:flex; align-items:center; justify-content:center;">
+                ⏱️
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="rep-tma-geral">0s</div>
+                <div class="stat-label">TMA Médio</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts Layout Grid -->
+          <div class="dashboard-details" style="grid-template-columns: 1.5fr 1fr; margin-bottom: 24px; display: grid; gap: 24px;">
+            <!-- Message Volume Line Chart -->
+            <div class="glass-card" style="padding: 20px;">
+              <div class="card-header" style="justify-content: space-between; border-bottom: none; padding-bottom: 0; margin-bottom: 12px;">
+                <h3>Volume de Mensagens Recentes</h3>
+                <span class="form-helper">Fluxo diário (últimos 7 dias)</span>
+              </div>
+              <div style="height: 250px; position: relative; padding: 10px;">
+                <canvas id="messagesVolumeChart"></canvas>
+              </div>
+            </div>
+
+            <!-- Sector Distribution Doughnut Chart -->
+            <div class="glass-card" style="padding: 20px;">
+              <div class="card-header" style="border-bottom: none; padding-bottom: 0; margin-bottom: 12px;">
+                <h3>Distribuição por Setor</h3>
+              </div>
+              <div style="height: 250px; position: relative; padding: 10px; display: flex; align-items: center; justify-content: center;">
+                <canvas id="sectorDistributionChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Team Audit and Performance Metrics -->
+          <div class="glass-card" style="padding: 20px;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 16px;">
+              <div>
+                <h3>Auditoria de Desempenho da Equipe</h3>
+                <p class="form-helper" style="margin-top: 4px;">Métricas consolidadas de produtividade e tempo de resposta de cada atendente.</p>
+              </div>
+              <button class="btn-primary" id="export-reports-csv-btn" style="padding: 8px 16px; font-size: 12px; display: flex; align-items: center; gap: 6px; border: none; border-radius: 4px;">
+                📥 Exportar Relatório (CSV)
+              </button>
+            </div>
+            
+            <div style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+                <thead>
+                  <tr style="border-bottom: 2px solid var(--border-color); color: var(--text-muted); font-weight: 700;">
+                    <th style="padding: 12px;">Atendente</th>
+                    <th style="padding: 12px;">Função</th>
+                    <th style="padding: 12px; text-align: center;">Status</th>
+                    <th style="padding: 12px; text-align: center;">Chats Ativos</th>
+                    <th style="padding: 12px; text-align: center;">Respostas Enviadas</th>
+                    <th style="padding: 12px; text-align: center;">TMR Individual</th>
+                    <th style="padding: 12px; text-align: center;">TMA Individual</th>
+                  </tr>
+                </thead>
+                <tbody id="attendants-performance-tbody" style="color: var(--text-main);">
+                  <!-- Loaded dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        
+      </section>
+    </main>
+    
+  </div>
+
+  <!-- MODAL: ADD CLIENT -->
+  <div class="modal-overlay" id="add-client-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Cadastrar Novo Cliente</h3>
+        <button class="modal-close" id="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="modal-client-name">Nome Completo</label>
+          <input type="text" id="modal-client-name" placeholder="Ex: Maria Oliveira">
+        </div>
+        <div class="form-group">
+          <label for="modal-client-phone">Número de Telefone ou JID (WhatsApp)</label>
+          <input type="text" id="modal-client-phone" placeholder="Ex: 5511988887777">
+          <span class="form-helper">Insira o código do país, DDD e número (ex: 5521999998888).</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="modal-cancel-btn">Cancelar</button>
+        <button class="btn-primary" id="modal-save-btn">Salvar Cliente</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: MANUAL CHARGE -->
+  <div class="modal-overlay" id="manual-charge-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Gerar Cobrança Manual via Mercado Pago</h3>
+        <button class="modal-close" id="modal-charge-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="modal-charge-item">Descrição do Produto/Plano</label>
+          <input type="text" id="modal-charge-item" placeholder="Ex: Assinatura Mensal Pro">
+        </div>
+        <div class="form-group">
+          <label for="modal-charge-value">Valor (R$)</label>
+          <input type="text" id="modal-charge-value" placeholder="Ex: 97.00">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="modal-charge-cancel-btn">Cancelar</button>
+        <button class="btn-primary" id="modal-charge-save-btn">Gerar Link de Pagamento</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD TAG -->
+  <div class="modal-overlay" id="add-tag-modal">
+    <div class="modal-content" style="max-width: 350px;">
+      <div class="modal-header">
+        <h3>Adicionar Tag</h3>
+        <button class="modal-close" id="modal-tag-close-btn">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px 0 10px;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label for="modal-tag-name">Nome da Tag</label>
+          <input type="text" id="modal-tag-name" placeholder="Ex: Lead, Financeiro, Importante">
+        </div>
+      </div>
+      <div class="modal-footer" style="padding-top: 10px;">
+        <button class="btn-secondary" id="modal-tag-cancel-btn">Cancelar</button>
+        <button class="btn-primary" id="modal-tag-save-btn">Salvar Tag</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATIONS CONTAINER -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- MODAL: SCHEDULE MESSAGE -->
+  <div class="modal-overlay" id="schedule-message-modal">
+    <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+        <h3>Agendar Mensagem</h3>
+        <button class="modal-close" id="modal-schedule-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="modal-schedule-time">Data e Hora de Envio</label>
+          <input type="datetime-local" id="modal-schedule-time">
+        </div>
+        <div class="form-group">
+          <label for="modal-schedule-text">Mensagem</label>
+          <textarea id="modal-schedule-text" rows="4" placeholder="Digite o conteúdo da mensagem agendada..."></textarea>
+        </div>
+        <!-- Upload media for scheduled messages -->
+        <div class="form-group">
+          <label>Mídia Opcional (Envio com Agendamento)</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="btn-secondary" id="modal-schedule-upload-btn" type="button" style="padding: 6px 12px; font-size: 11px;">Carregar Arquivo</button>
+            <input type="file" id="modal-schedule-file-input" style="display: none;">
+            <span id="modal-schedule-file-name" style="font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;">Nenhum arquivo selecionado</span>
+          </div>
+          <input type="hidden" id="modal-schedule-media-url">
+          <input type="hidden" id="modal-schedule-media-type">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="modal-schedule-cancel-btn">Cancelar</button>
+        <button class="btn-primary" id="modal-schedule-save-btn">Agendar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: VIEW SCHEDULED MESSAGES -->
+  <div class="modal-overlay" id="view-scheduled-modal">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3>Mensagens Agendadas</h3>
+        <button class="modal-close" id="modal-view-sch-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="scheduled-messages-list" style="display: flex; flex-direction: column; gap: 12px; max-height: 350px; overflow-y: auto; padding-right: 6px;">
+          <!-- Loaded dynamically -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary" id="modal-view-sch-close-btn2">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Socket.io and JavaScript logic -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/app.js?v=1.0.2"></script>
+</body>
+</html>

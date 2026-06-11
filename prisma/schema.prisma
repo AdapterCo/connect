@@ -1,0 +1,151 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Company {
+  id              String             @id @default(uuid())
+  name            String
+  slug            String             @unique
+  logo_url        String?
+  primary_color   String?
+  plan            String             @default("free")
+  max_instances   Int                @default(1)
+  max_users       Int                @default(2)
+  mp_access_token String?
+  mp_public_key   String?
+  mp_enabled      Boolean            @default(false)
+  mp_webhook_url  String?
+  created_at      DateTime           @default(now())
+  updated_at      DateTime           @updatedAt
+  users           User[]
+  settings        Settings?
+  instances       Instance[]
+  chats           Chat[]
+  scheduled       ScheduledMessage[]
+  logs            Log[]
+  metrics         Metric[]
+}
+
+model User {
+  id         String   @id @default(uuid())
+  name       String
+  username   String   @unique
+  password   String
+  role       String
+  status     String   @default("offline")
+  company_id String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+}
+
+model Settings {
+  id            String   @id @default(uuid())
+  company_id    String   @unique
+  ai_enabled    Boolean  @default(false)
+  ai_provider   String   @default("mock")
+  gemini_key    String?
+  openai_key    String?
+  grok_key      String?
+  gemini_model  String?
+  openai_model  String?
+  grok_model    String?
+  system_prompt String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  company       Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+}
+
+model Instance {
+  id         String   @id
+  name       String
+  phone      String?
+  status     String   @default("disconnected")
+  company_id String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  chats      Chat[]
+}
+
+model Chat {
+  id            String    @id
+  client_name   String
+  client_phone  String
+  status        String    @default("iniciada")
+  assigned_to   String?
+  ai_active     Boolean   @default(true)
+  tags          String[]
+  is_favorite   Boolean   @default(false)
+  is_archived   Boolean   @default(false)
+  is_blocked    Boolean   @default(false)
+  sector        String?
+  company_id    String
+  instance_id   String
+  waiting_since DateTime?
+  claimed_at    DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  company       Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  instance      Instance  @relation(fields: [instance_id], references: [id], onDelete: Cascade)
+  messages      Message[]
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  chat_id        String
+  sender         String
+  sender_id      String?
+  text           String
+  timestamp      DateTime @default(now())
+  is_ai          Boolean  @default(false)
+  is_note        Boolean  @default(false)
+  is_scheduled   Boolean  @default(false)
+  media_url      String?
+  media_type     String?
+  file_name      String?
+  payment_id     String?
+  payment_url    String?
+  payment_status String?
+  chat           Chat     @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+}
+
+model ScheduledMessage {
+  id            String   @id @default(uuid())
+  chat_id       String
+  client_name   String
+  text          String?
+  scheduledTime DateTime
+  media_url     String?
+  media_type    String?
+  file_name     String?
+  created_by    String
+  company_id    String
+  created_at    DateTime @default(now())
+  company       Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+}
+
+model Log {
+  id         String   @id @default(uuid())
+  message    String
+  company_id String
+  timestamp  DateTime @default(now())
+  company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+}
+
+model Metric {
+  id               String   @id @default(uuid())
+  type             String
+  chat_id          String
+  attendant_id     String?
+  is_ai            Boolean  @default(false)
+  duration_seconds Int
+  company_id       String
+  timestamp        DateTime @default(now())
+  company          Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+}

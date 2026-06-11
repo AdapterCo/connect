@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - Adapter Connect</title>
+  <link rel="stylesheet" href="css/style.css?v=1.0.2">
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background-color: var(--bg-main);
+      background-image: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 80%);
+      font-family: var(--font-body);
+    }
+
+    .login-container {
+      width: 100%;
+      max-width: 420px;
+      padding: 16px;
+    }
+
+    .login-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius-lg);
+      padding: 40px 32px;
+      backdrop-filter: blur(20px);
+      box-shadow: var(--shadow-lg);
+      text-align: center;
+    }
+
+    .login-logo {
+      background: linear-gradient(135deg, var(--primary), #a855f7);
+      width: 60px;
+      height: 60px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-title);
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+      margin: 0 auto 24px;
+      box-shadow: 0 8px 20px rgba(99, 102, 241, 0.35);
+    }
+
+    .login-header h2 {
+      font-size: 24px;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .login-header p {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    .form-group {
+      text-align: left;
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text-main);
+    }
+
+    .form-group input {
+      width: 100%;
+      background-color: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius-sm);
+      padding: 12px 16px;
+      color: #fff;
+      font-size: 14px;
+      transition: var(--transition-smooth);
+      outline: none;
+    }
+
+    .form-group input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px var(--primary-glow);
+    }
+
+    .login-btn {
+      background: linear-gradient(90deg, var(--primary), #a855f7);
+      color: #fff;
+      border: none;
+      padding: 14px;
+      border-radius: var(--border-radius-sm);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 10px;
+      transition: var(--transition-smooth);
+    }
+
+    .login-btn:hover {
+      box-shadow: var(--shadow-glow);
+      opacity: 0.95;
+      transform: translateY(-1px);
+    }
+
+    .error-msg {
+      background-color: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      padding: 10px 14px;
+      border-radius: var(--border-radius-sm);
+      font-size: 13px;
+      margin-bottom: 20px;
+      display: none;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-logo">A</div>
+      
+      <div class="login-header">
+        <h2>Adapter Connect</h2>
+        <p>Insira suas credenciais para gerenciar conversas</p>
+      </div>
+
+      <div class="error-msg" id="error-box">Usuário ou senha inválidos.</div>
+
+      <form id="login-form">
+        <div class="form-group">
+          <label for="username">Nome de Usuário</label>
+          <input type="text" id="username" placeholder="Ex: admin" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="password">Senha</label>
+          <input type="password" id="password" placeholder="Digite sua senha" required autocomplete="current-password">
+        </div>
+        
+        <button type="submit" class="login-btn" id="login-submit-btn">Acessar Painel</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Redirect if already logged in
+    if (localStorage.getItem('crm_token')) {
+      window.location.href = 'index.html';
+    }
+
+    const form = document.getElementById('login-form');
+    const submitBtn = document.getElementById('login-submit-btn');
+    const errorBox = document.getElementById('error-box');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      errorBox.style.display = 'none';
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Autenticando...';
+
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          localStorage.setItem('crm_token', data.token);
+          localStorage.setItem('crm_user', JSON.stringify(data.user));
+          window.location.href = 'index.html';
+        } else {
+          const err = await response.json();
+          errorBox.innerText = err.error || 'Erro ao realizar login.';
+          errorBox.style.display = 'block';
+        }
+      } catch (err) {
+        errorBox.innerText = 'Falha de conexão com o servidor.';
+        errorBox.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Acessar Painel';
+      }
+    });
+  </script>
+</body>
+</html>
