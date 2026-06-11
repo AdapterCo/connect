@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 
 const ALGORITHM = 'aes-256-cbc';
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-secret-key-32-chars-long!';
+const ENCRYPTION_KEY = (process.env.ENCRYPTION_KEY || 'default-secret-key-32-chars-long!').substring(0, 32).padEnd(32);
 const IV_LENGTH = 16;
 
 function encrypt(text) {

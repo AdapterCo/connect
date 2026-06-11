@@ -54,7 +54,7 @@ services:
       - "traefik.http.middlewares.adapterconnect-https-redirect.redirectscheme.permanent=true"
 
       # Service
-      - "traefik.http.services.adapterconnect-service.loadbalancer.server.port=3000"
+      - "traefik.http.services.adapterconnect-service.loadbalancer.server.port=${PORT:-3000}"
 
 volumes:
   pgdata:
