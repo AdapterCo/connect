@@ -39,7 +39,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
     clearTimeout(activeConnections[instanceId].reconnectTimer);
   }
 
-  const authFolder = path.join(__dirname, `../../auth_info_baileys_${instanceId}`);
+  const authFolder = path.join(__dirname, `../../auth_info_baileys/${instanceId}`);
   const { state, saveCreds } = await useMultiFileAuthState(authFolder);
   
   if (!activeConnections[instanceId]) {
@@ -257,7 +257,7 @@ async function stopWhatsAppInstance(instanceId, clearSession = false) {
   }
 
   if (clearSession) {
-    const authFolder = path.join(__dirname, `../../auth_info_baileys_${instanceId}`);
+    const authFolder = path.join(__dirname, `../../auth_info_baileys/${instanceId}`);
     if (fs.existsSync(authFolder)) {
       fs.rmSync(authFolder, { recursive: true, force: true });
     }
