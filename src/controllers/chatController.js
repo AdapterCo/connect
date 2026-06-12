@@ -186,8 +186,6 @@ async function sendMessage(req, res) {
       file_name: fileName || undefined
     };
 
-    const createdMsg = await Chat.addMessage(chat.id, newMessage);
-
     if (!isNote) {
       const whatsappService = require('../services/whatsappService');
       const activeConns = whatsappService.getActiveConnections();
@@ -207,12 +205,13 @@ async function sendMessage(req, res) {
 
       const activeInstanceId = findOpenConnection(instanceId);
 
+      if (!activeInstanceId) {
+        return res.status(503).json({ error: 'WhatsApp desconectado. Conecte uma instancia antes de enviar a mensagem.' });
+      }
+
       if (activeInstanceId) {
         try {
-          let jid = chat.id;
-          if (jid.endsWith('@lid')) {
-            jid = jid.replace('@lid', '@s.whatsapp.net');
-          }
+          const jid = chat.id;
           if (mediaUrl) {
             const mediaPath = path.join(__dirname, '../../public', mediaUrl);
             if (mediaType === 'image') {
@@ -235,11 +234,14 @@ async function sendMessage(req, res) {
           }
         } catch (err) {
           console.error('Erro ao enviar mensagem via WhatsApp:', err);
+          return res.status(502).json({ error: `Erro ao enviar mensagem via WhatsApp: ${err.message}` });
         }
       } else {
         console.warn(`[chatController] Nenhuma conexão WhatsApp aberta disponível. instance_id do chat: "${instanceId}", instâncias ativas: [${Object.keys(activeConns).join(', ')}]`);
       }
     }
+
+    const createdMsg = await Chat.addMessage(chat.id, newMessage);
 
     const allChats = await Chat.findAll(req.user.company_id);
     emitToCompany(req.user.company_id, 'chats_updated', allChats);

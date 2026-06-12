@@ -13,6 +13,7 @@ export default function Chats() {
   const [sectorFilter, setSectorFilter] = useState('');
   const [messageText, setMessageText] = useState('');
   const [isNote, setIsNote] = useState(false);
+  const [sendError, setSendError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,8 +43,13 @@ export default function Chats() {
 
   const handleSend = async () => {
     if (!messageText.trim() || !selectedChatId) return;
-    await sendMessage(selectedChatId, messageText, isNote);
-    setMessageText('');
+    setSendError('');
+    try {
+      await sendMessage(selectedChatId, messageText, isNote);
+      setMessageText('');
+    } catch (error: any) {
+      setSendError(error.response?.data?.error || 'Nao foi possivel enviar a mensagem.');
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -163,6 +169,9 @@ export default function Chats() {
                   Enviar
                 </button>
               </div>
+              {sendError && (
+                <p className="mt-2 text-xs text-red-400">{sendError}</p>
+              )}
             </div>
           </>
         ) : (

@@ -17,11 +17,23 @@ const { createMercadoPagoPreference } = require('./mercadoPagoService');
 
 const activeConnections = {};
 
+function shouldRetryAsLid(jid) {
+  if (!jid.endsWith('@s.whatsapp.net')) return false;
+  const id = jid.split('@')[0];
+  return /^\d+$/.test(id) && id.length > 15;
+}
+
 async function sendMessage(instanceId, jid, content) {
   const conn = activeConnections[instanceId];
   if (conn && conn.connectionStatus === 'open' && conn.sock) {
-    const targetJid = jid.endsWith('@lid') ? jid.replace('@lid', '@s.whatsapp.net') : jid;
-    return await conn.sock.sendMessage(targetJid, content);
+    try {
+      return await conn.sock.sendMessage(jid, content);
+    } catch (err) {
+      if (shouldRetryAsLid(jid)) {
+        return await conn.sock.sendMessage(jid.replace('@s.whatsapp.net', '@lid'), content);
+      }
+      throw err;
+    }
   }
   return null;
 }
@@ -49,6 +61,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
   activeConnections[instanceId].connectionStatus = 'connecting';
   activeConnections[instanceId].qrCodeImage = null;
   activeConnections[instanceId].connectedPhone = null;
+  activeConnections[instanceId].companyId = companyId;
 
   emitToCompany(companyId, 'whatsapp_status_updated', {
     instanceId,
@@ -277,7 +290,7 @@ async function stopWhatsAppInstance(instanceId, clearSession = false) {
 
 async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageText, mediaInfo, instanceId, companyId) {
   try {
-    const senderJid = rawSenderJid.endsWith('@lid') ? rawSenderJid.replace('@lid', '@s.whatsapp.net') : rawSenderJid;
+    const senderJid = rawSenderJid;
     let chat = await Chat.findById(senderJid, companyId);
     const cleanPhone = senderJid.split('@')[0];
 

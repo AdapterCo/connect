@@ -54,7 +54,7 @@ async function createCharge(req, res) {
     const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
     if (conn && conn.connectionStatus === 'open' && conn.sock) {
       try {
-        const targetJid = chat.id.endsWith('@lid') ? chat.id.replace('@lid', '@s.whatsapp.net') : chat.id;
+        const targetJid = chat.id;
         await conn.sock.sendMessage(targetJid, { 
           text: `💳 *Link de Pagamento Manual!*\n\n*Item:* ${item}\n*Valor:* R$ ${Number(value).toFixed(2)}\n\nLink para pagamento: ${paymentData.url}` 
         });
@@ -172,7 +172,7 @@ async function handleWebhook(req, res) {
                 const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
                 if (conn && conn.connectionStatus === 'open' && conn.sock) {
                   try {
-                    const targetJid = chatId.endsWith('@lid') ? chatId.replace('@lid', '@s.whatsapp.net') : chatId;
+                    const targetJid = chatId;
                     await conn.sock.sendMessage(targetJid, { 
                       text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(value).toFixed(2)} pelo item *${item}*. Obrigado!` 
                     });
@@ -293,7 +293,7 @@ async function checkPaymentStatus(req, res) {
       const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
       if (conn && conn.connectionStatus === 'open' && conn.sock) {
         try {
-          const targetJid = chatId.endsWith('@lid') ? chatId.replace('@lid', '@s.whatsapp.net') : chatId;
+          const targetJid = chatId;
           await conn.sock.sendMessage(targetJid, { 
             text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(approvedValue).toFixed(2)} pelo item *${approvedItem}*. Obrigado!` 
           });

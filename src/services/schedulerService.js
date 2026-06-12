@@ -37,7 +37,7 @@ async function checkScheduledMessages() {
 
           if (connectionStatus === 'open' && sock) {
             try {
-              const targetJid = sch.chat_id.endsWith('@lid') ? sch.chat_id.replace('@lid', '@s.whatsapp.net') : sch.chat_id;
+              const targetJid = sch.chat_id;
               if (sch.media_url) {
                 const mediaPath = path.join(__dirname, '../../public', sch.media_url);
                 if (sch.media_type === 'image') {

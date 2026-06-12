@@ -125,7 +125,7 @@ async function checkAllPendingPayments() {
               const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
               if (conn && conn.connectionStatus === 'open' && conn.sock) {
                 try {
-                  const targetJid = chat.id.endsWith('@lid') ? chat.id.replace('@lid', '@s.whatsapp.net') : chat.id;
+                  const targetJid = chat.id;
                   await conn.sock.sendMessage(targetJid, { 
                     text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(approvedValue).toFixed(2)} pelo item *${approvedItem}*. Obrigado!` 
                   });
