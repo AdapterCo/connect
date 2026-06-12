@@ -243,9 +243,18 @@ async function updateOrderStatus(req, res) {
       }
     });
 
+    if (status === 'preparing' || payment_status === 'paid') {
+      try {
+        const printService = require('../services/printService');
+        await printService.printOrder(id);
+      } catch (printErr) {
+        console.error('Auto print failed:', printErr);
+      }
+    }
+
     res.json(updated);
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao atualizar pedido.' });
+    res.status(500).json({ error: 'Erro ao atualizar pedido: ' + error.message });
   }
 }
 
@@ -314,11 +323,34 @@ async function getOrderStats(req, res) {
   }
 }
 
+async function printOrderManual(req, res) {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+
+    const order = await prisma.order.findFirst({
+      where: { id, company_id: companyId }
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Pedido não encontrado.' });
+    }
+
+    const printService = require('../services/printService');
+    await printService.printOrder(id);
+
+    res.json({ success: true, message: 'Impressão disparada com sucesso.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao disparar impressão: ' + error.message });
+  }
+}
+
 module.exports = {
   createOrder,
   listOrders,
   getOrder,
   updateOrderStatus,
   deleteOrder,
-  getOrderStats
+  getOrderStats,
+  printOrderManual
 };

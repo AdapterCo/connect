@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
 
+interface Printer {
+  id: string;
+  name: string;
+  ip_address: string;
+  port: number;
+  is_active: boolean;
+}
+
 interface Category {
   id: string;
   name: string;
@@ -8,6 +16,8 @@ interface Category {
   is_active: boolean;
   sort_order: number;
   _count: { products: number };
+  printer_id?: string | null;
+  printer?: { id: string; name: string } | null;
 }
 
 interface Product {
@@ -28,10 +38,13 @@ interface Product {
 export default function Catalog() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [printers, setPrinters] = useState<Printer[]>([]);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [showProductForm, setShowProductForm] = useState(false);
+  const [showPrinterForm, setShowPrinterForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingPrinter, setEditingPrinter] = useState<Printer | null>(null);
   const [filterCategory, setFilterCategory] = useState('');
   const [filterActive, setFilterActive] = useState('');
   const [search, setSearch] = useState('');
@@ -39,7 +52,15 @@ export default function Catalog() {
   useEffect(() => {
     fetchCategories();
     fetchProducts();
+    fetchPrinters();
   }, []);
+
+  const fetchPrinters = async () => {
+    try {
+      const res = await api.get('/printers');
+      setPrinters(res.data);
+    } catch (err) {}
+  };
 
   useEffect(() => {
     fetchProducts();
@@ -216,45 +237,120 @@ export default function Catalog() {
         </div>
       )}
 
-      <div className="mt-8">
-        <h3 className="text-lg font-bold mb-4">Categorias</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {categories.map(cat => (
-            <div key={cat.id} className={`bg-gray-800 border rounded-lg p-3 flex items-center justify-between ${cat.is_active ? 'border-gray-700' : 'border-red-500/30 opacity-60'}`}>
-              <div>
-                <p className="font-medium text-white text-sm">{cat.name}</p>
-                <p className="text-xs text-gray-400">{cat._count.products} produto(s)</p>
+      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Categorias */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold">Categorias</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {categories.map(cat => (
+              <div key={cat.id} className={`bg-gray-800 border rounded-lg p-3 flex items-center justify-between ${cat.is_active ? 'border-gray-700' : 'border-red-500/30 opacity-60'}`}>
+                <div>
+                  <p className="font-medium text-white text-sm">{cat.name}</p>
+                  <p className="text-xs text-gray-400">{cat._count.products} produto(s)</p>
+                  {cat.printer && (
+                    <p className="text-[10px] text-indigo-400 mt-1">🖨️ {cat.printer.name}</p>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => handleToggleActive('category', cat.id, cat.is_active)}
+                    className={`px-2 py-1 rounded text-xs ${cat.is_active ? 'text-amber-400' : 'text-green-400'}`}
+                  >
+                    {cat.is_active ? '👁️' : '👁️‍🗨️'}
+                  </button>
+                  <button
+                    onClick={() => { setEditingCategory(cat); setShowCategoryForm(true); }}
+                    className="px-2 py-1 text-gray-400 rounded text-xs hover:text-white"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    onClick={() => handleDeleteCategory(cat.id)}
+                    className="px-2 py-1 text-red-400 rounded text-xs hover:text-red-300"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => handleToggleActive('category', cat.id, cat.is_active)}
-                  className={`px-2 py-1 rounded text-xs ${cat.is_active ? 'text-amber-400' : 'text-green-400'}`}
-                >
-                  {cat.is_active ? '👁️' : '👁️‍🗨️'}
-                </button>
-                <button
-                  onClick={() => { setEditingCategory(cat); setShowCategoryForm(true); }}
-                  className="px-2 py-1 text-gray-400 rounded text-xs hover:text-white"
-                >
-                  ✏️
-                </button>
-                <button
-                  onClick={() => handleDeleteCategory(cat.id)}
-                  className="px-2 py-1 text-red-400 rounded text-xs hover:text-red-300"
-                >
-                  🗑️
-                </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Impressoras */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold">Impressoras Térmicas</h3>
+            <button
+              onClick={() => { setShowPrinterForm(true); setEditingPrinter(null); }}
+              className="px-2.5 py-1 bg-gray-800 border border-gray-700 text-gray-200 text-xs font-semibold rounded hover:bg-gray-700 transition"
+            >
+              ➕ Nova Impressora
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {printers.map(printer => (
+              <div key={printer.id} className={`bg-gray-800 border rounded-lg p-3 flex items-center justify-between ${printer.is_active ? 'border-gray-700' : 'border-red-500/30 opacity-60'}`}>
+                <div>
+                  <p className="font-medium text-white text-sm">{printer.name}</p>
+                  <p className="text-xs text-gray-400">{printer.ip_address}:{printer.port}</p>
+                  <span className={`text-[10px] font-semibold ${printer.is_active ? 'text-green-400' : 'text-red-400'}`}>
+                    {printer.is_active ? 'Ativa' : 'Inativa'}
+                  </span>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={async () => {
+                      await api.put(`/printers/${printer.id}`, { is_active: !printer.is_active });
+                      fetchPrinters();
+                    }}
+                    className={`px-2 py-1 rounded text-xs ${printer.is_active ? 'text-amber-400' : 'text-green-400'}`}
+                  >
+                    {printer.is_active ? '👁️' : '👁️‍🗨️'}
+                  </button>
+                  <button
+                    onClick={() => { setEditingPrinter(printer); setShowPrinterForm(true); }}
+                    className="px-2 py-1 text-gray-400 rounded text-xs hover:text-white"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!confirm('Deseja excluir esta impressora?')) return;
+                      await api.delete(`/printers/${printer.id}`);
+                      fetchPrinters();
+                    }}
+                    className="px-2 py-1 text-red-400 rounded text-xs hover:text-red-300"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+            {printers.length === 0 && (
+              <div className="col-span-2 text-center py-6 text-gray-500 text-xs">
+                Nenhuma impressora configurada.
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {showCategoryForm && (
         <CategoryForm
           category={editingCategory}
+          printers={printers}
           onClose={() => { setShowCategoryForm(false); setEditingCategory(null); }}
           onSave={() => { fetchCategories(); setShowCategoryForm(false); }}
+        />
+      )}
+
+      {showPrinterForm && (
+        <PrinterForm
+          printer={editingPrinter}
+          onClose={() => { setShowPrinterForm(false); setEditingPrinter(null); }}
+          onSave={() => { fetchPrinters(); setShowPrinterForm(false); }}
         />
       )}
 
@@ -270,18 +366,20 @@ export default function Catalog() {
   );
 }
 
-function CategoryForm({ category, onClose, onSave }: { category: Category | null; onClose: () => void; onSave: () => void }) {
+function CategoryForm({ category, printers, onClose, onSave }: { category: Category | null; printers: Printer[]; onClose: () => void; onSave: () => void }) {
   const [name, setName] = useState(category?.name || '');
   const [sort_order, setSortOrder] = useState(category?.sort_order || 0);
+  const [printer_id, setPrinterId] = useState(category?.printer_id || '');
   const [error, setError] = useState('');
 
   const handleSubmit = async () => {
     setError('');
     try {
+      const payload = { name, sort_order, printer_id: printer_id || null };
       if (category) {
-        await api.put(`/catalog/categories/${category.id}`, { name, sort_order });
+        await api.put(`/catalog/categories/${category.id}`, payload);
       } else {
-        await api.post('/catalog/categories', { name, sort_order });
+        await api.post('/catalog/categories', payload);
       }
       onSave();
     } catch (err: any) {
@@ -313,6 +411,19 @@ function CategoryForm({ category, onClose, onSave }: { category: Category | null
               onChange={(e) => setSortOrder(parseInt(e.target.value) || 0)}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
             />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Impressora de Destino</label>
+            <select
+              value={printer_id}
+              onChange={(e) => setPrinterId(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">Nenhuma (Usa Padrão)</option>
+              {printers.map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({p.ip_address})</option>
+              ))}
+            </select>
           </div>
         </div>
         <div className="flex gap-3 mt-6">
@@ -524,6 +635,76 @@ function ProductForm({ product, categories, onClose, onSave }: { product: Produc
           ))}
         </div>
 
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-700">
+            Cancelar
+          </button>
+          <button onClick={handleSubmit} className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PrinterForm({ printer, onClose, onSave }: { printer: Printer | null; onClose: () => void; onSave: () => void }) {
+  const [name, setName] = useState(printer?.name || '');
+  const [ip_address, setIpAddress] = useState(printer?.ip_address || '');
+  const [port, setPort] = useState(printer?.port || 9100);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    setError('');
+    try {
+      const payload = { name, ip_address, port: parseInt(String(port)) || 9100 };
+      if (printer) {
+        await api.put(`/printers/${printer.id}`, payload);
+      } else {
+        await api.post('/printers', payload);
+      }
+      onSave();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Erro ao salvar impressora.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 w-full max-w-md mx-4">
+        <h3 className="text-lg font-bold text-white mb-4">{printer ? 'Editar' : 'Nova'} Impressora</h3>
+        {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Nome da Impressora *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+              placeholder="Ex: Cozinha, Bar, Caixa"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Endereço IP (Rede) *</label>
+            <input
+              type="text"
+              value={ip_address}
+              onChange={(e) => setIpAddress(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+              placeholder="Ex: 192.168.1.200"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Porta TCP</label>
+            <input
+              type="number"
+              value={port}
+              onChange={(e) => setPort(parseInt(e.target.value) || 9100)}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+        </div>
         <div className="flex gap-3 mt-6">
           <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-700">
             Cancelar

@@ -23,6 +23,7 @@ const navItems = [
   { to: '/', icon: '📊', label: 'Dashboard', end: true },
   { to: '/chats', icon: '💬', label: 'Chats / Funil' },
   { to: '/kanban', icon: '📋', label: 'Pipeline (Kanban)' },
+  { to: '/orders', icon: '🛒', label: 'Pedidos' },
   { to: '/catalog', icon: '📦', label: 'Catálogo' },
   { to: '/whatsapp', icon: '📱', label: 'Conexões WhatsApp' },
   { to: '/settings/ai', icon: '🤖', label: 'Configurações IA' },

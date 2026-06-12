@@ -16,7 +16,8 @@ async function listCategories(req, res) {
     const categories = await prisma.category.findMany({
       where: { company_id: companyId },
       include: {
-        _count: { select: { products: true } }
+        _count: { select: { products: true } },
+        printer: { select: { id: true, name: true } }
       },
       orderBy: { sort_order: 'asc' }
     });
@@ -29,7 +30,7 @@ async function listCategories(req, res) {
 async function createCategory(req, res) {
   try {
     const companyId = req.user.company_id;
-    const { name, sort_order } = req.body;
+    const { name, sort_order, printer_id } = req.body;
 
     if (!name || name.trim().length === 0) {
       return res.status(400).json({ error: 'Nome da categoria é obrigatório.' });
@@ -50,6 +51,7 @@ async function createCategory(req, res) {
         name: name.trim(),
         slug,
         sort_order: sort_order || 0,
+        printer_id: printer_id || null,
         company_id: companyId
       }
     });
@@ -64,7 +66,7 @@ async function updateCategory(req, res) {
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
-    const { name, is_active, sort_order } = req.body;
+    const { name, is_active, sort_order, printer_id } = req.body;
 
     const category = await prisma.category.findFirst({
       where: { id, company_id: companyId }
@@ -81,6 +83,7 @@ async function updateCategory(req, res) {
     }
     if (is_active !== undefined) updateData.is_active = is_active;
     if (sort_order !== undefined) updateData.sort_order = sort_order;
+    if (printer_id !== undefined) updateData.printer_id = printer_id || null;
 
     const updated = await prisma.category.update({
       where: { id },
@@ -393,6 +396,65 @@ function formatCatalogForPrompt(categories) {
   return catalog;
 }
 
+async function getPublicCatalog(req, res) {
+  try {
+    const { slug } = req.params;
+
+    const company = await prisma.company.findUnique({
+      where: { slug },
+      select: {
+        id: true,
+        name: true,
+        logo_url: true,
+        primary_color: true,
+        is_active: true,
+        instances: {
+          where: { status: 'connected' },
+          select: { phone: true },
+          take: 1
+        }
+      }
+    });
+
+    if (!company) {
+      return res.status(404).json({ error: 'Cardapio nao encontrado.' });
+    }
+
+    if (!company.is_active) {
+      return res.status(403).json({ error: 'Cardapio inativo no momento.' });
+    }
+
+    const categories = await prisma.category.findMany({
+      where: { company_id: company.id, is_active: true },
+      include: {
+        products: {
+          where: { is_active: true },
+          include: {
+            variants: { orderBy: { price_diff: 'asc' } },
+            addons: { orderBy: { price: 'asc' } }
+          },
+          orderBy: { sort_order: 'asc' }
+        }
+      },
+      orderBy: { sort_order: 'asc' }
+    });
+
+    const activeCategories = categories.filter(c => c.products.length > 0);
+
+    res.json({
+      company: {
+        name: company.name,
+        logo_url: company.logo_url,
+        primary_color: company.primary_color,
+        phone: company.instances[0]?.phone || null
+      },
+      categories: activeCategories
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao carregar cardapio publico: ' + error.message });
+  }
+}
+
 module.exports = {
   listCategories,
   createCategory,
@@ -404,5 +466,6 @@ module.exports = {
   updateProduct,
   deleteProduct,
   getCatalogForAI,
-  formatCatalogForPrompt
+  formatCatalogForPrompt,
+  getPublicCatalog
 };

@@ -17,6 +17,8 @@ import Billing from './pages/Billing';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Catalog from './pages/Catalog';
+import Orders from './pages/Orders';
+import Cardapio from './pages/Cardapio';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
@@ -31,10 +33,13 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/cardapio/:slug" element={<Cardapio />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/chats" element={<Chats />} />
           <Route path="/kanban" element={<Kanban />} />
+          <Route path="/catalog" element={<Catalog />} />
+          <Route path="/orders" element={<Orders />} />
           <Route path="/whatsapp" element={<WhatsApp />} />
           <Route path="/settings/ai" element={<SettingsAI />} />
           <Route path="/settings/mp" element={<SettingsMP />} />
@@ -42,7 +47,6 @@ function App() {
           <Route path="/reports" element={<Reports />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/billing" element={<Billing />} />
-          <Route path="/catalog" element={<Catalog />} />
           <Route path="/superadmin" element={<SuperAdmin />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

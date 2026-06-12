@@ -37,23 +37,24 @@ async function checkScheduledMessages() {
 
           if (connectionStatus === 'open' && sock) {
             try {
+              const targetJid = sch.chat_id.endsWith('@lid') ? sch.chat_id.replace('@lid', '@s.whatsapp.net') : sch.chat_id;
               if (sch.media_url) {
                 const mediaPath = path.join(__dirname, '../../public', sch.media_url);
                 if (sch.media_type === 'image') {
-                  await sock.sendMessage(sch.chat_id, { image: { url: mediaPath }, caption: sch.text || undefined });
+                  await sock.sendMessage(targetJid, { image: { url: mediaPath }, caption: sch.text || undefined });
                 } else if (sch.media_type === 'video') {
-                  await sock.sendMessage(sch.chat_id, { video: { url: mediaPath }, caption: sch.text || undefined });
+                  await sock.sendMessage(targetJid, { video: { url: mediaPath }, caption: sch.text || undefined });
                 } else if (sch.media_type === 'audio') {
-                  await sock.sendMessage(sch.chat_id, { audio: { url: mediaPath }, mimetype: 'audio/mp4', ptt: true });
+                  await sock.sendMessage(targetJid, { audio: { url: mediaPath }, mimetype: 'audio/mp4', ptt: true });
                 } else if (sch.media_type === 'document') {
-                  await sock.sendMessage(sch.chat_id, { 
+                  await sock.sendMessage(targetJid, { 
                     document: { url: mediaPath }, 
                     mimetype: 'application/octet-stream', 
                     fileName: sch.file_name || 'Arquivo' 
                   });
                 }
               } else {
-                await sock.sendMessage(sch.chat_id, { text: sch.text });
+                await sock.sendMessage(targetJid, { text: sch.text });
               }
               await Log.add(`[Agendamento] Mensagem enviada com sucesso para ${chat.client_name}.`, companyId);
             } catch (err) {

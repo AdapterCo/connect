@@ -19,13 +19,11 @@ const activeConnections = {};
 
 async function sendMessage(instanceId, jid, content) {
   const conn = activeConnections[instanceId];
-  if (!conn) {
-    throw new Error(`Instância WhatsApp "${instanceId}" não encontrada nas conexões ativas`);
+  if (conn && conn.connectionStatus === 'open' && conn.sock) {
+    const targetJid = jid.endsWith('@lid') ? jid.replace('@lid', '@s.whatsapp.net') : jid;
+    return await conn.sock.sendMessage(targetJid, content);
   }
-  if (conn.connectionStatus !== 'open' || !conn.sock) {
-    throw new Error(`Instância WhatsApp "${instanceId}" não está conectada (status: ${conn.connectionStatus})`);
-  }
-  return await conn.sock.sendMessage(jid, content);
+  return null;
 }
 
 function getActiveConnections() {
@@ -41,7 +39,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
     clearTimeout(activeConnections[instanceId].reconnectTimer);
   }
 
-  const authFolder = path.join(__dirname, `../../auth_info_baileys_${instanceId}`);
+  const authFolder = path.join(__dirname, `../../auth_info_baileys/${instanceId}`);
   const { state, saveCreds } = await useMultiFileAuthState(authFolder);
   
   if (!activeConnections[instanceId]) {
@@ -259,7 +257,7 @@ async function stopWhatsAppInstance(instanceId, clearSession = false) {
   }
 
   if (clearSession) {
-    const authFolder = path.join(__dirname, `../../auth_info_baileys_${instanceId}`);
+    const authFolder = path.join(__dirname, `../../auth_info_baileys/${instanceId}`);
     if (fs.existsSync(authFolder)) {
       fs.rmSync(authFolder, { recursive: true, force: true });
     }
@@ -277,8 +275,9 @@ async function stopWhatsAppInstance(instanceId, clearSession = false) {
   });
 }
 
-async function handleIncomingWhatsAppMessage(senderJid, clientName, messageText, mediaInfo, instanceId, companyId) {
+async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageText, mediaInfo, instanceId, companyId) {
   try {
+    const senderJid = rawSenderJid.endsWith('@lid') ? rawSenderJid.replace('@lid', '@s.whatsapp.net') : rawSenderJid;
     let chat = await Chat.findById(senderJid, companyId);
     const cleanPhone = senderJid.split('@')[0];
 
