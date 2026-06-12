@@ -188,34 +188,61 @@ async function sendMessage(req, res) {
 
     const createdMsg = await Chat.addMessage(chat.id, newMessage);
 
-    const instanceId = chat.instance_id || 'inst_default';
-    const { getActiveConnections } = require('../services/whatsappService');
-    const conn = getActiveConnections()[instanceId] || {};
-    const sock = conn.sock;
-    const connectionStatus = conn.connectionStatus || 'disconnected';
+    if (!isNote) {
+      const instanceId = chat.instance_id || 'inst_default';
+      const { sendMessage, getActiveConnections } = require('../services/whatsappService');
+      const activeConns = getActiveConnections();
+      const conn = activeConns[instanceId];
 
-    if (!isNote && connectionStatus === 'open' && sock) {
-      try {
-        if (mediaUrl) {
-          const mediaPath = path.join(__dirname, '../../public', mediaUrl);
-          if (mediaType === 'image') {
-            await sock.sendMessage(req.params.id, { image: { url: mediaPath }, caption: text || undefined });
-          } else if (mediaType === 'video') {
-            await sock.sendMessage(req.params.id, { video: { url: mediaPath }, caption: text || undefined });
-          } else if (mediaType === 'audio') {
-            await sock.sendMessage(req.params.id, { audio: { url: mediaPath }, mimetype: 'audio/mp4', ptt: true });
-          } else if (mediaType === 'document') {
-            await sock.sendMessage(req.params.id, { 
-              document: { url: mediaPath }, 
-              mimetype: 'application/octet-stream', 
-              fileName: fileName || 'Arquivo' 
-            });
+      let messageSent = false;
+
+      if (conn && conn.connectionStatus === 'open' && conn.sock) {
+        try {
+          if (mediaUrl) {
+            const mediaPath = path.join(__dirname, '../../public', mediaUrl);
+            if (mediaType === 'image') {
+              await sendMessage(instanceId, chat.id, { image: { url: mediaPath }, caption: text || undefined });
+            } else if (mediaType === 'video') {
+              await sendMessage(instanceId, chat.id, { video: { url: mediaPath }, caption: text || undefined });
+            } else if (mediaType === 'audio') {
+              await sendMessage(instanceId, chat.id, { audio: { url: mediaPath }, mimetype: 'audio/mp4', ptt: true });
+            } else if (mediaType === 'document') {
+              await sendMessage(instanceId, chat.id, { 
+                document: { url: mediaPath }, 
+                mimetype: 'application/octet-stream', 
+                fileName: fileName || 'Arquivo' 
+              });
+            } else {
+              await sendMessage(instanceId, chat.id, { text: text });
+            }
+            messageSent = true;
+          } else {
+            await sendMessage(instanceId, chat.id, { text: text });
+            messageSent = true;
           }
-        } else {
-          await sock.sendMessage(req.params.id, { text: text });
+        } catch (err) {
+          console.error('Erro ao enviar mensagem via WhatsApp:', err);
         }
-      } catch (err) {
-        console.error(err);
+      } else {
+        const connKeys = Object.keys(activeConns);
+        console.warn(`[chatController] Conexão WhatsApp não disponível para instance_id="${instanceId}". Conexões ativas: [${connKeys.join(', ')}]`);
+      }
+
+      if (!messageSent && !conn) {
+        const fallbackInstance = Object.keys(activeConns).find(k => activeConns[k]?.connectionStatus === 'open' && activeConns[k]?.sock);
+        if (fallbackInstance) {
+          try {
+            if (mediaUrl) {
+              const mediaPath = path.join(__dirname, '../../public', mediaUrl);
+              await sendMessage(fallbackInstance, chat.id, { image: { url: mediaPath }, caption: text || undefined });
+            } else {
+              await sendMessage(fallbackInstance, chat.id, { text: text });
+            }
+            messageSent = true;
+          } catch (err) {
+            console.error('Erro ao enviar via conexão fallback:', err);
+          }
+        }
       }
     }
 
