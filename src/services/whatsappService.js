@@ -19,10 +19,13 @@ const activeConnections = {};
 
 async function sendMessage(instanceId, jid, content) {
   const conn = activeConnections[instanceId];
-  if (conn && conn.connectionStatus === 'open' && conn.sock) {
-    return await conn.sock.sendMessage(jid, content);
+  if (!conn) {
+    throw new Error(`Instância WhatsApp "${instanceId}" não encontrada nas conexões ativas`);
   }
-  return null;
+  if (conn.connectionStatus !== 'open' || !conn.sock) {
+    throw new Error(`Instância WhatsApp "${instanceId}" não está conectada (status: ${conn.connectionStatus})`);
+  }
+  return await conn.sock.sendMessage(jid, content);
 }
 
 function getActiveConnections() {
