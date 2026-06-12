@@ -5,10 +5,26 @@ import type { Statistics } from '../types';
 
 export default function Reports() {
   const [stats, setStats] = useState<Statistics | null>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/statistics').then(res => setStats(res.data));
+    api.get('/reports/statistics')
+      .then(res => setStats(res.data))
+      .catch(err => {
+        setError(err.response?.data?.error || 'Nao foi possivel carregar os relatorios.');
+      });
   }, []);
+
+  if (error) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <div className="bg-gray-800 border border-red-500/40 rounded-xl p-6 max-w-md text-center">
+          <h2 className="text-lg font-bold text-white mb-2">Erro ao carregar relatorios</h2>
+          <p className="text-sm text-red-300">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!stats) {
     return (
