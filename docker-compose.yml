@@ -16,8 +16,10 @@ services:
     build: .
     container_name: adapterconnect-app
     restart: unless-stopped
+    expose:
+      - "3009"
     environment:
-      - PORT=3000
+      - PORT=3009
       - NODE_ENV=production
       - JWT_SECRET=${JWT_SECRET}
       - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres}@db:5432/adapterconnect?schema=public
@@ -28,31 +30,19 @@ services:
       - uploads_data:/app/public/uploads
     depends_on:
       - db
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.adapterconnect-http.rule=Host(`${DOMAIN:-connect.adapterco.com.br}`)"
+      - "traefik.http.routers.adapterconnect-http.middlewares=https-redirect"
+      - "traefik.http.routers.adapterconnect.rule=Host(`${DOMAIN:-connect.adapterco.com.br}`)"
+      - "traefik.http.routers.adapterconnect.tls=true"
+      - "traefik.http.routers.adapterconnect.tls.certresolver=letsencrypt"
+      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
+      - "traefik.http.services.adapterconnect.loadbalancer.server.port=3009"
     networks:
       - adapterconnect_internal
       - traefik9
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik9"
-
-      # Router HTTPS
-      - "traefik.http.routers.adapterconnect-https.rule=Host(`${DOMAIN:-connect.adapterco.com.br}`)"
-      - "traefik.http.routers.adapterconnect-https.entrypoints=https"
-      - "traefik.http.routers.adapterconnect-https.tls=true"
-      - "traefik.http.routers.adapterconnect-https.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.adapterconnect-https.service=adapterconnect-service"
-
-      # Router HTTP — redirect to HTTPS
-      - "traefik.http.routers.adapterconnect-http.rule=Host(`${DOMAIN:-connect.adapterco.com.br}`)"
-      - "traefik.http.routers.adapterconnect-http.entrypoints=http"
-      - "traefik.http.routers.adapterconnect-http.middlewares=adapterconnect-https-redirect"
-
-      # Middleware
-      - "traefik.http.middlewares.adapterconnect-https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.adapterconnect-https-redirect.redirectscheme.permanent=true"
-
-      # Service
-      - "traefik.http.services.adapterconnect-service.loadbalancer.server.port=${PORT:-3000}"
 
 volumes:
   pgdata:

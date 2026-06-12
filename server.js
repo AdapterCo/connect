@@ -6,6 +6,7 @@ const { initSocket } = require('./src/config/socket');
 const whatsappService = require('./src/services/whatsappService');
 const schedulerService = require('./src/services/schedulerService');
 const mercadoPagoService = require('./src/services/mercadoPagoService');
+const billingService = require('./src/services/billingService');
 const Log = require('./src/models/Log');
 
 const server = http.createServer(app);
@@ -35,3 +36,7 @@ setInterval(() => {
 setInterval(() => {
   mercadoPagoService.checkAllPendingPayments().catch(err => console.error(err));
 }, 20000);
+
+setInterval(() => {
+  billingService.checkExpiredSubscriptions().catch(err => console.error(err));
+}, 3600000);

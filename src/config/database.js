@@ -8,15 +8,44 @@ async function initializeDatabase() {
   try {
     const companyCount = await prisma.company.count();
     if (companyCount === 0) {
+      const freePlan = await prisma.plan.create({
+        data: {
+          name: 'Free',
+          max_instances: 1,
+          max_users: 2,
+          price: 0
+        }
+      });
+
+      await prisma.plan.create({
+        data: {
+          name: 'Pro',
+          max_instances: 3,
+          max_users: 10,
+          price: 97
+        }
+      });
+
+      await prisma.plan.create({
+        data: {
+          name: 'Enterprise',
+          max_instances: 10,
+          max_users: 50,
+          price: 197
+        }
+      });
+
       await prisma.company.create({
         data: {
           id: 'comp_default',
           name: 'Adapter Connect',
           slug: 'adapter-connect',
           plan: 'free',
+          plan_id: freePlan.id,
           max_instances: 1,
           max_users: 2,
-          mp_enabled: false
+          mp_enabled: false,
+          is_active: true
         }
       });
 
@@ -44,6 +73,19 @@ async function initializeDatabase() {
           username: 'admin',
           password: hashedPassword,
           role: 'admin',
+          status: 'online',
+          company_id: 'comp_default'
+        }
+      });
+
+      const superadminPassword = bcrypt.hashSync('superadmin123', salt);
+      await prisma.user.create({
+        data: {
+          id: 'usr_superadmin',
+          name: 'Super Admin',
+          username: 'superadmin',
+          password: superadminPassword,
+          role: 'superadmin',
           status: 'online',
           company_id: 'comp_default'
         }

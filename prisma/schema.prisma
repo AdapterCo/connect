@@ -7,6 +7,19 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model Plan {
+  id            String    @id @default(uuid())
+  name          String    @unique
+  max_instances Int       @default(1)
+  max_users     Int       @default(2)
+  price         Float     @default(0)
+  is_active     Boolean   @default(true)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  companies     Company[]
+  subscriptions Subscription[]
+}
+
 model Company {
   id              String             @id @default(uuid())
   name            String
@@ -14,14 +27,18 @@ model Company {
   logo_url        String?
   primary_color   String?
   plan            String             @default("free")
+  plan_id         String?
   max_instances   Int                @default(1)
   max_users       Int                @default(2)
+  is_active       Boolean            @default(true)
+  expires_at      DateTime?
   mp_access_token String?
   mp_public_key   String?
   mp_enabled      Boolean            @default(false)
   mp_webhook_url  String?
   created_at      DateTime           @default(now())
   updated_at      DateTime           @updatedAt
+  plan_relation   Plan?              @relation(fields: [plan_id], references: [id], onDelete: SetNull)
   users           User[]
   settings        Settings?
   instances       Instance[]
@@ -29,19 +46,23 @@ model Company {
   scheduled       ScheduledMessage[]
   logs            Log[]
   metrics         Metric[]
+  subscriptions   Subscription[]
+  invoices        Invoice[]
+  auditLogs       AuditLog[]
 }
 
 model User {
-  id         String   @id @default(uuid())
-  name       String
-  username   String   @unique
-  password   String
-  role       String
-  status     String   @default("offline")
-  company_id String
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  id              String               @id @default(uuid())
+  name            String
+  username        String               @unique
+  password        String
+  role            String
+  status          String               @default("offline")
+  company_id      String
+  created_at      DateTime             @default(now())
+  updated_at      DateTime             @updatedAt
+  company         Company              @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  resetTokens     PasswordResetToken[]
 }
 
 model Settings {
@@ -148,4 +169,60 @@ model Metric {
   company_id       String
   timestamp        DateTime @default(now())
   company          Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id                    String    @id @default(uuid())
+  company_id            String
+  plan_id               String
+  status                String    @default("active")
+  current_period_start  DateTime
+  current_period_end    DateTime
+  mp_subscription_id    String?
+  mp_payer_id           String?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+  company               Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  plan                  Plan      @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+  invoices              Invoice[]
+}
+
+model Invoice {
+  id              String        @id @default(uuid())
+  company_id      String
+  subscription_id String?
+  amount          Float
+  status          String        @default("pending")
+  mp_payment_id   String?
+  mp_payment_url  String?
+  due_date        DateTime
+  paid_at         DateTime?
+  created_at      DateTime      @default(now())
+  company         Company       @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  subscription    Subscription? @relation(fields: [subscription_id], references: [id], onDelete: SetNull)
+}
+
+model PasswordResetToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  token      String   @unique
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  company_id String
+  user_id    String?
+  user_name  String?
+  action     String
+  entity     String
+  entity_id  String?
+  details    String?
+  ip         String?
+  user_agent String?
+  timestamp  DateTime @default(now())
+  company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
 }

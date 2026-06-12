@@ -1,22 +1,25 @@
 const express = require('express');
 const chatController = require('../controllers/chatController');
 const authenticateToken = require('../middleware/authMiddleware');
+const { checkCompanyActive } = require('../middleware/planMiddleware');
+const { validateMessage } = require('../middleware/validationMiddleware');
+const audit = require('../middleware/auditMiddleware');
 
 const router = express.Router();
 
-router.get('/', authenticateToken, chatController.getChats);
-router.post('/', authenticateToken, chatController.createChat);
-router.get('/:id', authenticateToken, chatController.getChatById);
-router.delete('/:id', authenticateToken, chatController.deleteChat);
-router.post('/:id/status', authenticateToken, chatController.updateStatus);
-router.post('/:id/message', authenticateToken, chatController.sendMessage);
-router.post('/:id/assign', authenticateToken, chatController.assignChat);
-router.post('/:id/ai-toggle', authenticateToken, chatController.toggleAi);
-router.post('/:id/tags', authenticateToken, chatController.addTag);
-router.delete('/:id/tags', authenticateToken, chatController.deleteTag);
-router.post('/:id/favorite', authenticateToken, chatController.toggleFavorite);
-router.post('/:id/archive', authenticateToken, chatController.toggleArchive);
-router.post('/:id/block', authenticateToken, chatController.toggleBlock);
-router.post('/:id/sector', authenticateToken, chatController.updateSector);
+router.get('/', authenticateToken, checkCompanyActive, chatController.getChats);
+router.post('/', authenticateToken, checkCompanyActive, audit('chat', 'create'), chatController.createChat);
+router.get('/:id', authenticateToken, checkCompanyActive, chatController.getChatById);
+router.delete('/:id', authenticateToken, checkCompanyActive, audit('chat', 'delete'), chatController.deleteChat);
+router.post('/:id/status', authenticateToken, checkCompanyActive, audit('chat', 'update_status'), chatController.updateStatus);
+router.post('/:id/message', authenticateToken, checkCompanyActive, validateMessage, audit('chat', 'send_message'), chatController.sendMessage);
+router.post('/:id/assign', authenticateToken, checkCompanyActive, audit('chat', 'assign'), chatController.assignChat);
+router.post('/:id/ai-toggle', authenticateToken, checkCompanyActive, audit('chat', 'toggle_ai'), chatController.toggleAi);
+router.post('/:id/tags', authenticateToken, checkCompanyActive, audit('chat', 'add_tag'), chatController.addTag);
+router.delete('/:id/tags', authenticateToken, checkCompanyActive, audit('chat', 'delete_tag'), chatController.deleteTag);
+router.post('/:id/favorite', authenticateToken, checkCompanyActive, audit('chat', 'toggle_favorite'), chatController.toggleFavorite);
+router.post('/:id/archive', authenticateToken, checkCompanyActive, audit('chat', 'toggle_archive'), chatController.toggleArchive);
+router.post('/:id/block', authenticateToken, checkCompanyActive, audit('chat', 'toggle_block'), chatController.toggleBlock);
+router.post('/:id/sector', authenticateToken, checkCompanyActive, audit('chat', 'update_sector'), chatController.updateSector);
 
 module.exports = router;

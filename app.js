@@ -1,11 +1,14 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
 const { UPLOAD_DIR } = require('./src/config/index');
 const authenticateToken = require('./src/middleware/authMiddleware');
+const { generalLimiter, authLimiter, apiLimiter, uploadLimiter } = require('./src/middleware/rateLimitMiddleware');
+const { sanitizeBody } = require('./src/middleware/validationMiddleware');
 
 const authRoutes = require('./src/routes/authRoutes');
 const chatRoutes = require('./src/routes/chatRoutes');
@@ -15,8 +18,18 @@ const userRoutes = require('./src/routes/userRoutes');
 const paymentRoutes = require('./src/routes/paymentRoutes');
 const reportRoutes = require('./src/routes/reportRoutes');
 const scheduleRoutes = require('./src/routes/scheduleRoutes');
+const superadminRoutes = require('./src/routes/superadminRoutes');
+const companyRoutes = require('./src/routes/companyRoutes');
+const billingRoutes = require('./src/routes/billingRoutes');
+const passwordResetRoutes = require('./src/routes/passwordResetRoutes');
+const auditRoutes = require('./src/routes/auditRoutes');
 
 const app = express();
+
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production'
@@ -26,12 +39,34 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(sanitizeBody);
+
+app.use('/api/', generalLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/register-tenant', authLimiter);
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
+
+const ALLOWED_MIMETYPES = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'video/mp4', 'video/quicktime',
+  'audio/mpeg', 'audio/ogg', 'audio/mp4', 'audio/wav',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain'
+];
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -43,9 +78,20 @@ const storage = multer.diskStorage({
     cb(null, uniqueName);
   }
 });
-const upload = multer({ storage });
 
-app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => {
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_MIMETYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Tipo de arquivo não permitido.'));
+    }
+  }
+});
+
+app.post('/api/upload', authenticateToken, uploadLimiter, upload.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
   }
@@ -60,13 +106,31 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
 });
 
 app.use('/api/auth', authRoutes);
-app.use('/api/chats', chatRoutes);
-app.use('/api/chats', scheduleRoutes);
-app.use('/api/instances', instanceRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/users', userRoutes);
+app.use('/api/password-reset', passwordResetRoutes);
+app.use('/api/chats', apiLimiter, chatRoutes);
+app.use('/api/chats', apiLimiter, scheduleRoutes);
+app.use('/api/instances', apiLimiter, instanceRoutes);
+app.use('/api/settings', apiLimiter, settingsRoutes);
+app.use('/api/users', apiLimiter, userRoutes);
 app.use('/api', paymentRoutes);
 app.use('/api', reportRoutes);
+app.use('/api/superadmin', superadminRoutes);
+app.use('/api/company', companyRoutes);
+app.use('/api/billing', apiLimiter, billingRoutes);
+app.use('/api/audit', auditRoutes);
+
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'Arquivo muito grande. Máximo 10MB.' });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  if (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  next();
+});
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
