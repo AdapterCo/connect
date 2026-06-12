@@ -82,7 +82,7 @@ async function runAiAttendant(chat, clientMessage, settings) {
           const model = genAI.getGenerativeModel({ 
             model: modelName,
             generationConfig: { responseMimeType: "application/json" }
-          });
+          }, { apiVersion: 'v1beta' });
           const result = await model.generateContent(fullPrompt);
           const responseText = result.response.text();
           return JSON.parse(cleanJsonString(responseText));
