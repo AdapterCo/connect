@@ -192,7 +192,6 @@ async function sendMessage(req, res) {
       const whatsappService = require('../services/whatsappService');
       const activeConns = whatsappService.getActiveConnections();
       const instanceId = chat.instance_id || 'inst_default';
-      let messageSent = false;
 
       function findOpenConnection(preferredId) {
         if (preferredId && activeConns[preferredId] && activeConns[preferredId].connectionStatus === 'open' && activeConns[preferredId].sock) {
@@ -210,7 +209,10 @@ async function sendMessage(req, res) {
 
       if (activeInstanceId) {
         try {
-          const jid = chat.id;
+          let jid = chat.id;
+          if (jid.endsWith('@lid')) {
+            jid = jid.replace('@lid', '@s.whatsapp.net');
+          }
           if (mediaUrl) {
             const mediaPath = path.join(__dirname, '../../public', mediaUrl);
             if (mediaType === 'image') {
@@ -231,7 +233,6 @@ async function sendMessage(req, res) {
           } else {
             await whatsappService.sendMessage(activeInstanceId, jid, { text: text });
           }
-          messageSent = true;
         } catch (err) {
           console.error('Erro ao enviar mensagem via WhatsApp:', err);
         }
