@@ -54,7 +54,8 @@ async function createCharge(req, res) {
     const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
     if (conn && conn.connectionStatus === 'open' && conn.sock) {
       try {
-        await conn.sock.sendMessage(chat.id, { 
+        const targetJid = chat.id.endsWith('@lid') ? chat.id.replace('@lid', '@s.whatsapp.net') : chat.id;
+        await conn.sock.sendMessage(targetJid, { 
           text: `💳 *Link de Pagamento Manual!*\n\n*Item:* ${item}\n*Valor:* R$ ${Number(value).toFixed(2)}\n\nLink para pagamento: ${paymentData.url}` 
         });
       } catch (err) {
@@ -127,6 +128,26 @@ async function handleWebhook(req, res) {
               }
 
               if (status === 'approved') {
+                // Find and auto-print pending order in this chat
+                const pendingOrder = await prisma.order.findFirst({
+                  where: { chat_id: chat.id, status: 'pending' },
+                  orderBy: { created_at: 'desc' }
+                });
+
+                if (pendingOrder) {
+                  await prisma.order.update({
+                    where: { id: pendingOrder.id },
+                    data: { payment_status: 'paid', status: 'preparing' }
+                  });
+
+                  try {
+                    const printService = require('../services/printService');
+                    await printService.printOrder(pendingOrder.id);
+                  } catch (printErr) {
+                    console.error('[Auto Print] Failed to print paid order:', printErr);
+                  }
+                }
+
                 const confirmMsg1 = {
                   sender: 'system',
                   text: `✅ Pagamento REAL de R$ ${Number(value).toFixed(2)} recebido com sucesso via Mercado Pago! (Item: ${item})`,
@@ -151,7 +172,8 @@ async function handleWebhook(req, res) {
                 const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
                 if (conn && conn.connectionStatus === 'open' && conn.sock) {
                   try {
-                    await conn.sock.sendMessage(chatId, { 
+                    const targetJid = chatId.endsWith('@lid') ? chatId.replace('@lid', '@s.whatsapp.net') : chatId;
+                    await conn.sock.sendMessage(targetJid, { 
                       text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(value).toFixed(2)} pelo item *${item}*. Obrigado!` 
                     });
                   } catch (err) {
@@ -227,6 +249,26 @@ async function checkPaymentStatus(req, res) {
     if (updated) {
       const oldStatus = chat.status;
       
+      // Find and auto-print pending order in this chat
+      const pendingOrder = await prisma.order.findFirst({
+        where: { chat_id: chat.id, status: 'pending' },
+        orderBy: { created_at: 'desc' }
+      });
+
+      if (pendingOrder) {
+        await prisma.order.update({
+          where: { id: pendingOrder.id },
+          data: { payment_status: 'paid', status: 'preparing' }
+        });
+
+        try {
+          const printService = require('../services/printService');
+          await printService.printOrder(pendingOrder.id);
+        } catch (printErr) {
+          console.error('[Auto Print] Failed to print paid order:', printErr);
+        }
+      }
+
       const confirmMsg1 = {
         sender: 'system',
         text: `✅ Pagamento REAL de R$ ${Number(approvedValue).toFixed(2)} verificado e aprovado via Mercado Pago! (Item: ${approvedItem})`,
@@ -251,7 +293,8 @@ async function checkPaymentStatus(req, res) {
       const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
       if (conn && conn.connectionStatus === 'open' && conn.sock) {
         try {
-          await conn.sock.sendMessage(chatId, { 
+          const targetJid = chatId.endsWith('@lid') ? chatId.replace('@lid', '@s.whatsapp.net') : chatId;
+          await conn.sock.sendMessage(targetJid, { 
             text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(approvedValue).toFixed(2)} pelo item *${approvedItem}*. Obrigado!` 
           });
         } catch (err) {

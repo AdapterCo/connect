@@ -243,6 +243,9 @@ model Category {
   updated_at DateTime  @updatedAt
   company    Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
   products   Product[]
+  
+  printer_id String?
+  printer    Printer?  @relation(fields: [printer_id], references: [id], onDelete: SetNull)
 
   @@unique([company_id, slug])
 }
@@ -336,13 +339,14 @@ model OrderItemAddon {
 }
 
 model Printer {
-  id         String   @id @default(uuid())
+  id         String     @id @default(uuid())
   name       String
   ip_address String
-  port       Int      @default(9100)
-  is_active  Boolean  @default(true)
+  port       Int        @default(9100)
+  is_active  Boolean    @default(true)
   company_id String
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+  company    Company    @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  categories Category[]
 }

@@ -42,8 +42,6 @@ docker compose up -d --build
 - **Usuário**: admin
 - **Senha**: admin123
 
-> ⚠️ **IMPORTANTE**: Altere a senha do usuário admin imediatamente após o primeiro login. Para definir uma senha personalizada no primeiro acesso, adicione a variável `DEFAULT_ADMIN_PASSWORD` no arquivo `.env`.
-
 ## Variáveis de ambiente
 
 | Variável | Descrição |

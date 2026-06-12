@@ -15,4 +15,6 @@ router.post('/products', authenticateToken, checkCompanyActive, catalogControlle
 router.put('/products/:id', authenticateToken, checkCompanyActive, catalogController.updateProduct);
 router.delete('/products/:id', authenticateToken, checkCompanyActive, catalogController.deleteProduct);
 
+router.get('/public/:slug', catalogController.getPublicCatalog);
+
 module.exports = router;

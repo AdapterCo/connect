@@ -20,7 +20,8 @@ const activeConnections = {};
 async function sendMessage(instanceId, jid, content) {
   const conn = activeConnections[instanceId];
   if (conn && conn.connectionStatus === 'open' && conn.sock) {
-    return await conn.sock.sendMessage(jid, content);
+    const targetJid = jid.endsWith('@lid') ? jid.replace('@lid', '@s.whatsapp.net') : jid;
+    return await conn.sock.sendMessage(targetJid, content);
   }
   return null;
 }
@@ -274,8 +275,9 @@ async function stopWhatsAppInstance(instanceId, clearSession = false) {
   });
 }
 
-async function handleIncomingWhatsAppMessage(senderJid, clientName, messageText, mediaInfo, instanceId, companyId) {
+async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageText, mediaInfo, instanceId, companyId) {
   try {
+    const senderJid = rawSenderJid.endsWith('@lid') ? rawSenderJid.replace('@lid', '@s.whatsapp.net') : rawSenderJid;
     let chat = await Chat.findById(senderJid, companyId);
     const cleanPhone = senderJid.split('@')[0];
 

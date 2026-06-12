@@ -24,6 +24,8 @@ const billingRoutes = require('./src/routes/billingRoutes');
 const passwordResetRoutes = require('./src/routes/passwordResetRoutes');
 const auditRoutes = require('./src/routes/auditRoutes');
 const catalogRoutes = require('./src/routes/catalogRoutes');
+const orderRoutes = require('./src/routes/orderRoutes');
+const printerRoutes = require('./src/routes/printerRoutes');
 
 const app = express();
 
@@ -120,6 +122,8 @@ app.use('/api/company', companyRoutes);
 app.use('/api/billing', apiLimiter, billingRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/catalog', catalogRoutes);
+app.use('/api/orders', apiLimiter, orderRoutes);
+app.use('/api/printers', apiLimiter, printerRoutes);
 
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
