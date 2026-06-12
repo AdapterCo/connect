@@ -49,6 +49,10 @@ model Company {
   subscriptions   Subscription[]
   invoices        Invoice[]
   auditLogs       AuditLog[]
+  categories      Category[]
+  products        Product[]
+  orders          Order[]
+  printers        Printer[]
 }
 
 model User {
@@ -115,6 +119,7 @@ model Chat {
   company       Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
   instance      Instance  @relation(fields: [instance_id], references: [id], onDelete: Cascade)
   messages      Message[]
+  orders        Order[]
 }
 
 model Message {
@@ -224,5 +229,120 @@ model AuditLog {
   ip         String?
   user_agent String?
   timestamp  DateTime @default(now())
+  company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+}
+
+model Category {
+  id         String    @id @default(uuid())
+  name       String
+  slug       String
+  is_active  Boolean   @default(true)
+  sort_order Int       @default(0)
+  company_id String
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  company    Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  products   Product[]
+
+  @@unique([company_id, slug])
+}
+
+model Product {
+  id           String            @id @default(uuid())
+  name         String
+  slug         String
+  description  String?
+  price        Float
+  image_url    String?
+  is_active    Boolean           @default(true)
+  sort_order   Int               @default(0)
+  category_id  String
+  company_id   String
+  created_at   DateTime          @default(now())
+  updated_at   DateTime          @updatedAt
+  category     Category          @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  company      Company           @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  variants     ProductVariant[]
+  addons       ProductAddon[]
+  orderItems   OrderItem[]
+
+  @@unique([company_id, slug])
+}
+
+model ProductVariant {
+  id         String   @id @default(uuid())
+  name       String
+  price_diff Float    @default(0)
+  product_id String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  product    Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+}
+
+model ProductAddon {
+  id         String   @id @default(uuid())
+  name       String
+  price      Float
+  product_id String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  product    Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  orderItems OrderItemAddon[]
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  chat_id         String
+  status          String      @default("pending")
+  subtotal        Float
+  discount        Float       @default(0)
+  total           Float
+  payment_method  String?
+  payment_status  String      @default("pending")
+  notes           String?
+  printed         Boolean     @default(false)
+  printed_at      DateTime?
+  company_id      String
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+  chat            Chat        @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+  company         Company     @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  items           OrderItem[]
+}
+
+model OrderItem {
+  id         String           @id @default(uuid())
+  product_id String
+  variant_id String?
+  quantity   Int              @default(1)
+  unit_price Float
+  total      Float
+  notes      String?
+  order_id   String
+  created_at DateTime         @default(now())
+  product    Product          @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  order      Order            @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  addons     OrderItemAddon[]
+}
+
+model OrderItemAddon {
+  id         String       @id @default(uuid())
+  addon_id   String
+  quantity   Int          @default(1)
+  order_item_id String
+  created_at DateTime     @default(now())
+  addon      ProductAddon @relation(fields: [addon_id], references: [id], onDelete: Cascade)
+  orderItem  OrderItem    @relation(fields: [order_item_id], references: [id], onDelete: Cascade)
+}
+
+model Printer {
+  id         String   @id @default(uuid())
+  name       String
+  ip_address String
+  port       Int      @default(9100)
+  is_active  Boolean  @default(true)
+  company_id String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
   company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
 }

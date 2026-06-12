@@ -1,12 +1,18 @@
 const { Server } = require('socket.io');
 const { verifyToken } = require('./auth');
+const { DOMAIN } = require('./index');
 
 let io = null;
 
 function initSocket(server) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const allowedOrigins = isProduction
+    ? [`https://${DOMAIN}`, `http://${DOMAIN}`]
+    : ['http://localhost:3000', 'http://localhost:5173'];
+
   io = new Server(server, {
     cors: {
-      origin: '*'
+      origin: isProduction ? allowedOrigins : '*'
     }
   });
 

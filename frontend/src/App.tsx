@@ -16,6 +16,7 @@ import SuperAdmin from './pages/SuperAdmin';
 import Billing from './pages/Billing';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import Catalog from './pages/Catalog';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
@@ -41,6 +42,7 @@ function App() {
           <Route path="/reports" element={<Reports />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/billing" element={<Billing />} />
+          <Route path="/catalog" element={<Catalog />} />
           <Route path="/superadmin" element={<SuperAdmin />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

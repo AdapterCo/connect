@@ -3,18 +3,22 @@ const OpenAI = require('openai');
 const cleanJsonString = require('../utils/cleanJson');
 const Log = require('../models/Log');
 const { decrypt } = require('../utils/crypto');
+const catalogController = require('../controllers/catalogController');
 
 async function runAiAttendant(chat, clientMessage, settings) {
   const provider = settings.ai_provider || 'mock';
   const systemPrompt = settings.system_prompt;
   const companyId = chat.company_id || 'comp_default';
 
+  const catalogCategories = await catalogController.getCatalogForAI(companyId);
+  const catalogText = catalogController.formatCatalogForPrompt(catalogCategories);
+
   const historyText = chat.messages
     .slice(-10)
     .map(m => `${m.sender === 'client' ? 'Cliente' : 'Atendente'}: ${m.text}`)
     .join('\n');
 
-  const fullPrompt = `${systemPrompt}\n\nHistórico da conversa atual:\n${historyText}\nCliente: ${clientMessage}\n\nResponda estritamente com o JSON contendo "message", "status", "trigger_billing", "billing_item", "billing_value":`;
+  const fullPrompt = `${systemPrompt}\n\n${catalogText}\n\nHistórico da conversa atual:\n${historyText}\nCliente: ${clientMessage}\n\nResponda estritamente com o JSON contendo "message", "status", "trigger_billing", "billing_item", "billing_value":`;
 
   const runMock = () => {
     const text = clientMessage.toLowerCase();

@@ -65,7 +65,8 @@ async function initializeDatabase() {
       });
 
       const salt = bcrypt.genSaltSync(10);
-      const hashedPassword = bcrypt.hashSync('admin123', salt);
+      const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
+      const hashedPassword = bcrypt.hashSync(adminPassword, salt);
       await prisma.user.create({
         data: {
           id: 'usr_admin',

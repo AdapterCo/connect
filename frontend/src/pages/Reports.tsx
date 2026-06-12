@@ -7,7 +7,7 @@ export default function Reports() {
   const [stats, setStats] = useState<Statistics | null>(null);
 
   useEffect(() => {
-    api.get('/statistics').then(res => setStats(res.data));
+    api.get('/reports/statistics').then(res => setStats(res.data));
   }, []);
 
   if (!stats) {

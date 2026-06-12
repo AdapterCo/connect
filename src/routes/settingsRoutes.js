@@ -8,5 +8,6 @@ const router = express.Router();
 
 router.get('/', authenticateToken, checkCompanyActive, settingsController.getSettings);
 router.post('/', authenticateToken, checkCompanyActive, audit('settings', 'update'), settingsController.updateSettings);
+router.put('/', authenticateToken, checkCompanyActive, audit('settings', 'update'), settingsController.updateSettings);
 
 module.exports = router;
