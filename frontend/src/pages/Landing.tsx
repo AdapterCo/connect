@@ -1,12 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
 import api from '../services/api';
-
-declare global {
-  interface Window {
-    MercadoPago?: any;
-  }
-}
 
 interface Plan {
   id: string;
@@ -63,26 +58,6 @@ function formatCurrency(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function loadMercadoPagoSdk() {
-  if (window.MercadoPago) return Promise.resolve();
-
-  return new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[src="https://sdk.mercadopago.com/js/v2"]');
-    if (existing) {
-      existing.addEventListener('load', () => resolve());
-      existing.addEventListener('error', () => reject(new Error('Erro ao carregar SDK do Mercado Pago.')));
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = 'https://sdk.mercadopago.com/js/v2';
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Erro ao carregar SDK do Mercado Pago.'));
-    document.body.appendChild(script);
-  });
-}
-
 function getMercadoPagoClientErrorMessage(err: any) {
   const message = typeof err?.message === 'string' ? err.message : '';
   const serialized = (() => {
@@ -130,9 +105,6 @@ export default function Landing() {
   const [cardReady, setCardReady] = useState(false);
   const [cardNotice, setCardNotice] = useState('');
   const [cardError, setCardError] = useState('');
-  const cardFormRef = useRef<any>(null);
-  const cardPaymentInProgressRef = useRef(false);
-  const cardClickFallbackTimerRef = useRef<number | null>(null);
 
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlanId) || null,
@@ -151,6 +123,11 @@ export default function Landing() {
   }, []);
 
   useEffect(() => {
+    if (!checkoutConfig?.public_key) return;
+    initMercadoPago(checkoutConfig.public_key, { locale: 'pt-BR' });
+  }, [checkoutConfig?.public_key]);
+
+  useEffect(() => {
     if (!checkoutInvoice || paymentApproved) return;
 
     const interval = window.setInterval(async () => {
@@ -167,179 +144,6 @@ export default function Landing() {
 
     return () => window.clearInterval(interval);
   }, [checkoutInvoice, paymentApproved]);
-
-  useEffect(() => {
-    if (paymentMethod !== 'card') return;
-
-    const handleMercadoPagoFailure = (event: PromiseRejectionEvent | ErrorEvent) => {
-      if (!creatingPayment && !cardNotice) return;
-
-      const reason = 'reason' in event ? event.reason : event.error || event.message;
-      const message = getMercadoPagoClientErrorMessage(reason);
-      setCardNotice('');
-      setCardError(message || 'Nao foi possivel realizar a cobranca. Tente novamente ou use Pix.');
-      setCreatingPayment(false);
-      cardPaymentInProgressRef.current = false;
-      if (cardClickFallbackTimerRef.current) {
-        window.clearTimeout(cardClickFallbackTimerRef.current);
-        cardClickFallbackTimerRef.current = null;
-      }
-    };
-
-    window.addEventListener('unhandledrejection', handleMercadoPagoFailure);
-    window.addEventListener('error', handleMercadoPagoFailure);
-
-    return () => {
-      window.removeEventListener('unhandledrejection', handleMercadoPagoFailure);
-      window.removeEventListener('error', handleMercadoPagoFailure);
-    };
-  }, [paymentMethod, creatingPayment, cardNotice]);
-
-  useEffect(() => {
-    if (!checkoutInvoice || !checkoutConfig?.card_enabled || paymentMethod !== 'card' || cardFormRef.current) return;
-
-    let cancelled = false;
-    let mounted = false;
-    const invoice = checkoutInvoice;
-    const config = checkoutConfig;
-    const initialPayerEmail = payerEmail;
-
-    async function setupCardForm() {
-      setCardError('');
-      setCardNotice('');
-      setCardReady(false);
-
-      try {
-        await loadMercadoPagoSdk();
-        if (cancelled || !window.MercadoPago) return;
-
-        const mp = new window.MercadoPago(config.public_key, { locale: 'pt-BR' });
-        cardFormRef.current = mp.cardForm({
-          amount: String(invoice.amount),
-          iframe: true,
-          form: {
-            id: 'form-checkout',
-            cardNumber: {
-              id: 'form-checkout__cardNumber',
-              placeholder: 'Numero do cartao'
-            },
-            expirationDate: {
-              id: 'form-checkout__expirationDate',
-              placeholder: 'MM/AA'
-            },
-            securityCode: {
-              id: 'form-checkout__securityCode',
-              placeholder: 'CVV'
-            },
-            cardholderName: {
-              id: 'form-checkout__cardholderName',
-              placeholder: 'Nome impresso no cartao'
-            },
-            issuer: {
-              id: 'form-checkout__issuer',
-              placeholder: 'Banco emissor'
-            },
-            installments: {
-              id: 'form-checkout__installments',
-              placeholder: 'Parcelas'
-            },
-            identificationType: {
-              id: 'form-checkout__identificationType',
-              placeholder: 'Tipo de documento'
-            },
-            identificationNumber: {
-              id: 'form-checkout__identificationNumber',
-              placeholder: 'Numero do documento'
-            },
-            cardholderEmail: {
-              id: 'form-checkout__cardholderEmail',
-              placeholder: 'E-mail'
-            }
-          },
-          callbacks: {
-            onFormMounted: (formError: any) => {
-              if (formError) {
-                setCardError(getMercadoPagoClientErrorMessage(formError));
-                return;
-              }
-              mounted = true;
-              setCardReady(true);
-            },
-            onSubmit: async (event: Event) => {
-              event.preventDefault();
-              if (cardPaymentInProgressRef.current) return;
-
-              if (cardClickFallbackTimerRef.current) {
-                window.clearTimeout(cardClickFallbackTimerRef.current);
-                cardClickFallbackTimerRef.current = null;
-              }
-              cardPaymentInProgressRef.current = true;
-              setCreatingPayment(true);
-              setCardNotice('Processando pagamento com seguranca. Aguarde, nao feche esta pagina.');
-              setCardError('');
-
-              try {
-                const cardData = cardFormRef.current.getCardFormData();
-                if (!cardData?.token || !cardData?.paymentMethodId) {
-                  setCardNotice('');
-                  setCardError('Nao foi possivel validar os dados do cartao. Confira as informacoes e tente novamente.');
-                  return;
-                }
-
-                const response = await api.post(`/billing/checkout/${invoice.id}/payment`, {
-                  method: 'card',
-                  payer_email: initialPayerEmail,
-                  token: cardData.token,
-                  issuer_id: cardData.issuerId,
-                  payment_method_id: cardData.paymentMethodId,
-                  installments: cardData.installments,
-                  identification_type: cardData.identificationType,
-                  identification_number: cardData.identificationNumber
-                });
-
-                if (response.data.payment.status === 'paid' || response.data.payment.payment_status === 'approved') {
-                  setCardNotice('Pagamento aprovado. Ativando sua conta...');
-                  setPaymentApproved(true);
-                } else {
-                  setCardNotice('');
-                  setCardError('Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.');
-                }
-              } catch (err: any) {
-                setCardNotice('');
-                setCardError(err.response?.data?.error || getMercadoPagoClientErrorMessage(err) || 'Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.');
-              } finally {
-                cardPaymentInProgressRef.current = false;
-                setCreatingPayment(false);
-              }
-            }
-          }
-        });
-
-        window.setTimeout(() => {
-          if (!cancelled && !mounted) {
-            setCardError((current) => current || 'O formulario do Mercado Pago demorou para carregar. Verifique a public key e tente novamente.');
-          }
-        }, 12000);
-      } catch (err: any) {
-        setCardError(getMercadoPagoClientErrorMessage(err));
-      }
-    }
-
-    setupCardForm();
-
-    return () => {
-      cancelled = true;
-      if (cardFormRef.current?.unmount) {
-        cardFormRef.current.unmount();
-      }
-      if (cardClickFallbackTimerRef.current) {
-        window.clearTimeout(cardClickFallbackTimerRef.current);
-        cardClickFallbackTimerRef.current = null;
-      }
-      cardFormRef.current = null;
-      setCardReady(false);
-    };
-  }, [checkoutInvoice, checkoutConfig, paymentMethod]);
 
   const handleCompanyNameChange = (value: string) => {
     setCompanyName(value);
@@ -403,25 +207,50 @@ export default function Landing() {
     }
   };
 
-  const handleCardPaymentClick = () => {
-    if (!cardReady || creatingPayment) return;
+  const handleCardPaymentSubmit = async (cardData: any) => {
+    if (!checkoutInvoice) return;
 
     setCreatingPayment(true);
-    setCardNotice('Processando pagamento com seguranca. Aguarde, nao clique novamente.');
+    setCardNotice('Processando pagamento com seguranca. Aguarde, nao feche esta pagina.');
     setCardError('');
 
-    if (cardClickFallbackTimerRef.current) {
-      window.clearTimeout(cardClickFallbackTimerRef.current);
-    }
-
-    cardClickFallbackTimerRef.current = window.setTimeout(() => {
-      if (!cardPaymentInProgressRef.current) {
+    try {
+      if (!cardData?.token || !cardData?.payment_method_id) {
         setCardNotice('');
-        setCardError('Nao foi possivel iniciar a validacao do cartao pelo Mercado Pago. Tente novamente ou use Pix.');
-        setCreatingPayment(false);
+        setCardError('Nao foi possivel validar os dados do cartao. Confira as informacoes e tente novamente.');
+        return;
       }
-      cardClickFallbackTimerRef.current = null;
-    }, 7000);
+
+      const response = await api.post(`/billing/checkout/${checkoutInvoice.id}/payment`, {
+        method: 'card',
+        payer_email: payerEmail || cardData.payer?.email,
+        token: cardData.token,
+        issuer_id: cardData.issuer_id,
+        payment_method_id: cardData.payment_method_id,
+        installments: cardData.installments,
+        identification_type: cardData.payer?.identification?.type,
+        identification_number: cardData.payer?.identification?.number
+      });
+
+      if (response.data.payment.status === 'paid' || response.data.payment.payment_status === 'approved') {
+        setCardNotice('Pagamento aprovado. Ativando sua conta...');
+        setPaymentApproved(true);
+      } else {
+        setCardNotice('');
+        setCardError('Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.');
+      }
+    } catch (err: any) {
+      setCardNotice('');
+      setCardError(err.response?.data?.error || getMercadoPagoClientErrorMessage(err) || 'Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.');
+    } finally {
+      setCreatingPayment(false);
+    }
+  };
+
+  const handleCardPaymentError = (err: any) => {
+    setCreatingPayment(false);
+    setCardNotice('');
+    setCardError(getMercadoPagoClientErrorMessage(err));
   };
 
   const copyPixCode = async () => {
@@ -609,27 +438,32 @@ export default function Landing() {
                         {checkoutConfig?.card_enabled && (
                           <>
                             {!cardReady && <p className="mb-3 text-sm text-gray-400">Carregando formulario seguro do Mercado Pago...</p>}
-                            <form id="form-checkout" className="grid gap-3 rounded-lg border border-gray-700 bg-gray-800 p-4">
-                              <div id="form-checkout__cardNumber" className="h-11 rounded-lg border border-gray-600 bg-white px-3" />
-                              <div className="grid grid-cols-2 gap-3">
-                                <div id="form-checkout__expirationDate" className="h-11 rounded-lg border border-gray-600 bg-white px-3" />
-                                <div id="form-checkout__securityCode" className="h-11 rounded-lg border border-gray-600 bg-white px-3" />
-                              </div>
-                              <input id="form-checkout__cardholderName" type="text" className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
-                              <input id="form-checkout__cardholderEmail" type="hidden" value={payerEmail} readOnly />
-                              <select id="form-checkout__issuer" className="hidden" aria-hidden="true" tabIndex={-1} />
-                              <select id="form-checkout__installments" className="hidden" aria-hidden="true" tabIndex={-1} />
-                              <select id="form-checkout__identificationType" className="hidden" aria-hidden="true" tabIndex={-1} />
-                              <input id="form-checkout__identificationNumber" type="hidden" aria-hidden="true" tabIndex={-1} />
-                              <button
-                                type="submit"
-                                onClick={handleCardPaymentClick}
-                                disabled={!cardReady || creatingPayment}
-                                className="rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {creatingPayment ? 'Validando cartao...' : 'Pagar com cartao'}
-                              </button>
-                            </form>
+                            <div className={`rounded-lg border border-gray-700 bg-white p-3 text-gray-900 ${creatingPayment ? 'pointer-events-none opacity-70' : ''}`}>
+                              <CardPayment
+                                key={checkoutInvoice.id}
+                                initialization={{
+                                  amount: checkoutInvoice.amount,
+                                  payer: { email: payerEmail }
+                                }}
+                                customization={{
+                                  paymentMethods: {
+                                    minInstallments: 1,
+                                    maxInstallments: 1,
+                                    types: { included: ['credit_card', 'debit_card'] }
+                                  },
+                                  visual: {
+                                    hideFormTitle: true
+                                  }
+                                }}
+                                locale="pt-BR"
+                                onReady={() => {
+                                  setCardReady(true);
+                                  setCardError('');
+                                }}
+                                onError={handleCardPaymentError}
+                                onSubmit={handleCardPaymentSubmit}
+                              />
+                            </div>
                             {cardNotice && (
                               <p className="mt-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-200">
                                 {cardNotice}
