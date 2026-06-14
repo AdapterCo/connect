@@ -103,7 +103,7 @@ export default function Landing() {
   const [creatingPayment, setCreatingPayment] = useState(false);
   const [cardReady, setCardReady] = useState(false);
   const [cardError, setCardError] = useState('');
-  const cardBrickRef = useRef<any>(null);
+  const cardFormRef = useRef<any>(null);
 
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlanId) || null,
@@ -140,13 +140,15 @@ export default function Landing() {
   }, [checkoutInvoice, paymentApproved]);
 
   useEffect(() => {
-    if (!checkoutInvoice || !checkoutConfig?.card_enabled || paymentMethod !== 'card' || cardBrickRef.current) return;
+    if (!checkoutInvoice || !checkoutConfig?.card_enabled || paymentMethod !== 'card' || cardFormRef.current) return;
 
     let cancelled = false;
+    let mounted = false;
     const invoice = checkoutInvoice;
     const config = checkoutConfig;
+    const initialPayerEmail = payerEmail;
 
-    async function setupCardBrick() {
+    async function setupCardForm() {
       setCardError('');
       setCardReady(false);
 
@@ -155,39 +157,73 @@ export default function Landing() {
         if (cancelled || !window.MercadoPago) return;
 
         const mp = new window.MercadoPago(config.public_key, { locale: 'pt-BR' });
-        const bricksBuilder = mp.bricks();
-
-        cardBrickRef.current = await bricksBuilder.create('cardPayment', 'card-payment-brick', {
-          initialization: {
-            amount: invoice.amount,
-            payer: {
-              email: payerEmail
-            }
-          },
-          customization: {
-            paymentMethods: {
-              creditCard: 'all',
-              debitCard: 'all'
+        cardFormRef.current = mp.cardForm({
+          amount: String(invoice.amount),
+          iframe: true,
+          form: {
+            id: 'form-checkout',
+            cardNumber: {
+              id: 'form-checkout__cardNumber',
+              placeholder: 'Numero do cartao'
+            },
+            expirationDate: {
+              id: 'form-checkout__expirationDate',
+              placeholder: 'MM/AA'
+            },
+            securityCode: {
+              id: 'form-checkout__securityCode',
+              placeholder: 'CVV'
+            },
+            cardholderName: {
+              id: 'form-checkout__cardholderName',
+              placeholder: 'Nome impresso no cartao'
+            },
+            issuer: {
+              id: 'form-checkout__issuer',
+              placeholder: 'Banco emissor'
+            },
+            installments: {
+              id: 'form-checkout__installments',
+              placeholder: 'Parcelas'
+            },
+            identificationType: {
+              id: 'form-checkout__identificationType',
+              placeholder: 'Tipo de documento'
+            },
+            identificationNumber: {
+              id: 'form-checkout__identificationNumber',
+              placeholder: 'Numero do documento'
+            },
+            cardholderEmail: {
+              id: 'form-checkout__cardholderEmail',
+              placeholder: 'E-mail'
             }
           },
           callbacks: {
-            onReady: () => setCardReady(true),
-            onError: (brickError: any) => {
-              setCardError(brickError?.message || 'Erro no formulario de cartao.');
+            onFormMounted: (formError: any) => {
+              if (formError) {
+                setCardError(formError.message || 'Erro ao montar formulario de cartao.');
+                return;
+              }
+              mounted = true;
+              setCardReady(true);
             },
-            onSubmit: async (cardFormData: any) => {
+            onSubmit: async (event: Event) => {
+              event.preventDefault();
               setCreatingPayment(true);
               setCardError('');
+
               try {
+                const cardData = cardFormRef.current.getCardFormData();
                 const response = await api.post(`/billing/checkout/${invoice.id}/payment`, {
                   method: 'card',
-                  payer_email: payerEmail,
-                  token: cardFormData.token,
-                  issuer_id: cardFormData.issuer_id,
-                  payment_method_id: cardFormData.payment_method_id,
-                  installments: cardFormData.installments,
-                  identification_type: cardFormData.payer?.identification?.type,
-                  identification_number: cardFormData.payer?.identification?.number
+                  payer_email: cardData.cardholderEmail || initialPayerEmail,
+                  token: cardData.token,
+                  issuer_id: cardData.issuerId,
+                  payment_method_id: cardData.paymentMethodId,
+                  installments: cardData.installments,
+                  identification_type: cardData.identificationType,
+                  identification_number: cardData.identificationNumber
                 });
 
                 if (response.data.payment.status === 'paid' || response.data.payment.payment_status === 'approved') {
@@ -203,21 +239,28 @@ export default function Landing() {
             }
           }
         });
+
+        window.setTimeout(() => {
+          if (!cancelled && !mounted) {
+            setCardError((current) => current || 'O formulario do Mercado Pago demorou para carregar. Verifique a public key e tente novamente.');
+          }
+        }, 12000);
       } catch (err: any) {
         setCardError(err.message || 'Erro ao carregar checkout de cartao.');
       }
     }
 
-    setupCardBrick();
+    setupCardForm();
 
     return () => {
       cancelled = true;
-      if (cardBrickRef.current?.unmount) {
-        cardBrickRef.current.unmount();
+      if (cardFormRef.current?.unmount) {
+        cardFormRef.current.unmount();
       }
-      cardBrickRef.current = null;
+      cardFormRef.current = null;
+      setCardReady(false);
     };
-  }, [checkoutInvoice, checkoutConfig, paymentMethod, payerEmail]);
+  }, [checkoutInvoice, checkoutConfig, paymentMethod]);
 
   const handleCompanyNameChange = (value: string) => {
     setCompanyName(value);
@@ -465,7 +508,24 @@ export default function Landing() {
                         {checkoutConfig?.card_enabled && (
                           <>
                             {!cardReady && <p className="mb-3 text-sm text-gray-400">Carregando formulario seguro do Mercado Pago...</p>}
-                            <div id="card-payment-brick" className="rounded-lg bg-white p-3 text-gray-900" />
+                            <form id="form-checkout" className="grid gap-3 rounded-lg border border-gray-700 bg-gray-800 p-4">
+                              <div id="form-checkout__cardNumber" className="h-11 rounded-lg border border-gray-600 bg-white px-3" />
+                              <div className="grid grid-cols-2 gap-3">
+                                <div id="form-checkout__expirationDate" className="h-11 rounded-lg border border-gray-600 bg-white px-3" />
+                                <div id="form-checkout__securityCode" className="h-11 rounded-lg border border-gray-600 bg-white px-3" />
+                              </div>
+                              <input id="form-checkout__cardholderName" type="text" className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
+                              <input id="form-checkout__cardholderEmail" type="email" defaultValue={payerEmail} onChange={(event) => setPayerEmail(event.target.value)} className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
+                              <select id="form-checkout__issuer" className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
+                              <select id="form-checkout__installments" className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
+                              <div className="grid grid-cols-[0.8fr_1.2fr] gap-3">
+                                <select id="form-checkout__identificationType" className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
+                                <input id="form-checkout__identificationNumber" type="text" className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
+                              </div>
+                              <button type="submit" disabled={!cardReady || creatingPayment} className="rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                                {creatingPayment ? 'Processando...' : 'Pagar com cartao'}
+                              </button>
+                            </form>
                             {creatingPayment && <p className="mt-3 text-sm text-gray-400">Processando pagamento...</p>}
                             {cardError && <p className="mt-3 text-sm text-amber-300">{cardError}</p>}
                           </>
