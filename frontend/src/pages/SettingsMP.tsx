@@ -10,6 +10,12 @@ export default function SettingsMP() {
     mp_public_key: ''
   });
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const updateFormData = (data: Partial<typeof formData>) => {
+    setSaveStatus(null);
+    setFormData({ ...formData, ...data });
+  };
 
   useEffect(() => {
     fetchSettings();
@@ -27,9 +33,20 @@ export default function SettingsMP() {
 
   const handleSave = async () => {
     setSaving(true);
-    await api.put('/settings', formData);
-    await fetchSettings();
-    setSaving(false);
+    setSaveStatus(null);
+
+    try {
+      await api.post('/settings', formData);
+      await fetchSettings();
+      setSaveStatus({ type: 'success', message: 'Configurações de recebimento salvas com sucesso.' });
+    } catch (err: any) {
+      setSaveStatus({
+        type: 'error',
+        message: err.response?.data?.error || 'Erro ao salvar configurações de recebimento.'
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -46,7 +63,7 @@ export default function SettingsMP() {
             <input
               type="checkbox"
               checked={formData.mp_enabled}
-              onChange={(e) => setFormData({ ...formData, mp_enabled: e.target.checked })}
+              onChange={(e) => updateFormData({ mp_enabled: e.target.checked })}
               className="sr-only peer"
             />
             <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
@@ -59,7 +76,7 @@ export default function SettingsMP() {
             <input
               type="password"
               value={formData.mp_access_token}
-              onChange={(e) => setFormData({ ...formData, mp_access_token: e.target.value })}
+              onChange={(e) => updateFormData({ mp_access_token: e.target.value })}
               placeholder="APP_USR-..."
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
             />
@@ -70,7 +87,7 @@ export default function SettingsMP() {
             <input
               type="text"
               value={formData.mp_public_key}
-              onChange={(e) => setFormData({ ...formData, mp_public_key: e.target.value })}
+              onChange={(e) => updateFormData({ mp_public_key: e.target.value })}
               placeholder="APP_USR-..."
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
             />
@@ -94,6 +111,19 @@ export default function SettingsMP() {
           >
             {saving ? 'Salvando...' : 'Salvar Configurações'}
           </button>
+
+          {saveStatus && (
+            <div
+              role="status"
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                saveStatus.type === 'success'
+                  ? 'border-green-500/40 bg-green-500/10 text-green-300'
+                  : 'border-red-500/40 bg-red-500/10 text-red-300'
+              }`}
+            >
+              {saveStatus.message}
+            </div>
+          )}
         </div>
       </div>
     </div>

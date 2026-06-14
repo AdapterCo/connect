@@ -16,6 +16,12 @@ export default function SettingsAI() {
     system_prompt: ''
   });
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const updateFormData = (data: Partial<typeof formData>) => {
+    setSaveStatus(null);
+    setFormData({ ...formData, ...data });
+  };
 
   useEffect(() => {
     fetchSettings();
@@ -39,9 +45,20 @@ export default function SettingsAI() {
 
   const handleSave = async () => {
     setSaving(true);
-    await api.put('/settings', formData);
-    await fetchSettings();
-    setSaving(false);
+    setSaveStatus(null);
+
+    try {
+      await api.post('/settings', formData);
+      await fetchSettings();
+      setSaveStatus({ type: 'success', message: 'Configurações de IA salvas com sucesso.' });
+    } catch (err: any) {
+      setSaveStatus({
+        type: 'error',
+        message: err.response?.data?.error || 'Erro ao salvar configurações de IA.'
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -58,7 +75,7 @@ export default function SettingsAI() {
             <input
               type="checkbox"
               checked={formData.ai_enabled}
-              onChange={(e) => setFormData({ ...formData, ai_enabled: e.target.checked })}
+              onChange={(e) => updateFormData({ ai_enabled: e.target.checked })}
               className="sr-only peer"
             />
             <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
@@ -70,7 +87,7 @@ export default function SettingsAI() {
             <label className="block text-sm font-medium text-gray-300 mb-2">Provedor de IA</label>
             <select
               value={formData.ai_provider}
-              onChange={(e) => setFormData({ ...formData, ai_provider: e.target.value })}
+              onChange={(e) => updateFormData({ ai_provider: e.target.value })}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
             >
               <option value="mock">Modo Demonstrativo (Mock)</option>
@@ -87,7 +104,7 @@ export default function SettingsAI() {
                 <input
                   type="password"
                   value={formData.gemini_key}
-                  onChange={(e) => setFormData({ ...formData, gemini_key: e.target.value })}
+                  onChange={(e) => updateFormData({ gemini_key: e.target.value })}
                   placeholder="AIzaSy..."
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
                 />
@@ -97,7 +114,7 @@ export default function SettingsAI() {
                 <input
                   type="text"
                   value={formData.gemini_model}
-                  onChange={(e) => setFormData({ ...formData, gemini_model: e.target.value })}
+                  onChange={(e) => updateFormData({ gemini_model: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -111,7 +128,7 @@ export default function SettingsAI() {
                 <input
                   type="password"
                   value={formData.openai_key}
-                  onChange={(e) => setFormData({ ...formData, openai_key: e.target.value })}
+                  onChange={(e) => updateFormData({ openai_key: e.target.value })}
                   placeholder="sk-..."
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
                 />
@@ -121,7 +138,7 @@ export default function SettingsAI() {
                 <input
                   type="text"
                   value={formData.openai_model}
-                  onChange={(e) => setFormData({ ...formData, openai_model: e.target.value })}
+                  onChange={(e) => updateFormData({ openai_model: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -135,7 +152,7 @@ export default function SettingsAI() {
                 <input
                   type="password"
                   value={formData.grok_key}
-                  onChange={(e) => setFormData({ ...formData, grok_key: e.target.value })}
+                  onChange={(e) => updateFormData({ grok_key: e.target.value })}
                   placeholder="xai-..."
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
                 />
@@ -145,7 +162,7 @@ export default function SettingsAI() {
                 <input
                   type="text"
                   value={formData.grok_model}
-                  onChange={(e) => setFormData({ ...formData, grok_model: e.target.value })}
+                  onChange={(e) => updateFormData({ grok_model: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -156,7 +173,7 @@ export default function SettingsAI() {
             <label className="block text-sm font-medium text-gray-300 mb-2">Prompt de Sistema</label>
             <textarea
               value={formData.system_prompt}
-              onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
+              onChange={(e) => updateFormData({ system_prompt: e.target.value })}
               rows={10}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white font-mono text-sm focus:outline-none focus:border-indigo-500"
             />
@@ -170,6 +187,19 @@ export default function SettingsAI() {
           >
             {saving ? 'Salvando...' : 'Salvar Configurações'}
           </button>
+
+          {saveStatus && (
+            <div
+              role="status"
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                saveStatus.type === 'success'
+                  ? 'border-green-500/40 bg-green-500/10 text-green-300'
+                  : 'border-red-500/40 bg-red-500/10 text-red-300'
+              }`}
+            >
+              {saveStatus.message}
+            </div>
+          )}
         </div>
       </div>
     </div>
