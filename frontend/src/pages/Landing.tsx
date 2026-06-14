@@ -217,7 +217,7 @@ export default function Landing() {
                 const cardData = cardFormRef.current.getCardFormData();
                 const response = await api.post(`/billing/checkout/${invoice.id}/payment`, {
                   method: 'card',
-                  payer_email: cardData.cardholderEmail || initialPayerEmail,
+                  payer_email: initialPayerEmail,
                   token: cardData.token,
                   issuer_id: cardData.issuerId,
                   payment_method_id: cardData.paymentMethodId,
@@ -515,13 +515,11 @@ export default function Landing() {
                                 <div id="form-checkout__securityCode" className="h-11 rounded-lg border border-gray-600 bg-white px-3" />
                               </div>
                               <input id="form-checkout__cardholderName" type="text" className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
-                              <input id="form-checkout__cardholderEmail" type="email" defaultValue={payerEmail} onChange={(event) => setPayerEmail(event.target.value)} className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
-                              <select id="form-checkout__issuer" className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
-                              <select id="form-checkout__installments" className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
-                              <div className="grid grid-cols-[0.8fr_1.2fr] gap-3">
-                                <select id="form-checkout__identificationType" className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
-                                <input id="form-checkout__identificationNumber" type="text" className="h-11 rounded-lg border border-gray-600 bg-white px-3 text-gray-900" />
-                              </div>
+                              <input id="form-checkout__cardholderEmail" type="hidden" value={payerEmail} readOnly />
+                              <select id="form-checkout__issuer" className="hidden" aria-hidden="true" tabIndex={-1} />
+                              <select id="form-checkout__installments" className="hidden" aria-hidden="true" tabIndex={-1} />
+                              <select id="form-checkout__identificationType" className="hidden" aria-hidden="true" tabIndex={-1} />
+                              <input id="form-checkout__identificationNumber" type="hidden" aria-hidden="true" tabIndex={-1} />
                               <button type="submit" disabled={!cardReady || creatingPayment} className="rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
                                 {creatingPayment ? 'Processando...' : 'Pagar com cartao'}
                               </button>
