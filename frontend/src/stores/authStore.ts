@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api from '../services/api';
 import type { User } from '../types';
+import { useAppStore } from './appStore';
 
 interface AuthState {
   user: User | null;
@@ -36,6 +37,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   login: async (username: string, password: string) => {
+    useAppStore.getState().reset();
+    localStorage.removeItem('crm_token');
+    localStorage.removeItem('crm_user');
+
     const response = await api.post('/auth/login', { username, password });
     const { token, user } = response.data;
     
@@ -54,6 +59,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     
     localStorage.removeItem('crm_token');
     localStorage.removeItem('crm_user');
+    useAppStore.getState().reset();
     set({ user: null, token: null, isAuthenticated: false });
   },
 

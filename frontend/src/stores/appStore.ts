@@ -17,6 +17,7 @@ interface AppState {
   setLogs: (logs: Log[]) => void;
   setSettings: (settings: Settings) => void;
   selectChat: (chatId: string | null) => void;
+  reset: () => void;
 
   fetchChats: () => Promise<void>;
   fetchInstances: () => Promise<void>;
@@ -51,6 +52,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   setLogs: (logs) => set({ logs }),
   setSettings: (settings) => set({ settings }),
   selectChat: (chatId) => set({ selectedChatId: chatId }),
+  reset: () => set({
+    chats: [],
+    instances: [],
+    users: [],
+    logs: [],
+    settings: null,
+    selectedChatId: null,
+    isLoading: false
+  }),
 
   fetchChats: async () => {
     const response = await api.get('/chats');

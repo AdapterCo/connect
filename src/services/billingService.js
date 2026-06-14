@@ -148,7 +148,14 @@ async function createInvoice(companyId, subscriptionId, amount, dueDate) {
         mpPaymentUrl = response.point_of_interaction?.transaction_data?.ticket_url || null;
       } catch (mpError) {
         console.error('Erro ao criar pagamento no Mercado Pago:', mpError);
+        throw new Error('Erro ao gerar pagamento no Mercado Pago.');
       }
+    } else if (amount > 0) {
+      throw new Error('Mercado Pago da plataforma nÃ£o configurado. Defina PLATFORM_MP_ACCESS_TOKEN para gerar o checkout.');
+    }
+
+    if (amount > 0 && !mpPaymentUrl) {
+      throw new Error('Mercado Pago nÃ£o retornou URL de pagamento.');
     }
 
     const invoice = await prisma.invoice.create({

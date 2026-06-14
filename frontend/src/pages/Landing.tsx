@@ -81,7 +81,14 @@ export default function Landing() {
         planId: selectedPlanId
       });
 
-      setPaymentUrl(response.data.payment_url || '');
+      const nextPaymentUrl = response.data.payment_url || '';
+      if (!nextPaymentUrl) {
+        setError('Conta criada, mas o checkout não foi gerado. Entre em contato com o suporte.');
+        return;
+      }
+
+      setPaymentUrl(nextPaymentUrl);
+      window.location.href = nextPaymentUrl;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erro ao criar conta e gerar pagamento.');
     } finally {

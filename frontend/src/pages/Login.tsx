@@ -6,6 +6,7 @@ export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [paymentUrl, setPaymentUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login, isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
@@ -18,12 +19,16 @@ export default function Login() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    setPaymentUrl('');
     setIsLoading(true);
 
     try {
       await login(username, password);
       navigate('/dashboard');
     } catch (err: any) {
+      if (err.response?.status === 402 && err.response?.data?.payment_url) {
+        setPaymentUrl(err.response.data.payment_url);
+      }
       setError(err.response?.data?.error || 'Falha de conexão com o servidor.');
     } finally {
       setIsLoading(false);
@@ -45,6 +50,16 @@ export default function Login() {
           {error && (
             <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg mb-4 text-sm">
               {error}
+              {paymentUrl && (
+                <a
+                  href={paymentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 block rounded-lg bg-indigo-600 px-4 py-2 text-center font-semibold text-white hover:bg-indigo-700"
+                >
+                  Ir para pagamento
+                </a>
+              )}
             </div>
           )}
 

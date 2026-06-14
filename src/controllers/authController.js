@@ -24,6 +24,34 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
     }
 
+    const company = await prisma.company.findUnique({
+      where: { id: user.company_id },
+      include: {
+        invoices: {
+          where: { status: 'pending' },
+          orderBy: { created_at: 'desc' },
+          take: 1
+        }
+      }
+    });
+
+    if (!company) {
+      return res.status(403).json({ error: 'Empresa não encontrada.' });
+    }
+
+    const isExpired = company.expires_at && new Date(company.expires_at) < new Date();
+    if (!company.is_active || isExpired) {
+      const pendingInvoice = company.invoices[0] || null;
+      return res.status(402).json({
+        error: pendingInvoice?.mp_payment_url
+          ? 'Sua conta ainda não foi ativada. Conclua o pagamento para acessar o painel.'
+          : 'Sua conta ainda não foi ativada e não há link de pagamento disponível. Entre em contato com o suporte.',
+        requires_payment: true,
+        payment_url: pendingInvoice?.mp_payment_url || null,
+        invoice: pendingInvoice
+      });
+    }
+
     await prisma.user.update({
       where: { id: user.id },
       data: { status: 'online' }
@@ -239,7 +267,16 @@ async function registerTenant(req, res) {
     });
 
     await Log.add(`Empresa ${companyName} registrada com sucesso. Administrador: ${adminName}.`, companyId);
-    const billing = await billingService.createSubscription(companyId, planId);
+
+    let billing;
+    try {
+      billing = await billingService.createSubscription(companyId, planId);
+    } catch (billingError) {
+      await prisma.company.delete({ where: { id: companyId } }).catch(() => {});
+      return res.status(500).json({
+        error: billingError.message || 'Erro ao gerar pagamento da assinatura.'
+      });
+    }
 
     res.status(201).json({
       success: true,
