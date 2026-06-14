@@ -3,6 +3,7 @@ const router = express.Router();
 const authenticateToken = require('../middleware/authMiddleware');
 const billingController = require('../controllers/billingController');
 
+router.get('/plans', billingController.listPlans);
 router.post('/subscribe', authenticateToken, billingController.createSubscription);
 router.get('/invoices', authenticateToken, billingController.getInvoices);
 router.post('/cancel', authenticateToken, billingController.cancelSubscription);

@@ -191,6 +191,22 @@ async function createProduct(req, res) {
       return res.status(400).json({ error: 'Categoria é obrigatória.' });
     }
 
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { max_products: true }
+    });
+
+    const productCount = await prisma.product.count({
+      where: { company_id: companyId }
+    });
+
+    const maxProducts = company?.max_products || 30;
+    if (productCount >= maxProducts) {
+      return res.status(403).json({
+        error: `Limite de produtos atingido (${maxProducts}). Faça upgrade do seu plano para adicionar mais produtos.`
+      });
+    }
+
     const category = await prisma.category.findFirst({
       where: { id: category_id, company_id: companyId }
     });

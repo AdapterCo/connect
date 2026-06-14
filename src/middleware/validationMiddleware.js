@@ -59,7 +59,7 @@ function validateRegister(req, res, next) {
 }
 
 function validateRegisterTenant(req, res, next) {
-  const { companyName, companySlug, adminName, adminUsername, adminPassword } = req.body;
+  const { companyName, companySlug, adminName, adminUsername, adminPassword, planId } = req.body;
 
   if (!companyName || typeof companyName !== 'string' || companyName.trim().length < 2) {
     return res.status(400).json({ error: 'Nome da empresa deve ter pelo menos 2 caracteres.' });
@@ -81,10 +81,15 @@ function validateRegisterTenant(req, res, next) {
     return res.status(400).json({ error: 'Senha do admin deve ter pelo menos 6 caracteres.' });
   }
 
+  if (!planId || typeof planId !== 'string') {
+    return res.status(400).json({ error: 'Plano Ã© obrigatÃ³rio.' });
+  }
+
   req.body.companyName = companyName.trim();
   req.body.companySlug = companySlug.trim().toLowerCase();
   req.body.adminName = adminName.trim();
   req.body.adminUsername = adminUsername.trim().toLowerCase();
+  req.body.planId = planId.trim();
   next();
 }
 

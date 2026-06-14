@@ -11,7 +11,8 @@ async function listCompanies(req, res) {
           select: {
             users: true,
             instances: true,
-            chats: true
+            chats: true,
+            products: true
           }
         }
       },
@@ -47,8 +48,8 @@ async function createCompany(req, res) {
   try {
     const { name, slug, plan_id, admin_name, admin_username, admin_password } = req.body;
     
-    if (!name || !slug || !admin_name || !admin_username || !admin_password) {
-      return res.status(400).json({ error: 'Campos obrigatórios: name, slug, admin_name, admin_username, admin_password' });
+    if (!name || !slug || !plan_id || !admin_name || !admin_username || !admin_password) {
+      return res.status(400).json({ error: 'Campos obrigatórios: name, slug, plan_id, admin_name, admin_username, admin_password' });
     }
 
     const existingSlug = await prisma.company.findUnique({ where: { slug } });
@@ -61,9 +62,13 @@ async function createCompany(req, res) {
       return res.status(400).json({ error: 'Username já está em uso.' });
     }
 
-    const plan = plan_id ? await prisma.plan.findUnique({ where: { id: plan_id } }) : null;
-    const maxInstances = plan?.max_instances || 1;
-    const maxUsers = plan?.max_users || 2;
+    const plan = await prisma.plan.findUnique({ where: { id: plan_id } });
+    if (!plan || !plan.is_active || plan.price <= 0) {
+      return res.status(400).json({ error: 'Plano inválido ou indisponível.' });
+    }
+    const maxInstances = plan.max_instances;
+    const maxUsers = plan.max_users;
+    const maxProducts = plan.max_products;
 
     const salt = bcrypt.genSaltSync(10);
     const hashedPassword = bcrypt.hashSync(admin_password, salt);
@@ -79,10 +84,11 @@ async function createCompany(req, res) {
           id: companyId,
           name,
           slug,
-          plan: plan?.name || 'free',
-          plan_id: plan?.id || null,
+          plan: plan.name,
+          plan_id: plan.id,
           max_instances: maxInstances,
           max_users: maxUsers,
+          max_products: maxProducts,
           is_active: true
         }
       });
@@ -134,7 +140,7 @@ async function createCompany(req, res) {
 
 async function updateCompany(req, res) {
   try {
-    const { name, plan_id, max_instances, max_users, is_active, expires_at } = req.body;
+    const { name, plan_id, max_instances, max_users, max_products, is_active, expires_at } = req.body;
     
     const company = await prisma.company.findUnique({ where: { id: req.params.id } });
     if (!company) {
@@ -151,10 +157,12 @@ async function updateCompany(req, res) {
       if (plan) {
         updateData.max_instances = plan.max_instances;
         updateData.max_users = plan.max_users;
+        updateData.max_products = plan.max_products;
       }
     }
     if (max_instances !== undefined && !plan_id) updateData.max_instances = max_instances;
     if (max_users !== undefined && !plan_id) updateData.max_users = max_users;
+    if (max_products !== undefined && !plan_id) updateData.max_products = max_products;
     if (is_active !== undefined) updateData.is_active = is_active;
     if (expires_at !== undefined) updateData.expires_at = expires_at ? new Date(expires_at) : null;
 
@@ -196,10 +204,14 @@ async function listPlans(req, res) {
 
 async function createPlan(req, res) {
   try {
-    const { name, max_instances, max_users, price } = req.body;
+    const { name, max_instances, max_users, max_products, price } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'Nome do plano é obrigatório.' });
+    }
+
+    if (!price || Number(price) <= 0) {
+      return res.status(400).json({ error: 'Valor do plano deve ser maior que zero.' });
     }
 
     const existing = await prisma.plan.findUnique({ where: { name } });
@@ -212,7 +224,8 @@ async function createPlan(req, res) {
         name,
         max_instances: max_instances || 1,
         max_users: max_users || 2,
-        price: price || 0
+        max_products: max_products || 30,
+        price
       }
     });
 
@@ -224,17 +237,22 @@ async function createPlan(req, res) {
 
 async function updatePlan(req, res) {
   try {
-    const { name, max_instances, max_users, price, is_active } = req.body;
+    const { name, max_instances, max_users, max_products, price, is_active } = req.body;
     
     const plan = await prisma.plan.findUnique({ where: { id: req.params.id } });
     if (!plan) {
       return res.status(404).json({ error: 'Plano não encontrado.' });
     }
 
+    if (price !== undefined && Number(price) <= 0) {
+      return res.status(400).json({ error: 'Valor do plano deve ser maior que zero.' });
+    }
+
     const updateData = {};
     if (name !== undefined) updateData.name = name;
     if (max_instances !== undefined) updateData.max_instances = max_instances;
     if (max_users !== undefined) updateData.max_users = max_users;
+    if (max_products !== undefined) updateData.max_products = max_products;
     if (price !== undefined) updateData.price = price;
     if (is_active !== undefined) updateData.is_active = is_active;
 

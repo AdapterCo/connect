@@ -1,5 +1,14 @@
 const billingService = require('../services/billingService');
 
+async function listPlans(req, res) {
+  try {
+    const plans = await billingService.listActivePlans();
+    res.json(plans);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 async function createSubscription(req, res) {
   try {
     const { planId } = req.body;
@@ -61,6 +70,7 @@ async function handleBillingWebhook(req, res) {
 }
 
 module.exports = {
+  listPlans,
   createSubscription,
   getInvoices,
   cancelSubscription,

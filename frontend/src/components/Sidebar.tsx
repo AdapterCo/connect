@@ -8,11 +8,13 @@ interface PlanInfo {
     name: string;
     max_instances: number;
     max_users: number;
+    max_products: number;
     price: number;
   };
   usage: {
     users: number;
     instances: number;
+    products: number;
     chats: number;
   };
   is_active: boolean;
@@ -20,7 +22,7 @@ interface PlanInfo {
 }
 
 const navItems = [
-  { to: '/', icon: '📊', label: 'Dashboard', end: true },
+  { to: '/dashboard', icon: '📊', label: 'Dashboard', end: true },
   { to: '/chats', icon: '💬', label: 'Chats / Funil' },
   { to: '/kanban', icon: '📋', label: 'Pipeline (Kanban)' },
   { to: '/orders', icon: '🛒', label: 'Pedidos' },
@@ -66,7 +68,8 @@ export default function Sidebar() {
 
   const isNearLimit = planInfo && (
     planInfo.usage.users >= planInfo.plan.max_users - 1 ||
-    planInfo.usage.instances >= planInfo.plan.max_instances - 1
+    planInfo.usage.instances >= planInfo.plan.max_instances - 1 ||
+    planInfo.usage.products >= planInfo.plan.max_products - 5
   );
 
   return (
@@ -102,6 +105,12 @@ export default function Sidebar() {
               <span>Conexões:</span>
               <span className={planInfo.usage.instances >= planInfo.plan.max_instances ? 'text-red-400' : 'text-white'}>
                 {planInfo.usage.instances}/{planInfo.plan.max_instances}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Produtos:</span>
+              <span className={planInfo.usage.products >= planInfo.plan.max_products ? 'text-red-400' : 'text-white'}>
+                {planInfo.usage.products}/{planInfo.plan.max_products}
               </span>
             </div>
           </div>

@@ -12,6 +12,7 @@ model Plan {
   name          String    @unique
   max_instances Int       @default(1)
   max_users     Int       @default(2)
+  max_products  Int       @default(30)
   price         Float     @default(0)
   is_active     Boolean   @default(true)
   created_at    DateTime  @default(now())
@@ -30,6 +31,7 @@ model Company {
   plan_id         String?
   max_instances   Int                @default(1)
   max_users       Int                @default(2)
+  max_products    Int                @default(30)
   is_active       Boolean            @default(true)
   expires_at      DateTime?
   mp_access_token String?

@@ -21,11 +21,13 @@ interface PlanInfo {
     name: string;
     max_instances: number;
     max_users: number;
+    max_products: number;
     price: number;
   };
   usage: {
     users: number;
     instances: number;
+    products: number;
     chats: number;
   };
   is_active: boolean;
@@ -91,7 +93,7 @@ export default function Billing() {
       {planInfo && (
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6">
           <h3 className="text-lg font-bold text-white mb-4">Plano Atual</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
               <p className="text-sm text-gray-400">Plano</p>
               <p className="text-xl font-bold text-indigo-400">{planInfo.plan.name}</p>
@@ -100,6 +102,12 @@ export default function Billing() {
               <p className="text-sm text-gray-400">Valor</p>
               <p className="text-xl font-bold text-white">
                 R$ {planInfo.plan.price.toFixed(2)}/mês
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-400">Produtos</p>
+              <p className="text-xl font-bold text-white">
+                {planInfo.usage.products}/{planInfo.plan.max_products}
               </p>
             </div>
             <div>

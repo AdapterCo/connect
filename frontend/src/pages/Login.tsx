@@ -11,7 +11,7 @@ export default function Login() {
   const navigate = useNavigate();
 
   if (isAuthenticated) {
-    navigate('/', { replace: true });
+    navigate('/dashboard', { replace: true });
     return null;
   }
 
@@ -22,7 +22,7 @@ export default function Login() {
 
     try {
       await login(username, password);
-      navigate('/');
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Falha de conexão com o servidor.');
     } finally {

@@ -19,6 +19,7 @@ async function create(company) {
       plan: company.plan || 'free',
       max_instances: company.max_instances || 1,
       max_users: company.max_users || 2,
+      max_products: company.max_products || 30,
       mp_access_token: company.mp_access_token || null,
       mp_public_key: company.mp_public_key || null,
       mp_enabled: company.mp_enabled || false,

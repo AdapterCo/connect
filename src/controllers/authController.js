@@ -5,6 +5,7 @@ const Log = require('../models/Log');
 const { emitToCompany } = require('../config/socket');
 const { prisma } = require('../config/database');
 const { encrypt } = require('../utils/crypto');
+const billingService = require('../services/billingService');
 
 async function login(req, res) {
   try {
@@ -151,9 +152,17 @@ async function register(req, res) {
 
 async function registerTenant(req, res) {
   try {
-    const { companyName, companySlug, adminName, adminUsername, adminPassword } = req.body;
-    if (!companyName || !companySlug || !adminName || !adminUsername || !adminPassword) {
+    const { companyName, companySlug, adminName, adminUsername, adminPassword, planId } = req.body;
+    if (!companyName || !companySlug || !adminName || !adminUsername || !adminPassword || !planId) {
       return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
+    }
+
+    const plan = await prisma.plan.findUnique({
+      where: { id: planId }
+    });
+
+    if (!plan || !plan.is_active || plan.price <= 0) {
+      return res.status(400).json({ error: 'Plano invÃ¡lido ou indisponÃ­vel.' });
     }
 
     const existingCompany = await prisma.company.findUnique({
@@ -182,10 +191,13 @@ async function registerTenant(req, res) {
           id: companyId,
           name: companyName,
           slug: companySlug,
-          plan: 'free',
-          max_instances: 1,
-          max_users: 2,
-          mp_enabled: false
+          plan: plan.name,
+          plan_id: plan.id,
+          max_instances: plan.max_instances,
+          max_users: plan.max_users,
+          max_products: plan.max_products,
+          mp_enabled: false,
+          is_active: false
         }
       });
 
@@ -227,11 +239,15 @@ async function registerTenant(req, res) {
     });
 
     await Log.add(`Empresa ${companyName} registrada com sucesso. Administrador: ${adminName}.`, companyId);
+    const billing = await billingService.createSubscription(companyId, planId);
 
     res.status(201).json({
       success: true,
       company: { id: companyId, name: companyName, slug: companySlug },
-      user: { id: userId, name: adminName, username: adminUsername, role: 'admin' }
+      user: { id: userId, name: adminName, username: adminUsername, role: 'admin' },
+      invoice: billing.invoice,
+      payment_url: billing.mp_payment_url,
+      requires_payment: true
     });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao registrar empresa.' });

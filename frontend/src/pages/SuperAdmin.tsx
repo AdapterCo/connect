@@ -9,12 +9,14 @@ interface Company {
   plan_relation?: Plan | null;
   max_instances: number;
   max_users: number;
+  max_products: number;
   is_active: boolean;
   expires_at: string | null;
   created_at: string;
   _count: {
     users: number;
     instances: number;
+    products: number;
     chats: number;
   };
 }
@@ -24,6 +26,7 @@ interface Plan {
   name: string;
   max_instances: number;
   max_users: number;
+  max_products: number;
   price: number;
   is_active: boolean;
 }
@@ -110,6 +113,7 @@ export default function SuperAdmin() {
                   <th className="text-left px-4 py-3 text-gray-400">Plano</th>
                   <th className="text-center px-4 py-3 text-gray-400">Usuários</th>
                   <th className="text-center px-4 py-3 text-gray-400">Instâncias</th>
+                  <th className="text-center px-4 py-3 text-gray-400">Produtos</th>
                   <th className="text-center px-4 py-3 text-gray-400">Chats</th>
                   <th className="text-center px-4 py-3 text-gray-400">Status</th>
                   <th className="text-right px-4 py-3 text-gray-400">Ações</th>
@@ -132,6 +136,9 @@ export default function SuperAdmin() {
                     </td>
                     <td className="px-4 py-3 text-center text-white">
                       {company._count.instances}/{company.max_instances}
+                    </td>
+                    <td className="px-4 py-3 text-center text-white">
+                      {company._count.products}/{company.max_products}
                     </td>
                     <td className="px-4 py-3 text-center text-white">{company._count.chats}</td>
                     <td className="px-4 py-3 text-center">
@@ -188,6 +195,7 @@ export default function SuperAdmin() {
                 <ul className="space-y-2 text-sm text-gray-300 mb-4">
                   <li>✓ {plan.max_instances} instância(s) WhatsApp</li>
                   <li>✓ {plan.max_users} usuário(s)</li>
+                  <li>✓ {plan.max_products} produto(s)</li>
                 </ul>
                 <div className="flex gap-2">
                   <button
@@ -303,6 +311,7 @@ function PlanForm({ plan, onClose: _onClose, onSave }: { plan: Plan | null; onCl
     name: plan?.name || '',
     max_instances: plan?.max_instances || 1,
     max_users: plan?.max_users || 2,
+    max_products: plan?.max_products || 30,
     price: plan?.price || 0,
     is_active: plan?.is_active ?? true
   });
@@ -353,6 +362,15 @@ function PlanForm({ plan, onClose: _onClose, onSave }: { plan: Plan | null; onCl
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
             />
           </div>
+        </div>
+        <div>
+          <label className="text-xs text-gray-400">Max Produtos</label>
+          <input
+            type="number"
+            value={formData.max_products}
+            onChange={(e) => setFormData({ ...formData, max_products: parseInt(e.target.value) })}
+            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+          />
         </div>
         <div>
           <label className="text-xs text-gray-400">Preço (R$/mês)</label>

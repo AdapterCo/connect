@@ -4,6 +4,16 @@ const Log = require('../models/Log');
 
 const PLATFORM_MP_ACCESS_TOKEN = process.env.PLATFORM_MP_ACCESS_TOKEN || '';
 
+async function listActivePlans() {
+  return prisma.plan.findMany({
+    where: {
+      is_active: true,
+      price: { gt: 0 }
+    },
+    orderBy: { price: 'asc' }
+  });
+}
+
 async function createSubscription(companyId, planId) {
   try {
     const company = await prisma.company.findUnique({
@@ -19,14 +29,14 @@ async function createSubscription(companyId, planId) {
       where: { id: planId }
     });
 
-    if (!plan) {
+    if (!plan || !plan.is_active || plan.price <= 0) {
       throw new Error('Plano não encontrado');
     }
 
     const existingSubscription = await prisma.subscription.findFirst({
       where: {
         company_id: companyId,
-        status: 'active'
+        status: { in: ['active', 'pending'] }
       }
     });
 
@@ -75,7 +85,7 @@ async function createSubscription(companyId, planId) {
       data: {
         company_id: companyId,
         plan_id: planId,
-        status: 'active',
+        status: 'pending',
         current_period_start: now,
         current_period_end: periodEnd,
         mp_subscription_id: mpSubscriptionId,
@@ -90,14 +100,15 @@ async function createSubscription(companyId, planId) {
         plan: plan.name,
         max_instances: plan.max_instances,
         max_users: plan.max_users,
+        max_products: plan.max_products,
         expires_at: periodEnd,
-        is_active: true
+        is_active: false
       }
     });
 
     const invoice = await createInvoice(companyId, subscription.id, plan.price, periodEnd);
 
-    await Log.add(`Assinatura criada para empresa ${company.name} - Plano ${plan.name}`, companyId);
+    await Log.add(`Assinatura pendente criada para empresa ${company.name} - Plano ${plan.name}`, companyId);
 
     return {
       subscription,
@@ -204,8 +215,23 @@ async function checkExpiredSubscriptions() {
 
 async function processPaymentWebhook(paymentId, status) {
   try {
+    const normalizedPaymentId = String(paymentId);
+
+    if (!status && PLATFORM_MP_ACCESS_TOKEN) {
+      const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(normalizedPaymentId)}`, {
+        headers: {
+          Authorization: `Bearer ${PLATFORM_MP_ACCESS_TOKEN}`
+        }
+      });
+
+      if (response.ok) {
+        const payment = await response.json();
+        status = payment.status;
+      }
+    }
+
     const invoice = await prisma.invoice.findFirst({
-      where: { mp_payment_id: paymentId }
+      where: { mp_payment_id: normalizedPaymentId }
     });
 
     if (!invoice) {
@@ -229,13 +255,15 @@ async function processPaymentWebhook(paymentId, status) {
         });
 
         if (subscription) {
-          const newPeriodEnd = new Date(subscription.current_period_end);
+          const now = new Date();
+          const newPeriodEnd = new Date(now);
           newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
 
           await prisma.subscription.update({
             where: { id: subscription.id },
             data: {
               status: 'active',
+              current_period_start: now,
               current_period_end: newPeriodEnd
             }
           });
@@ -244,16 +272,14 @@ async function processPaymentWebhook(paymentId, status) {
             where: { id: subscription.company_id },
             data: {
               is_active: true,
+              plan_id: subscription.plan_id,
+              plan: subscription.plan.name,
+              max_instances: subscription.plan.max_instances,
+              max_users: subscription.plan.max_users,
+              max_products: subscription.plan.max_products,
               expires_at: newPeriodEnd
             }
           });
-
-          await createInvoice(
-            subscription.company_id,
-            subscription.id,
-            subscription.plan.price,
-            newPeriodEnd
-          );
 
           await Log.add(
             `Pagamento aprovado - Fatura renovada até ${newPeriodEnd.toLocaleDateString('pt-BR')}`,
@@ -325,6 +351,7 @@ async function cancelSubscription(companyId) {
 }
 
 module.exports = {
+  listActivePlans,
   createSubscription,
   createInvoice,
   checkExpiredSubscriptions,

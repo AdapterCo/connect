@@ -6,44 +6,80 @@ const prisma = new PrismaClient();
 
 async function initializeDatabase() {
   try {
+    const essentialPlan = await prisma.plan.upsert({
+      where: { name: 'Essencial' },
+      update: {
+        max_instances: 1,
+        max_users: 2,
+        max_products: 30,
+        price: 1,
+        is_active: true
+      },
+      create: {
+        name: 'Essencial',
+        max_instances: 1,
+        max_users: 2,
+        max_products: 30,
+        price: 1,
+        is_active: true
+      }
+    });
+
+    await prisma.plan.upsert({
+      where: { name: 'Profissional' },
+      update: {
+        max_instances: 3,
+        max_users: 10,
+        max_products: 50,
+        price: 1.5,
+        is_active: true
+      },
+      create: {
+        name: 'Profissional',
+        max_instances: 3,
+        max_users: 10,
+        max_products: 50,
+        price: 1.5,
+        is_active: true
+      }
+    });
+
+    await prisma.plan.upsert({
+      where: { name: 'Empresarial' },
+      update: {
+        max_instances: 10,
+        max_users: 50,
+        max_products: 100,
+        price: 2,
+        is_active: true
+      },
+      create: {
+        name: 'Empresarial',
+        max_instances: 10,
+        max_users: 50,
+        max_products: 100,
+        price: 2,
+        is_active: true
+      }
+    });
+
+    await prisma.plan.updateMany({
+      where: { name: { in: ['Free', 'Pro', 'Enterprise'] } },
+      data: { is_active: false }
+    });
+
     const companyCount = await prisma.company.count();
     if (companyCount === 0) {
-      const freePlan = await prisma.plan.create({
-        data: {
-          name: 'Free',
-          max_instances: 1,
-          max_users: 2,
-          price: 0
-        }
-      });
-
-      await prisma.plan.create({
-        data: {
-          name: 'Pro',
-          max_instances: 3,
-          max_users: 10,
-          price: 97
-        }
-      });
-
-      await prisma.plan.create({
-        data: {
-          name: 'Enterprise',
-          max_instances: 10,
-          max_users: 50,
-          price: 197
-        }
-      });
-
       await prisma.company.create({
         data: {
           id: 'comp_default',
           name: 'Adapter Connect',
           slug: 'adapter-connect',
-          plan: 'free',
-          plan_id: freePlan.id,
-          max_instances: 1,
-          max_users: 2,
+          plan: essentialPlan.name,
+          plan_id: essentialPlan.id,
+          max_instances: essentialPlan.max_instances,
+          max_users: essentialPlan.max_users,
+          max_products: essentialPlan.max_products,
           mp_enabled: false,
           is_active: true
         }

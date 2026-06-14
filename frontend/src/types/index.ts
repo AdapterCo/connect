@@ -14,6 +14,7 @@ export interface Company {
   plan: string;
   max_instances: number;
   max_users: number;
+  max_products: number;
   mp_enabled: boolean;
   mp_access_token?: string;
   mp_public_key?: string;

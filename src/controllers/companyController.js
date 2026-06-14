@@ -12,7 +12,8 @@ async function getPlanInfo(req, res) {
           select: {
             users: true,
             instances: true,
-            chats: true
+            chats: true,
+            products: true
           }
         }
       }
@@ -29,11 +30,13 @@ async function getPlanInfo(req, res) {
         name: company.plan_relation?.name || company.plan,
         max_instances: company.max_instances,
         max_users: company.max_users,
+        max_products: company.max_products,
         price: company.plan_relation?.price || 0
       },
       usage: {
         users: company._count.users,
         instances: company._count.instances,
+        products: company._count.products,
         chats: company._count.chats
       },
       is_active: company.is_active && !isExpired,
