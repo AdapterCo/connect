@@ -83,6 +83,28 @@ function loadMercadoPagoSdk() {
   });
 }
 
+function getMercadoPagoClientErrorMessage(err: any) {
+  const message = typeof err?.message === 'string' ? err.message : '';
+  const serialized = (() => {
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return '';
+    }
+  })();
+  const raw = `${message} ${serialized}`.toLowerCase();
+
+  if (raw.includes('public key not found') || raw.includes('"status":404') || raw.includes('status: 404')) {
+    return 'A chave publica do Mercado Pago nao foi encontrada. Verifique a variavel PLATFORM_MP_PUBLIC_KEY na VPS e publique novamente.';
+  }
+
+  if (raw.includes('form could not be submitted')) {
+    return 'Nao foi possivel validar os dados do cartao. Confira as informacoes e tente novamente.';
+  }
+
+  return message || 'Erro ao carregar checkout de cartao.';
+}
+
 export default function Landing() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState('');
@@ -102,8 +124,10 @@ export default function Landing() {
   const [submitting, setSubmitting] = useState(false);
   const [creatingPayment, setCreatingPayment] = useState(false);
   const [cardReady, setCardReady] = useState(false);
+  const [cardNotice, setCardNotice] = useState('');
   const [cardError, setCardError] = useState('');
   const cardFormRef = useRef<any>(null);
+  const cardPaymentInProgressRef = useRef(false);
 
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlanId) || null,
@@ -150,6 +174,7 @@ export default function Landing() {
 
     async function setupCardForm() {
       setCardError('');
+      setCardNotice('');
       setCardReady(false);
 
       try {
@@ -202,7 +227,7 @@ export default function Landing() {
           callbacks: {
             onFormMounted: (formError: any) => {
               if (formError) {
-                setCardError(formError.message || 'Erro ao montar formulario de cartao.');
+                setCardError(getMercadoPagoClientErrorMessage(formError));
                 return;
               }
               mounted = true;
@@ -210,11 +235,21 @@ export default function Landing() {
             },
             onSubmit: async (event: Event) => {
               event.preventDefault();
+              if (cardPaymentInProgressRef.current) return;
+
+              cardPaymentInProgressRef.current = true;
               setCreatingPayment(true);
+              setCardNotice('Processando pagamento com seguranca. Aguarde, nao feche esta pagina.');
               setCardError('');
 
               try {
                 const cardData = cardFormRef.current.getCardFormData();
+                if (!cardData?.token || !cardData?.paymentMethodId) {
+                  setCardNotice('');
+                  setCardError('Nao foi possivel validar os dados do cartao. Confira as informacoes e tente novamente.');
+                  return;
+                }
+
                 const response = await api.post(`/billing/checkout/${invoice.id}/payment`, {
                   method: 'card',
                   payer_email: initialPayerEmail,
@@ -227,13 +262,17 @@ export default function Landing() {
                 });
 
                 if (response.data.payment.status === 'paid' || response.data.payment.payment_status === 'approved') {
+                  setCardNotice('Pagamento aprovado. Ativando sua conta...');
                   setPaymentApproved(true);
                 } else {
-                  setCardError('Pagamento enviado. Aguarde a confirmacao do Mercado Pago.');
+                  setCardNotice('');
+                  setCardError('Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.');
                 }
               } catch (err: any) {
-                setCardError(err.response?.data?.error || 'Pagamento recusado ou nao autorizado.');
+                setCardNotice('');
+                setCardError(err.response?.data?.error || getMercadoPagoClientErrorMessage(err) || 'Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.');
               } finally {
+                cardPaymentInProgressRef.current = false;
                 setCreatingPayment(false);
               }
             }
@@ -246,7 +285,7 @@ export default function Landing() {
           }
         }, 12000);
       } catch (err: any) {
-        setCardError(err.message || 'Erro ao carregar checkout de cartao.');
+        setCardError(getMercadoPagoClientErrorMessage(err));
       }
     }
 
@@ -524,8 +563,16 @@ export default function Landing() {
                                 {creatingPayment ? 'Processando...' : 'Pagar com cartao'}
                               </button>
                             </form>
-                            {creatingPayment && <p className="mt-3 text-sm text-gray-400">Processando pagamento...</p>}
-                            {cardError && <p className="mt-3 text-sm text-amber-300">{cardError}</p>}
+                            {cardNotice && (
+                              <p className="mt-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-200">
+                                {cardNotice}
+                              </p>
+                            )}
+                            {cardError && (
+                              <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                                {cardError}
+                              </p>
+                            )}
                           </>
                         )}
                       </div>
