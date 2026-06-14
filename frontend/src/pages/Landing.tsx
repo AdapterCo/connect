@@ -102,6 +102,10 @@ function getMercadoPagoClientErrorMessage(err: any) {
     return 'Nao foi possivel validar os dados do cartao. Confira as informacoes e tente novamente.';
   }
 
+  if (raw.includes('failed to fetch') || raw.includes('cors') || raw.includes('err_failed')) {
+    return 'Nao foi possivel comunicar com o Mercado Pago para validar o cartao. Tente novamente ou use Pix.';
+  }
+
   return message || 'Erro ao carregar checkout de cartao.';
 }
 
@@ -128,6 +132,7 @@ export default function Landing() {
   const [cardError, setCardError] = useState('');
   const cardFormRef = useRef<any>(null);
   const cardPaymentInProgressRef = useRef(false);
+  const cardClickFallbackTimerRef = useRef<number | null>(null);
 
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlanId) || null,
@@ -162,6 +167,33 @@ export default function Landing() {
 
     return () => window.clearInterval(interval);
   }, [checkoutInvoice, paymentApproved]);
+
+  useEffect(() => {
+    if (paymentMethod !== 'card') return;
+
+    const handleMercadoPagoFailure = (event: PromiseRejectionEvent | ErrorEvent) => {
+      if (!creatingPayment && !cardNotice) return;
+
+      const reason = 'reason' in event ? event.reason : event.error || event.message;
+      const message = getMercadoPagoClientErrorMessage(reason);
+      setCardNotice('');
+      setCardError(message || 'Nao foi possivel realizar a cobranca. Tente novamente ou use Pix.');
+      setCreatingPayment(false);
+      cardPaymentInProgressRef.current = false;
+      if (cardClickFallbackTimerRef.current) {
+        window.clearTimeout(cardClickFallbackTimerRef.current);
+        cardClickFallbackTimerRef.current = null;
+      }
+    };
+
+    window.addEventListener('unhandledrejection', handleMercadoPagoFailure);
+    window.addEventListener('error', handleMercadoPagoFailure);
+
+    return () => {
+      window.removeEventListener('unhandledrejection', handleMercadoPagoFailure);
+      window.removeEventListener('error', handleMercadoPagoFailure);
+    };
+  }, [paymentMethod, creatingPayment, cardNotice]);
 
   useEffect(() => {
     if (!checkoutInvoice || !checkoutConfig?.card_enabled || paymentMethod !== 'card' || cardFormRef.current) return;
@@ -237,6 +269,10 @@ export default function Landing() {
               event.preventDefault();
               if (cardPaymentInProgressRef.current) return;
 
+              if (cardClickFallbackTimerRef.current) {
+                window.clearTimeout(cardClickFallbackTimerRef.current);
+                cardClickFallbackTimerRef.current = null;
+              }
               cardPaymentInProgressRef.current = true;
               setCreatingPayment(true);
               setCardNotice('Processando pagamento com seguranca. Aguarde, nao feche esta pagina.');
@@ -295,6 +331,10 @@ export default function Landing() {
       cancelled = true;
       if (cardFormRef.current?.unmount) {
         cardFormRef.current.unmount();
+      }
+      if (cardClickFallbackTimerRef.current) {
+        window.clearTimeout(cardClickFallbackTimerRef.current);
+        cardClickFallbackTimerRef.current = null;
       }
       cardFormRef.current = null;
       setCardReady(false);
@@ -361,6 +401,27 @@ export default function Landing() {
     } finally {
       setCreatingPayment(false);
     }
+  };
+
+  const handleCardPaymentClick = () => {
+    if (!cardReady || creatingPayment) return;
+
+    setCreatingPayment(true);
+    setCardNotice('Processando pagamento com seguranca. Aguarde, nao clique novamente.');
+    setCardError('');
+
+    if (cardClickFallbackTimerRef.current) {
+      window.clearTimeout(cardClickFallbackTimerRef.current);
+    }
+
+    cardClickFallbackTimerRef.current = window.setTimeout(() => {
+      if (!cardPaymentInProgressRef.current) {
+        setCardNotice('');
+        setCardError('Nao foi possivel iniciar a validacao do cartao pelo Mercado Pago. Tente novamente ou use Pix.');
+        setCreatingPayment(false);
+      }
+      cardClickFallbackTimerRef.current = null;
+    }, 7000);
   };
 
   const copyPixCode = async () => {
@@ -560,8 +621,13 @@ export default function Landing() {
                               <select id="form-checkout__installments" className="hidden" aria-hidden="true" tabIndex={-1} />
                               <select id="form-checkout__identificationType" className="hidden" aria-hidden="true" tabIndex={-1} />
                               <input id="form-checkout__identificationNumber" type="hidden" aria-hidden="true" tabIndex={-1} />
-                              <button type="submit" disabled={!cardReady || creatingPayment} className="rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
-                                {creatingPayment ? 'Processando...' : 'Pagar com cartao'}
+                              <button
+                                type="submit"
+                                onClick={handleCardPaymentClick}
+                                disabled={!cardReady || creatingPayment}
+                                className="rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {creatingPayment ? 'Validando cartao...' : 'Pagar com cartao'}
                               </button>
                             </form>
                             {cardNotice && (
