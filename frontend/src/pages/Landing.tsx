@@ -320,7 +320,8 @@ export default function Landing() {
         adminName,
         adminUsername,
         adminPassword,
-        planId: selectedPlanId
+        planId: selectedPlanId,
+        payerEmail
       });
 
       setCheckoutInvoice({

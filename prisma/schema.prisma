@@ -19,6 +19,7 @@ model Plan {
   updated_at    DateTime  @updatedAt
   companies     Company[]
   subscriptions Subscription[]
+  signupCheckouts SignupCheckout[]
 }
 
 model Company {
@@ -207,6 +208,27 @@ model Invoice {
   created_at      DateTime      @default(now())
   company         Company       @relation(fields: [company_id], references: [id], onDelete: Cascade)
   subscription    Subscription? @relation(fields: [subscription_id], references: [id], onDelete: SetNull)
+}
+
+model SignupCheckout {
+  id                 String   @id @default(uuid())
+  company_name       String
+  company_slug       String
+  admin_name         String
+  admin_username     String
+  admin_password     String
+  payer_email        String
+  plan_id            String
+  amount             Float
+  status             String   @default("pending")
+  mp_payment_id      String?
+  mp_payment_url     String?
+  due_date           DateTime
+  paid_at            DateTime?
+  company_id         String?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  plan               Plan     @relation(fields: [plan_id], references: [id], onDelete: Cascade)
 }
 
 model PasswordResetToken {

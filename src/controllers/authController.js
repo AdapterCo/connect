@@ -4,8 +4,6 @@ const User = require('../models/User');
 const Log = require('../models/Log');
 const { emitToCompany } = require('../config/socket');
 const { prisma } = require('../config/database');
-const { encrypt } = require('../utils/crypto');
-const billingService = require('../services/billingService');
 
 async function login(req, res) {
   try {
@@ -180,7 +178,7 @@ async function register(req, res) {
 
 async function registerTenant(req, res) {
   try {
-    const { companyName, companySlug, adminName, adminUsername, adminPassword, planId } = req.body;
+    const { companyName, companySlug, adminName, adminUsername, adminPassword, planId, payerEmail } = req.body;
     if (!companyName || !companySlug || !adminName || !adminUsername || !adminPassword || !planId) {
       return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
     }
@@ -205,84 +203,69 @@ async function registerTenant(req, res) {
       return res.status(400).json({ error: 'Este nome de usuário já está em uso.' });
     }
 
+    const staleCheckoutDate = new Date();
+    staleCheckoutDate.setDate(staleCheckoutDate.getDate() - 2);
+    await prisma.signupCheckout.deleteMany({
+      where: {
+        company_id: null,
+        status: { in: ['pending', 'failed'] },
+        created_at: { lt: staleCheckoutDate }
+      }
+    });
+
     const salt = bcrypt.genSaltSync(10);
     const hashedPassword = bcrypt.hashSync(adminPassword, salt);
 
-    const suffix = Math.random().toString(36).substring(2, 6);
-    const companyId = 'comp_' + Date.now() + '_' + suffix;
-    const userId = 'usr_' + Date.now() + '_' + suffix;
-    const instanceId = 'inst_' + Date.now() + '_' + suffix;
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 1);
 
-    await prisma.$transaction(async (tx) => {
-      await tx.company.create({
-        data: {
-          id: companyId,
-          name: companyName,
-          slug: companySlug,
-          plan: plan.name,
-          plan_id: plan.id,
-          max_instances: plan.max_instances,
-          max_users: plan.max_users,
-          max_products: plan.max_products,
-          mp_enabled: false,
-          is_active: false
-        }
-      });
-
-      await tx.settings.create({
-        data: {
-          company_id: companyId,
-          ai_enabled: false,
-          ai_provider: 'mock',
-          gemini_key: encrypt(''),
-          openai_key: encrypt(''),
-          grok_key: encrypt(''),
-          gemini_model: 'gemini-2.5-flash',
-          openai_model: 'gpt-4o-mini',
-          grok_model: 'grok-4.3',
-          system_prompt: 'Você é um assistente virtual de atendimento. Seja cordial e ajude o cliente.'
-        }
-      });
-
-      await tx.user.create({
-        data: {
-          id: userId,
-          name: adminName,
-          username: adminUsername,
-          password: hashedPassword,
-          role: 'admin',
-          status: 'offline',
-          company_id: companyId
-        }
-      });
-
-      await tx.instance.create({
-        data: {
-          id: instanceId,
-          name: 'Número Principal',
-          status: 'disconnected',
-          company_id: companyId
-        }
-      });
+    const existingCheckout = await prisma.signupCheckout.findFirst({
+      where: {
+        company_id: null,
+        status: { in: ['pending', 'failed'] },
+        OR: [
+          { company_slug: companySlug },
+          { admin_username: adminUsername }
+        ]
+      },
+      orderBy: { created_at: 'desc' }
     });
 
-    await Log.add(`Empresa ${companyName} registrada com sucesso. Administrador: ${adminName}.`, companyId);
+    const checkoutData = {
+      company_name: companyName,
+      company_slug: companySlug,
+      admin_name: adminName,
+      admin_username: adminUsername,
+      admin_password: hashedPassword,
+      payer_email: String(payerEmail || `${adminUsername}@${companySlug}.com.br`).trim().toLowerCase(),
+      plan_id: plan.id,
+      amount: plan.price,
+      due_date: dueDate,
+      status: 'pending',
+      mp_payment_id: null,
+      mp_payment_url: null,
+      paid_at: null
+    };
 
-    let billing;
-    try {
-      billing = await billingService.createSubscription(companyId, planId);
-    } catch (billingError) {
-      await prisma.company.delete({ where: { id: companyId } }).catch(() => {});
-      return res.status(500).json({
-        error: billingError.message || 'Erro ao gerar pagamento da assinatura.'
+    const checkout = existingCheckout
+      ? await prisma.signupCheckout.update({
+        where: { id: existingCheckout.id },
+        data: checkoutData
+      })
+      : await prisma.signupCheckout.create({
+        data: checkoutData
       });
-    }
 
     res.status(201).json({
       success: true,
-      company: { id: companyId, name: companyName, slug: companySlug },
-      user: { id: userId, name: adminName, username: adminUsername, role: 'admin' },
-      invoice: billing.invoice,
+      company: { name: companyName, slug: companySlug },
+      invoice: {
+        id: checkout.id,
+        amount: checkout.amount,
+        status: checkout.status,
+        company: { name: companyName, slug: companySlug },
+        plan
+      },
       payment_url: null,
       requires_payment: true
     });
