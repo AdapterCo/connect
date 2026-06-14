@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
+
+declare global {
+  interface Window {
+    MercadoPago?: any;
+  }
+}
 
 interface Plan {
   id: string;
@@ -9,6 +15,27 @@ interface Plan {
   max_users: number;
   max_products: number;
   price: number;
+}
+
+interface CheckoutConfig {
+  public_key: string;
+  pix_enabled: boolean;
+  card_enabled: boolean;
+}
+
+interface CheckoutInvoice {
+  id: string;
+  amount: number;
+  status: string;
+  company: { name: string; slug: string };
+  plan: Plan | null;
+}
+
+interface PixPayment {
+  qr_code: string | null;
+  qr_code_base64: string | null;
+  ticket_url: string | null;
+  status: string;
 }
 
 const planDescriptions: Record<string, string> = {
@@ -32,6 +59,30 @@ function normalizeSlug(value: string) {
     .replace(/(^-|-$)/g, '');
 }
 
+function formatCurrency(value: number) {
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function loadMercadoPagoSdk() {
+  if (window.MercadoPago) return Promise.resolve();
+
+  return new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[src="https://sdk.mercadopago.com/js/v2"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error('Erro ao carregar SDK do Mercado Pago.')));
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://sdk.mercadopago.com/js/v2';
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Erro ao carregar SDK do Mercado Pago.'));
+    document.body.appendChild(script);
+  });
+}
+
 export default function Landing() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState('');
@@ -40,10 +91,19 @@ export default function Landing() {
   const [adminName, setAdminName] = useState('');
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
-  const [paymentUrl, setPaymentUrl] = useState('');
+  const [payerEmail, setPayerEmail] = useState('');
+  const [checkoutConfig, setCheckoutConfig] = useState<CheckoutConfig | null>(null);
+  const [checkoutInvoice, setCheckoutInvoice] = useState<CheckoutInvoice | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
+  const [pixPayment, setPixPayment] = useState<PixPayment | null>(null);
+  const [paymentApproved, setPaymentApproved] = useState(false);
   const [error, setError] = useState('');
   const [loadingPlans, setLoadingPlans] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [creatingPayment, setCreatingPayment] = useState(false);
+  const [cardReady, setCardReady] = useState(false);
+  const [cardError, setCardError] = useState('');
+  const cardBrickRef = useRef<any>(null);
 
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlanId) || null,
@@ -51,14 +111,113 @@ export default function Landing() {
   );
 
   useEffect(() => {
-    api.get('/billing/plans')
-      .then((response) => {
-        setPlans(response.data);
-        setSelectedPlanId(response.data[0]?.id || '');
+    Promise.all([api.get('/billing/plans'), api.get('/billing/checkout/config')])
+      .then(([plansResponse, configResponse]) => {
+        setPlans(plansResponse.data);
+        setSelectedPlanId(plansResponse.data[0]?.id || '');
+        setCheckoutConfig(configResponse.data);
       })
-      .catch(() => setError('Nao foi possivel carregar os planos.'))
+      .catch(() => setError('Nao foi possivel carregar os planos e configuracoes de pagamento.'))
       .finally(() => setLoadingPlans(false));
   }, []);
+
+  useEffect(() => {
+    if (!checkoutInvoice || paymentApproved) return;
+
+    const interval = window.setInterval(async () => {
+      try {
+        const response = await api.get(`/billing/checkout/${checkoutInvoice.id}/status`);
+        if (response.data.status === 'paid') {
+          setPaymentApproved(true);
+          window.clearInterval(interval);
+        }
+      } catch {
+        // keep polling silently
+      }
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [checkoutInvoice, paymentApproved]);
+
+  useEffect(() => {
+    if (!checkoutInvoice || !checkoutConfig?.card_enabled || paymentMethod !== 'card' || cardBrickRef.current) return;
+
+    let cancelled = false;
+    const invoice = checkoutInvoice;
+    const config = checkoutConfig;
+
+    async function setupCardBrick() {
+      setCardError('');
+      setCardReady(false);
+
+      try {
+        await loadMercadoPagoSdk();
+        if (cancelled || !window.MercadoPago) return;
+
+        const mp = new window.MercadoPago(config.public_key, { locale: 'pt-BR' });
+        const bricksBuilder = mp.bricks();
+
+        cardBrickRef.current = await bricksBuilder.create('cardPayment', 'card-payment-brick', {
+          initialization: {
+            amount: invoice.amount,
+            payer: {
+              email: payerEmail
+            }
+          },
+          customization: {
+            paymentMethods: {
+              creditCard: 'all',
+              debitCard: 'all'
+            }
+          },
+          callbacks: {
+            onReady: () => setCardReady(true),
+            onError: (brickError: any) => {
+              setCardError(brickError?.message || 'Erro no formulario de cartao.');
+            },
+            onSubmit: async (cardFormData: any) => {
+              setCreatingPayment(true);
+              setCardError('');
+              try {
+                const response = await api.post(`/billing/checkout/${invoice.id}/payment`, {
+                  method: 'card',
+                  payer_email: payerEmail,
+                  token: cardFormData.token,
+                  issuer_id: cardFormData.issuer_id,
+                  payment_method_id: cardFormData.payment_method_id,
+                  installments: cardFormData.installments,
+                  identification_type: cardFormData.payer?.identification?.type,
+                  identification_number: cardFormData.payer?.identification?.number
+                });
+
+                if (response.data.payment.status === 'paid' || response.data.payment.payment_status === 'approved') {
+                  setPaymentApproved(true);
+                } else {
+                  setCardError('Pagamento enviado. Aguarde a confirmacao do Mercado Pago.');
+                }
+              } catch (err: any) {
+                setCardError(err.response?.data?.error || 'Pagamento recusado ou nao autorizado.');
+              } finally {
+                setCreatingPayment(false);
+              }
+            }
+          }
+        });
+      } catch (err: any) {
+        setCardError(err.message || 'Erro ao carregar checkout de cartao.');
+      }
+    }
+
+    setupCardBrick();
+
+    return () => {
+      cancelled = true;
+      if (cardBrickRef.current?.unmount) {
+        cardBrickRef.current.unmount();
+      }
+      cardBrickRef.current = null;
+    };
+  }, [checkoutInvoice, checkoutConfig, paymentMethod, payerEmail]);
 
   const handleCompanyNameChange = (value: string) => {
     setCompanyName(value);
@@ -68,7 +227,8 @@ export default function Landing() {
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
-    setPaymentUrl('');
+    setPixPayment(null);
+    setPaymentApproved(false);
     setSubmitting(true);
 
     try {
@@ -81,19 +241,48 @@ export default function Landing() {
         planId: selectedPlanId
       });
 
-      const nextPaymentUrl = response.data.payment_url || '';
-      if (!nextPaymentUrl) {
-        setError('Conta criada, mas o checkout não foi gerado. Entre em contato com o suporte.');
-        return;
-      }
-
-      setPaymentUrl(nextPaymentUrl);
-      window.location.href = nextPaymentUrl;
+      setCheckoutInvoice({
+        id: response.data.invoice.id,
+        amount: response.data.invoice.amount,
+        status: response.data.invoice.status,
+        company: response.data.company,
+        plan: selectedPlan
+      });
+      setPayerEmail(payerEmail || `${adminUsername}@${companySlug}.com.br`);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao criar conta e gerar pagamento.');
+      setError(err.response?.data?.error || 'Erro ao criar conta.');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const createPixPayment = async () => {
+    if (!checkoutInvoice) return;
+    setCreatingPayment(true);
+    setError('');
+
+    try {
+      const response = await api.post(`/billing/checkout/${checkoutInvoice.id}/payment`, {
+        method: 'pix',
+        payer_email: payerEmail
+      });
+
+      setPixPayment({
+        qr_code: response.data.payment.qr_code,
+        qr_code_base64: response.data.payment.qr_code_base64,
+        ticket_url: response.data.payment.ticket_url,
+        status: response.data.payment.payment_status || 'pending'
+      });
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Erro ao gerar Pix.');
+    } finally {
+      setCreatingPayment(false);
+    }
+  };
+
+  const copyPixCode = async () => {
+    if (!pixPayment?.qr_code) return;
+    await navigator.clipboard.writeText(pixPayment.qr_code);
   };
 
   return (
@@ -114,7 +303,7 @@ export default function Landing() {
       </header>
 
       <main>
-        <section className="mx-auto grid max-w-6xl gap-10 px-6 py-12 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+        <section className="mx-auto grid max-w-6xl gap-10 px-6 py-12 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
           <div>
             <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-indigo-300">Atendimento, vendas e cobrancas em um painel</p>
             <h2 className="max-w-3xl text-4xl font-bold leading-tight md:text-5xl">
@@ -124,7 +313,7 @@ export default function Landing() {
               O Adapter Connect centraliza chats, pipeline, atendentes, IA, pedidos, relatorios e recebimentos por Mercado Pago para sua operacao vender e atender melhor.
             </p>
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
-              {['IA para atendimento automatico', 'CRM e kanban de oportunidades', 'Gestao de equipe e limites por plano', 'Links de pagamento Mercado Pago'].map((feature) => (
+              {['IA para atendimento automatico', 'CRM e kanban de oportunidades', 'Gestao de equipe e limites por plano', 'Checkout Pix, credito e debito'].map((feature) => (
                 <div key={feature} className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-3 text-sm text-gray-200">
                   {feature}
                 </div>
@@ -132,75 +321,162 @@ export default function Landing() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="rounded-xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
-            <h3 className="text-xl font-bold">Criar conta e ativar plano</h3>
-            <p className="mt-1 text-sm text-gray-400">Escolha um plano, cadastre a empresa e siga para pagamento.</p>
+          <div className="rounded-xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
+            {!checkoutInvoice ? (
+              <form onSubmit={handleSubmit}>
+                <h3 className="text-xl font-bold">Criar conta e ativar plano</h3>
+                <p className="mt-1 text-sm text-gray-400">Escolha um plano, cadastre a empresa e pague no checkout seguro.</p>
 
-            {error && (
-              <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-                {error}
+                {error && (
+                  <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                    {error}
+                  </div>
+                )}
+
+                <div className="mt-5 grid gap-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">Plano</label>
+                    <select
+                      value={selectedPlanId}
+                      onChange={(event) => setSelectedPlanId(event.target.value)}
+                      required
+                      disabled={loadingPlans}
+                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none"
+                    >
+                      {plans.map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.name} - {formatCurrency(plan.price)}/mes
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Empresa</label>
+                      <input value={companyName} onChange={(event) => handleCompanyNameChange(event.target.value)} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Slug</label>
+                      <input value={companySlug} onChange={(event) => setCompanySlug(normalizeSlug(event.target.value))} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Nome do admin</label>
+                      <input value={adminName} onChange={(event) => setAdminName(event.target.value)} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Usuario</label>
+                      <input value={adminUsername} onChange={(event) => setAdminUsername(event.target.value.toLowerCase())} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">E-mail para pagamento</label>
+                    <input type="email" value={payerEmail} onChange={(event) => setPayerEmail(event.target.value)} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">Senha</label>
+                    <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} minLength={6} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                  </div>
+
+                  <button type="submit" disabled={submitting || !selectedPlanId} className="rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                    {submitting ? 'Criando conta...' : 'Continuar para pagamento'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div>
+                <h3 className="text-xl font-bold">Pagamento seguro</h3>
+                <div className="mt-3 rounded-lg border border-gray-700 bg-gray-800 p-4 text-sm text-gray-300">
+                  <div className="flex justify-between">
+                    <span>Plano</span>
+                    <strong className="text-white">{checkoutInvoice.plan?.name || selectedPlan?.name}</strong>
+                  </div>
+                  <div className="mt-2 flex justify-between">
+                    <span>Total</span>
+                    <strong className="text-white">{formatCurrency(checkoutInvoice.amount)}</strong>
+                  </div>
+                </div>
+
+                {paymentApproved ? (
+                  <div className="mt-5 rounded-lg border border-green-500/30 bg-green-500/10 p-4 text-green-300">
+                    Pagamento aprovado. Sua conta foi ativada.
+                    <Link to="/login" className="mt-3 block rounded-lg bg-green-600 px-4 py-2 text-center font-semibold text-white hover:bg-green-700">
+                      Ir para login
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    {error && (
+                      <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                        {error}
+                      </div>
+                    )}
+
+                    <div className="mt-5 grid grid-cols-2 gap-2 rounded-lg bg-gray-800 p-1">
+                      <button type="button" onClick={() => setPaymentMethod('pix')} className={`rounded-md px-3 py-2 text-sm font-semibold ${paymentMethod === 'pix' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+                        Pix
+                      </button>
+                      <button type="button" onClick={() => setPaymentMethod('card')} className={`rounded-md px-3 py-2 text-sm font-semibold ${paymentMethod === 'card' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+                        Credito ou Debito
+                      </button>
+                    </div>
+
+                    {paymentMethod === 'pix' && (
+                      <div className="mt-5 space-y-4">
+                        <button type="button" onClick={createPixPayment} disabled={creatingPayment || !checkoutConfig?.pix_enabled} className="w-full rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                          {creatingPayment ? 'Gerando Pix...' : 'Gerar QR Code Pix'}
+                        </button>
+
+                        {!checkoutConfig?.pix_enabled && (
+                          <p className="text-sm text-red-300">Mercado Pago da plataforma nao configurado.</p>
+                        )}
+
+                        {pixPayment && (
+                          <div className="rounded-lg border border-gray-700 bg-gray-800 p-4 text-center">
+                            {pixPayment.qr_code_base64 && (
+                              <img src={`data:image/png;base64,${pixPayment.qr_code_base64}`} alt="QR Code Pix" className="mx-auto h-56 w-56 rounded-lg bg-white p-2" />
+                            )}
+                            {pixPayment.qr_code && (
+                              <>
+                                <textarea readOnly value={pixPayment.qr_code} className="mt-4 h-24 w-full rounded-lg border border-gray-700 bg-gray-900 p-3 text-xs text-gray-200" />
+                                <button type="button" onClick={copyPixCode} className="mt-3 w-full rounded-lg border border-gray-600 px-4 py-2 text-sm font-semibold text-gray-100 hover:bg-gray-700">
+                                  Copiar codigo Pix
+                                </button>
+                              </>
+                            )}
+                            <p className="mt-3 text-xs text-gray-400">Apos pagar, a plataforma valida automaticamente e libera o login.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {paymentMethod === 'card' && (
+                      <div className="mt-5">
+                        {!checkoutConfig?.card_enabled && (
+                          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                            Para cartao, configure PLATFORM_MP_PUBLIC_KEY alem do access token.
+                          </div>
+                        )}
+                        {checkoutConfig?.card_enabled && (
+                          <>
+                            {!cardReady && <p className="mb-3 text-sm text-gray-400">Carregando formulario seguro do Mercado Pago...</p>}
+                            <div id="card-payment-brick" className="rounded-lg bg-white p-3 text-gray-900" />
+                            {creatingPayment && <p className="mt-3 text-sm text-gray-400">Processando pagamento...</p>}
+                            {cardError && <p className="mt-3 text-sm text-amber-300">{cardError}</p>}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
-
-            {paymentUrl && (
-              <div className="mt-4 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-300">
-                Conta criada. Conclua o pagamento para ativar o acesso.
-                <a href={paymentUrl} target="_blank" rel="noopener noreferrer" className="mt-3 block rounded-lg bg-green-600 px-4 py-2 text-center font-semibold text-white hover:bg-green-700">
-                  Ir para pagamento
-                </a>
-              </div>
-            )}
-
-            <div className="mt-5 grid gap-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-300">Plano</label>
-                <select
-                  value={selectedPlanId}
-                  onChange={(event) => setSelectedPlanId(event.target.value)}
-                  required
-                  disabled={loadingPlans}
-                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none"
-                >
-                  {plans.map((plan) => (
-                    <option key={plan.id} value={plan.id}>
-                      {plan.name} - R$ {plan.price.toFixed(2).replace('.', ',')}/mes
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-300">Empresa</label>
-                  <input value={companyName} onChange={(event) => handleCompanyNameChange(event.target.value)} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-300">Slug</label>
-                  <input value={companySlug} onChange={(event) => setCompanySlug(normalizeSlug(event.target.value))} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-300">Nome do admin</label>
-                  <input value={adminName} onChange={(event) => setAdminName(event.target.value)} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-300">Usuario</label>
-                  <input value={adminUsername} onChange={(event) => setAdminUsername(event.target.value.toLowerCase())} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-300">Senha</label>
-                <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} minLength={6} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
-              </div>
-
-              <button type="submit" disabled={submitting || !selectedPlanId} className="rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
-                {submitting ? 'Gerando pagamento...' : 'Criar conta e pagar'}
-              </button>
-            </div>
-          </form>
+          </div>
         </section>
 
         <section className="mx-auto max-w-6xl px-6 pb-14">
@@ -229,7 +505,7 @@ export default function Landing() {
                   </div>
                   <span className="rounded-md bg-gray-800 px-2 py-1 text-xs text-gray-300">{plan.max_products} produtos</span>
                 </div>
-                <p className="mt-5 text-3xl font-bold">R$ {plan.price.toFixed(2).replace('.', ',')}</p>
+                <p className="mt-5 text-3xl font-bold">{formatCurrency(plan.price)}</p>
                 <p className="text-sm text-gray-500">por mes para testes</p>
                 <ul className="mt-5 space-y-2 text-sm text-gray-300">
                   <li>{plan.max_instances} conexao(oes) WhatsApp</li>

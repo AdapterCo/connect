@@ -9,6 +9,48 @@ async function listPlans(req, res) {
   }
 }
 
+async function getCheckoutConfig(req, res) {
+  try {
+    const config = await billingService.getCheckoutConfig();
+    res.json(config);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+async function getCheckoutInvoice(req, res) {
+  try {
+    const invoice = await billingService.getInvoiceCheckout(req.params.invoiceId);
+    res.json({
+      id: invoice.id,
+      amount: invoice.amount,
+      status: invoice.status,
+      company: invoice.company,
+      plan: invoice.subscription?.plan || null
+    });
+  } catch (error) {
+    res.status(404).json({ error: error.message });
+  }
+}
+
+async function createCheckoutPayment(req, res) {
+  try {
+    const payment = await billingService.createCheckoutPayment(req.params.invoiceId, req.body);
+    res.json({ success: true, payment });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+}
+
+async function getCheckoutStatus(req, res) {
+  try {
+    const status = await billingService.getCheckoutStatus(req.params.invoiceId);
+    res.json(status);
+  } catch (error) {
+    res.status(404).json({ error: error.message });
+  }
+}
+
 async function createSubscription(req, res) {
   try {
     const { planId } = req.body;
@@ -71,6 +113,10 @@ async function handleBillingWebhook(req, res) {
 
 module.exports = {
   listPlans,
+  getCheckoutConfig,
+  getCheckoutInvoice,
+  createCheckoutPayment,
+  getCheckoutStatus,
   createSubscription,
   getInvoices,
   cancelSubscription,

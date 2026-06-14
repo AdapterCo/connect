@@ -283,7 +283,7 @@ async function registerTenant(req, res) {
       company: { id: companyId, name: companyName, slug: companySlug },
       user: { id: userId, name: adminName, username: adminUsername, role: 'admin' },
       invoice: billing.invoice,
-      payment_url: billing.mp_payment_url,
+      payment_url: null,
       requires_payment: true
     });
   } catch (error) {

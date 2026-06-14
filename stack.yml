@@ -25,6 +25,8 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres}@db:5432/adapterconnect?schema=public
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - PLATFORM_MP_ACCESS_TOKEN=${PLATFORM_MP_ACCESS_TOKEN}
+      - PLATFORM_MP_PUBLIC_KEY=${PLATFORM_MP_PUBLIC_KEY}
       - DOMAIN=${DOMAIN:-connect.adapterco.com.br}
     volumes:
       - auth_data:/app/auth_info_baileys

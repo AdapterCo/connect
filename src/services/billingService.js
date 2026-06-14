@@ -2,7 +2,22 @@ const { prisma } = require('../config/database');
 const mercadopago = require('mercadopago');
 const Log = require('../models/Log');
 
-const PLATFORM_MP_ACCESS_TOKEN = process.env.PLATFORM_MP_ACCESS_TOKEN || '';
+function getPlatformAccessToken() {
+  return process.env.PLATFORM_MP_ACCESS_TOKEN || '';
+}
+
+function getPlatformPublicKey() {
+  return process.env.PLATFORM_MP_PUBLIC_KEY || '';
+}
+
+function createMercadoPagoClient() {
+  const accessToken = getPlatformAccessToken();
+  if (!accessToken) {
+    throw new Error('Mercado Pago da plataforma nao configurado. Defina PLATFORM_MP_ACCESS_TOKEN.');
+  }
+
+  return new mercadopago.MercadoPagoConfig({ accessToken });
+}
 
 async function listActivePlans() {
   return prisma.plan.findMany({
@@ -48,48 +63,13 @@ async function createSubscription(companyId, planId) {
     const periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-    let mpSubscriptionId = null;
-    let mpPayerId = null;
-
-    if (PLATFORM_MP_ACCESS_TOKEN && plan.price > 0) {
-      try {
-        const client = new mercadopago.MercadoPagoConfig({
-          accessToken: PLATFORM_MP_ACCESS_TOKEN
-        });
-
-        const preapproval = new mercadopago.PreApproval(client);
-        const preapprovalData = {
-          reason: `Assinatura ${plan.name} - Adapter Connect`,
-          external_reference: `${companyId}_${planId}`,
-          payer_email: company.mp_webhook_url || 'cliente@example.com',
-          auto_recurring: {
-            frequency: 1,
-            frequency_type: 'months',
-            transaction_amount: plan.price,
-            currency_id: 'BRL',
-            start_date: now.toISOString(),
-            end_date: new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()).toISOString()
-          },
-          back_url: `https://${process.env.DOMAIN || 'localhost:3000'}/billing`
-        };
-
-        const response = await preapproval.create({ body: preapprovalData });
-        mpSubscriptionId = response.id;
-        mpPayerId = response.payer_id;
-      } catch (mpError) {
-        console.error('Erro ao criar assinatura no Mercado Pago:', mpError);
-      }
-    }
-
     const subscription = await prisma.subscription.create({
       data: {
         company_id: companyId,
         plan_id: planId,
         status: 'pending',
         current_period_start: now,
-        current_period_end: periodEnd,
-        mp_subscription_id: mpSubscriptionId,
-        mp_payer_id: mpPayerId
+        current_period_end: periodEnd
       }
     });
 
@@ -123,49 +103,12 @@ async function createSubscription(companyId, planId) {
 
 async function createInvoice(companyId, subscriptionId, amount, dueDate) {
   try {
-    let mpPaymentId = null;
-    let mpPaymentUrl = null;
-
-    if (PLATFORM_MP_ACCESS_TOKEN && amount > 0) {
-      try {
-        const client = new mercadopago.MercadoPagoConfig({
-          accessToken: PLATFORM_MP_ACCESS_TOKEN
-        });
-
-        const payment = new mercadopago.Payment(client);
-        const paymentData = {
-          transaction_amount: amount,
-          description: `Fatura Adapter Connect - ${new Date(dueDate).toLocaleDateString('pt-BR')}`,
-          payment_method_id: 'pix',
-          payer: {
-            email: 'cliente@example.com'
-          },
-          external_reference: `${companyId}_${subscriptionId}_${Date.now()}`
-        };
-
-        const response = await payment.create({ body: paymentData });
-        mpPaymentId = response.id;
-        mpPaymentUrl = response.point_of_interaction?.transaction_data?.ticket_url || null;
-      } catch (mpError) {
-        console.error('Erro ao criar pagamento no Mercado Pago:', mpError);
-        throw new Error('Erro ao gerar pagamento no Mercado Pago.');
-      }
-    } else if (amount > 0) {
-      throw new Error('Mercado Pago da plataforma nÃ£o configurado. Defina PLATFORM_MP_ACCESS_TOKEN para gerar o checkout.');
-    }
-
-    if (amount > 0 && !mpPaymentUrl) {
-      throw new Error('Mercado Pago nÃ£o retornou URL de pagamento.');
-    }
-
     const invoice = await prisma.invoice.create({
       data: {
         company_id: companyId,
         subscription_id: subscriptionId,
         amount,
         status: 'pending',
-        mp_payment_id: mpPaymentId,
-        mp_payment_url: mpPaymentUrl,
         due_date: dueDate
       }
     });
@@ -175,6 +118,138 @@ async function createInvoice(companyId, subscriptionId, amount, dueDate) {
     console.error('Erro ao criar fatura:', error);
     throw error;
   }
+}
+
+async function getCheckoutConfig() {
+  return {
+    public_key: getPlatformPublicKey(),
+    pix_enabled: !!getPlatformAccessToken(),
+    card_enabled: !!getPlatformAccessToken() && !!getPlatformPublicKey()
+  };
+}
+
+async function getInvoiceCheckout(invoiceId) {
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: {
+      company: { select: { id: true, name: true, slug: true, is_active: true } },
+      subscription: { include: { plan: true } }
+    }
+  });
+
+  if (!invoice) {
+    throw new Error('Fatura nao encontrada.');
+  }
+
+  return invoice;
+}
+
+function buildPaymentPayload(invoice, paymentResponse = null) {
+  const transactionData = paymentResponse?.point_of_interaction?.transaction_data || {};
+  return {
+    invoice_id: invoice.id,
+    amount: invoice.amount,
+    status: invoice.status,
+    mp_payment_id: invoice.mp_payment_id,
+    mp_payment_url: invoice.mp_payment_url,
+    qr_code: transactionData.qr_code || null,
+    qr_code_base64: transactionData.qr_code_base64 || null,
+    ticket_url: transactionData.ticket_url || invoice.mp_payment_url || null,
+    payment_status: paymentResponse?.status || null,
+    payment_status_detail: paymentResponse?.status_detail || null
+  };
+}
+
+async function createCheckoutPayment(invoiceId, payload) {
+  const invoice = await getInvoiceCheckout(invoiceId);
+
+  if (invoice.status === 'paid') {
+    return buildPaymentPayload(invoice);
+  }
+
+  const method = payload.method;
+  const payerEmail = String(payload.payer_email || '').trim().toLowerCase();
+
+  if (!payerEmail || !payerEmail.includes('@')) {
+    throw new Error('E-mail do pagador e obrigatorio.');
+  }
+
+  const client = createMercadoPagoClient();
+  const payment = new mercadopago.Payment(client);
+  const notificationUrl = `https://${process.env.DOMAIN || 'localhost:3000'}/api/billing/webhook/billing`;
+
+  const paymentData = {
+    transaction_amount: Number(invoice.amount),
+    description: `Assinatura ${invoice.subscription?.plan?.name || 'Adapter Connect'} - ${invoice.company.name}`,
+    external_reference: invoice.id,
+    notification_url: notificationUrl,
+    payer: { email: payerEmail }
+  };
+
+  if (method === 'pix') {
+    paymentData.payment_method_id = 'pix';
+  } else if (method === 'card') {
+    if (!payload.token || !payload.payment_method_id) {
+      throw new Error('Dados do cartao incompletos.');
+    }
+
+    paymentData.token = payload.token;
+    paymentData.payment_method_id = payload.payment_method_id;
+    paymentData.installments = Number(payload.installments || 1);
+    if (payload.issuer_id) paymentData.issuer_id = String(payload.issuer_id);
+    if (payload.identification_type && payload.identification_number) {
+      paymentData.payer.identification = {
+        type: payload.identification_type,
+        number: String(payload.identification_number).replace(/\D/g, '')
+      };
+    }
+  } else {
+    throw new Error('Forma de pagamento invalida.');
+  }
+
+  const response = await payment.create({
+    body: paymentData,
+    requestOptions: {
+      idempotencyKey: `${invoice.id}-${method}-${Date.now()}`
+    }
+  });
+
+  const mpPaymentUrl = response.point_of_interaction?.transaction_data?.ticket_url || null;
+  const updatedInvoice = await prisma.invoice.update({
+    where: { id: invoice.id },
+    data: {
+      mp_payment_id: String(response.id),
+      mp_payment_url: mpPaymentUrl,
+      status: response.status === 'approved' ? 'paid' : 'pending',
+      paid_at: response.status === 'approved' ? new Date() : null
+    }
+  });
+
+  if (response.status === 'approved') {
+    await processPaymentWebhook(response.id, response.status);
+  }
+
+  return buildPaymentPayload(updatedInvoice, response);
+}
+
+async function getCheckoutStatus(invoiceId) {
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId }
+  });
+
+  if (!invoice) {
+    throw new Error('Fatura nao encontrada.');
+  }
+
+  if (invoice.mp_payment_id && invoice.status !== 'paid') {
+    await processPaymentWebhook(invoice.mp_payment_id);
+  }
+
+  const refreshed = await prisma.invoice.findUnique({
+    where: { id: invoiceId }
+  });
+
+  return buildPaymentPayload(refreshed);
 }
 
 async function checkExpiredSubscriptions() {
@@ -224,10 +299,12 @@ async function processPaymentWebhook(paymentId, status) {
   try {
     const normalizedPaymentId = String(paymentId);
 
-    if (!status && PLATFORM_MP_ACCESS_TOKEN) {
+    const accessToken = getPlatformAccessToken();
+
+    if (!status && accessToken) {
       const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(normalizedPaymentId)}`, {
         headers: {
-          Authorization: `Bearer ${PLATFORM_MP_ACCESS_TOKEN}`
+          Authorization: `Bearer ${accessToken}`
         }
       });
 
@@ -359,6 +436,10 @@ async function cancelSubscription(companyId) {
 
 module.exports = {
   listActivePlans,
+  getCheckoutConfig,
+  getInvoiceCheckout,
+  createCheckoutPayment,
+  getCheckoutStatus,
   createSubscription,
   createInvoice,
   checkExpiredSubscriptions,
