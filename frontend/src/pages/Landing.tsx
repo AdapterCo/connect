@@ -84,6 +84,15 @@ function getMercadoPagoClientErrorMessage(err: any) {
   return message || 'Erro ao carregar checkout de cartao.';
 }
 
+function getCardPaymentFailureMessage(payment: any) {
+  const detail = payment?.payment_status_detail;
+  if (detail) {
+    return `Nao foi possivel realizar a cobranca (${detail}). Verifique os dados do cartao ou tente outro metodo de pagamento.`;
+  }
+
+  return 'Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.';
+}
+
 export default function Landing() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState('');
@@ -106,6 +115,7 @@ export default function Landing() {
   const [cardSdkReady, setCardSdkReady] = useState(false);
   const [cardNotice, setCardNotice] = useState('');
   const [cardError, setCardError] = useState('');
+  const [cardBrickKey, setCardBrickKey] = useState(0);
 
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlanId) || null,
@@ -242,9 +252,12 @@ export default function Landing() {
 
     try {
       if (!cardData?.token || !cardData?.payment_method_id) {
+        const message = 'Nao foi possivel validar os dados do cartao. Confira as informacoes e tente novamente.';
         setCardNotice('');
-        setCardError('Nao foi possivel validar os dados do cartao. Confira as informacoes e tente novamente.');
-        return;
+        setCardError(message);
+        setCardReady(false);
+        setCardBrickKey((current) => current + 1);
+        throw new Error(message);
       }
 
       const response = await api.post(`/billing/checkout/${checkoutInvoice.id}/payment`, {
@@ -262,12 +275,20 @@ export default function Landing() {
         setCardNotice('Pagamento aprovado. Ativando sua conta...');
         setPaymentApproved(true);
       } else {
+        const message = getCardPaymentFailureMessage(response.data.payment);
         setCardNotice('');
-        setCardError('Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.');
+        setCardError(message);
+        setCardReady(false);
+        setCardBrickKey((current) => current + 1);
+        throw new Error(message);
       }
     } catch (err: any) {
+      const message = err.response?.data?.error || getMercadoPagoClientErrorMessage(err) || 'Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.';
       setCardNotice('');
-      setCardError(err.response?.data?.error || getMercadoPagoClientErrorMessage(err) || 'Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.');
+      setCardError(message);
+      setCardReady(false);
+      setCardBrickKey((current) => current + 1);
+      throw new Error(message);
     } finally {
       setCreatingPayment(false);
     }
@@ -277,6 +298,14 @@ export default function Landing() {
     setCreatingPayment(false);
     setCardNotice('');
     setCardError(getMercadoPagoClientErrorMessage(err));
+  }, []);
+
+  const resetCardPaymentAttempt = useCallback(() => {
+    setCreatingPayment(false);
+    setCardNotice('');
+    setCardError('');
+    setCardReady(false);
+    setCardBrickKey((current) => current + 1);
   }, []);
 
   const copyPixCode = async () => {
@@ -467,7 +496,7 @@ export default function Landing() {
                             <div className={`rounded-lg border border-gray-700 bg-white p-3 text-gray-900 ${creatingPayment ? 'pointer-events-none opacity-70' : ''}`}>
                               {cardSdkReady && cardPaymentInitialization && (
                                 <CardPayment
-                                  key={checkoutInvoice.id}
+                                  key={`${checkoutInvoice.id}-${cardBrickKey}`}
                                   initialization={cardPaymentInitialization}
                                   customization={cardPaymentCustomization}
                                   locale="pt-BR"
@@ -483,9 +512,16 @@ export default function Landing() {
                               </p>
                             )}
                             {cardError && (
-                              <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                                {cardError}
-                              </p>
+                              <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                                <p>{cardError}</p>
+                                <button
+                                  type="button"
+                                  onClick={resetCardPaymentAttempt}
+                                  className="mt-2 rounded-md border border-red-400/40 px-3 py-1.5 text-xs font-semibold text-red-100 hover:bg-red-500/10"
+                                >
+                                  Tentar novamente
+                                </button>
+                              </div>
                             )}
                           </>
                         )}
