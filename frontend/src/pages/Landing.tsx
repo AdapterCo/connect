@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
 import api from '../services/api';
@@ -103,6 +103,7 @@ export default function Landing() {
   const [submitting, setSubmitting] = useState(false);
   const [creatingPayment, setCreatingPayment] = useState(false);
   const [cardReady, setCardReady] = useState(false);
+  const [cardSdkReady, setCardSdkReady] = useState(false);
   const [cardNotice, setCardNotice] = useState('');
   const [cardError, setCardError] = useState('');
 
@@ -125,6 +126,7 @@ export default function Landing() {
   useEffect(() => {
     if (!checkoutConfig?.public_key) return;
     initMercadoPago(checkoutConfig.public_key, { locale: 'pt-BR' });
+    setCardSdkReady(true);
   }, [checkoutConfig?.public_key]);
 
   useEffect(() => {
@@ -207,7 +209,31 @@ export default function Landing() {
     }
   };
 
-  const handleCardPaymentSubmit = async (cardData: any) => {
+  const cardPaymentInitialization = useMemo(() => {
+    if (!checkoutInvoice) return null;
+
+    return {
+      amount: checkoutInvoice.amount,
+      payer: { email: payerEmail }
+    };
+  }, [checkoutInvoice?.id, checkoutInvoice?.amount, payerEmail]);
+
+  const cardPaymentCustomization = useMemo(() => ({
+    paymentMethods: {
+      minInstallments: 1,
+      maxInstallments: 1,
+      types: { included: ['credit_card', 'debit_card'] as Array<'credit_card' | 'debit_card'> }
+    },
+    visual: {
+      hideFormTitle: true
+    }
+  }), []);
+
+  const handleCardPaymentReady = useCallback(() => {
+    setCardReady(true);
+  }, []);
+
+  const handleCardPaymentSubmit = useCallback(async (cardData: any) => {
     if (!checkoutInvoice) return;
 
     setCreatingPayment(true);
@@ -245,13 +271,13 @@ export default function Landing() {
     } finally {
       setCreatingPayment(false);
     }
-  };
+  }, [checkoutInvoice, payerEmail]);
 
-  const handleCardPaymentError = (err: any) => {
+  const handleCardPaymentError = useCallback((err: any) => {
     setCreatingPayment(false);
     setCardNotice('');
     setCardError(getMercadoPagoClientErrorMessage(err));
-  };
+  }, []);
 
   const copyPixCode = async () => {
     if (!pixPayment?.qr_code) return;
@@ -437,32 +463,19 @@ export default function Landing() {
                         )}
                         {checkoutConfig?.card_enabled && (
                           <>
-                            {!cardReady && <p className="mb-3 text-sm text-gray-400">Carregando formulario seguro do Mercado Pago...</p>}
+                            {(!cardReady || !cardSdkReady) && <p className="mb-3 text-sm text-gray-400">Carregando formulario seguro do Mercado Pago...</p>}
                             <div className={`rounded-lg border border-gray-700 bg-white p-3 text-gray-900 ${creatingPayment ? 'pointer-events-none opacity-70' : ''}`}>
-                              <CardPayment
-                                key={checkoutInvoice.id}
-                                initialization={{
-                                  amount: checkoutInvoice.amount,
-                                  payer: { email: payerEmail }
-                                }}
-                                customization={{
-                                  paymentMethods: {
-                                    minInstallments: 1,
-                                    maxInstallments: 1,
-                                    types: { included: ['credit_card', 'debit_card'] }
-                                  },
-                                  visual: {
-                                    hideFormTitle: true
-                                  }
-                                }}
-                                locale="pt-BR"
-                                onReady={() => {
-                                  setCardReady(true);
-                                  setCardError('');
-                                }}
-                                onError={handleCardPaymentError}
-                                onSubmit={handleCardPaymentSubmit}
-                              />
+                              {cardSdkReady && cardPaymentInitialization && (
+                                <CardPayment
+                                  key={checkoutInvoice.id}
+                                  initialization={cardPaymentInitialization}
+                                  customization={cardPaymentCustomization}
+                                  locale="pt-BR"
+                                  onReady={handleCardPaymentReady}
+                                  onError={handleCardPaymentError}
+                                  onSubmit={handleCardPaymentSubmit}
+                                />
+                              )}
                             </div>
                             {cardNotice && (
                               <p className="mt-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-200">
