@@ -39,6 +39,8 @@ async function createMercadoPagoPreference(chatId, item, value, settings) {
 
 async function checkAllPendingPayments() {
   try {
+    console.log('[MP Polling] Iniciando verificação de pagamentos pendentes...');
+    
     // PERFORMANCE: Filtrar diretamente no banco apenas chats com mensagens de pagamento pendentes
     // Evita table scan completo em toda a tabela de chats
     const chats = await prisma.chat.findMany({
@@ -61,101 +63,157 @@ async function checkAllPendingPayments() {
       }
     });
 
+    console.log(`[MP Polling] Encontrados ${chats.length} chats com pagamentos pendentes`);
+
+    if (chats.length === 0) {
+      return;
+    }
+
     for (const chat of chats) {
       const companyId = chat.company_id || 'comp_default';
       const company = chat.company;
 
-      if (!company || !company.mp_access_token || !company.mp_enabled) continue;
+      if (!company) {
+        console.log(`[MP Polling] Chat ${chat.id} sem empresa associada, pulando...`);
+        continue;
+      }
+
+      if (!company.mp_access_token) {
+        console.log(`[MP Polling] Empresa ${companyId} sem mp_access_token, pulando...`);
+        continue;
+      }
+
+      if (!company.mp_enabled) {
+        console.log(`[MP Polling] Empresa ${companyId} com mp_enabled=false, pulando...`);
+        continue;
+      }
 
       // FIX: Descriptografar mp_access_token antes de usar na API
       const accessToken = decrypt(company.mp_access_token);
+      
+      // Detectar se token parece estar criptografado (formato hex:hex) ou plaintext
+      const isEncrypted = /^[0-9a-f]+:[0-9a-f]+$/i.test(company.mp_access_token);
+      console.log(`[MP Polling] Empresa ${companyId}: token ${isEncrypted ? 'criptografado' : 'plaintext'}, descriptografado com ${accessToken ? accessToken.length : 0} chars`);
+      
+      if (!accessToken || accessToken.trim() === '') {
+        console.log(`[MP Polling] Empresa ${companyId} token descriptografado vazio, pulando...`);
+        continue;
+      }
+
       const pendingMessages = chat.messages; // Já filtrado pelo where acima
+      console.log(`[MP Polling] Chat ${chat.id} (${chat.client_name}): ${pendingMessages.length} mensagens pendentes`);
 
       for (const msg of pendingMessages) {
         try {
+          console.log(`[MP Polling] Verificando preference_id: ${msg.payment_id}`);
+          
           const response = await fetch(`https://api.mercadopago.com/v1/payments/search?preference_id=${msg.payment_id}`, {
             headers: {
               'Authorization': `Bearer ${accessToken}`
             }
           });
 
-          if (response.ok) {
-            const data = await response.json();
-            const payments = data.results || [];
-            const approvedPayment = payments.find(p => p.status === 'approved');
+          console.log(`[MP Polling] API respondeu com status: ${response.status}`);
 
-            if (approvedPayment) {
-              await prisma.message.update({
-                where: { id: msg.id },
-                data: { payment_status: 'approved' }
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[MP Polling] Erro na API: ${response.status} - ${errorText}`);
+            continue;
+          }
+
+          const data = await response.json();
+          const payments = data.results || [];
+          console.log(`[MP Polling] Encontrados ${payments.length} pagamentos para preference ${msg.payment_id}`);
+
+          const approvedPayment = payments.find(p => p.status === 'approved');
+
+          if (approvedPayment) {
+            console.log(`[MP Polling] ✅ Pagamento APROVADO encontrado! ID: ${approvedPayment.id}, Valor: ${approvedPayment.transaction_amount}`);
+            
+            await prisma.message.update({
+              where: { id: msg.id },
+              data: { payment_status: 'approved' }
+            });
+
+            const approvedValue = approvedPayment.transaction_amount;
+            const approvedItem = approvedPayment.description || 'Produto';
+            
+             const oldStatus = chat.status;
+            await Chat.update(chat.id, { status: 'finalizada' }, companyId);
+
+            // Find and auto-print pending order in this chat
+            const pendingOrder = await prisma.order.findFirst({
+              where: { chat_id: chat.id, status: 'pending' },
+              orderBy: { created_at: 'desc' }
+            });
+
+            if (pendingOrder) {
+              console.log(`[MP Polling] Atualizando pedido ${pendingOrder.id} para paid/preparing`);
+              await prisma.order.update({
+                where: { id: pendingOrder.id },
+                data: { payment_status: 'paid', status: 'preparing' }
               });
 
-              const approvedValue = approvedPayment.transaction_amount;
-              const approvedItem = approvedPayment.description || 'Produto';
-              
-               const oldStatus = chat.status;
-              await Chat.update(chat.id, { status: 'finalizada' }, companyId);
+              try {
+                const printService = require('./printService');
+                await printService.printOrder(pendingOrder.id);
+                console.log(`[MP Polling] Impressão disparada para pedido ${pendingOrder.id}`);
+              } catch (printErr) {
+                console.error('[MP Polling] Falha ao imprimir:', printErr);
+              }
+            } else {
+              console.log(`[MP Polling] Nenhum pedido pendente encontrado para chat ${chat.id}`);
+            }
 
-              // Find and auto-print pending order in this chat
-              const pendingOrder = await prisma.order.findFirst({
-                where: { chat_id: chat.id, status: 'pending' },
-                orderBy: { created_at: 'desc' }
-              });
+            const confirmMsg1 = {
+              sender: 'system',
+              text: `✅ Pagamento REAL de R$ ${Number(approvedValue).toFixed(2)} recebido com sucesso via Mercado Pago! (Item: ${approvedItem})`,
+              timestamp: new Date(),
+              is_ai: false
+            };
 
-              if (pendingOrder) {
-                await prisma.order.update({
-                  where: { id: pendingOrder.id },
-                  data: { payment_status: 'paid', status: 'preparing' }
+            const confirmMsg2 = {
+              sender: 'system',
+              text: `🤖 Atendente IA: Alterando status do cliente de '${oldStatus}' para 'finalizada'.`,
+              timestamp: new Date(),
+              is_ai: false
+            };
+
+            await Chat.addMessage(chat.id, confirmMsg1);
+            await Chat.addMessage(chat.id, confirmMsg2);
+            
+            await Log.add(`Mercado Pago REAL (Auto-Sincronização): Pagamento APROVADO para ${chat.client_name}. Status atualizado para 'finalizada'.`, companyId);
+
+            const { getActiveConnections } = require('./whatsappService');
+            const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
+            if (conn && conn.connectionStatus === 'open' && conn.sock) {
+              try {
+                const targetJid = chat.id;
+                await conn.sock.sendMessage(targetJid, { 
+                  text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(approvedValue).toFixed(2)} pelo item *${approvedItem}*. Obrigado!` 
                 });
-
-                try {
-                  const printService = require('./printService');
-                  await printService.printOrder(pendingOrder.id);
-                } catch (printErr) {
-                  console.error('[Auto Print] Failed to print paid order:', printErr);
-                }
+                console.log(`[MP Polling] Mensagem de confirmação enviada para ${chat.client_name}`);
+              } catch (err) {
+                console.error('[MP Polling] Falha ao enviar mensagem WhatsApp:', err);
               }
-
-              const confirmMsg1 = {
-                sender: 'system',
-                text: `✅ Pagamento REAL de R$ ${Number(approvedValue).toFixed(2)} recebido com sucesso via Mercado Pago! (Item: ${approvedItem})`,
-                timestamp: new Date(),
-                is_ai: false
-              };
-
-              const confirmMsg2 = {
-                sender: 'system',
-                text: `🤖 Atendente IA: Alterando status do cliente de '${oldStatus}' para 'finalizada'.`,
-                timestamp: new Date(),
-                is_ai: false
-              };
-
-              await Chat.addMessage(chat.id, confirmMsg1);
-              await Chat.addMessage(chat.id, confirmMsg2);
-              
-              await Log.add(`Mercado Pago REAL (Auto-Sincronização): Pagamento APROVADO para ${chat.client_name}. Status atualizado para 'finalizada'.`, companyId);
-
-              const { getActiveConnections } = require('./whatsappService');
-              const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
-              if (conn && conn.connectionStatus === 'open' && conn.sock) {
-                try {
-                  const targetJid = chat.id;
-                  await conn.sock.sendMessage(targetJid, { 
-                    text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(approvedValue).toFixed(2)} pelo item *${approvedItem}*. Obrigado!` 
-                  });
-                } catch (err) {
-                  console.error(err);
-                }
-              }
+            } else {
+              console.log(`[MP Polling] WhatsApp não conectado para instância ${chat.instance_id}, mensagem não enviada`);
+            }
+          } else {
+            console.log(`[MP Polling] Nenhum pagamento aprovado encontrado para preference ${msg.payment_id}`);
+            if (payments.length > 0) {
+              console.log(`[MP Polling] Status dos pagamentos: ${payments.map(p => p.status).join(', ')}`);
             }
           }
         } catch (err) {
-          console.error(err);
+          console.error(`[MP Polling] Erro ao verificar pagamento ${msg.payment_id}:`, err);
         }
       }
     }
+    
+    console.log('[MP Polling] Verificação concluída');
   } catch (error) {
-    console.error('Error checking pending payments:', error);
+    console.error('[MP Polling] Erro geral:', error);
   }
 }
 

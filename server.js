@@ -48,9 +48,10 @@ setInterval(async () => {
   if (paymentsRunning) return;
   paymentsRunning = true;
   try {
+    console.log('[Server] Executando polling de pagamentos...');
     await mercadoPagoService.checkAllPendingPayments();
   } catch (err) {
-    console.error(err);
+    console.error('[Server] Erro no polling de pagamentos:', err);
   } finally {
     paymentsRunning = false;
   }
