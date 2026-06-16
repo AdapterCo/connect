@@ -15,6 +15,9 @@ async function createMercadoPagoPreference(chatId, item, value, settings) {
   const client = new mercadopago.MercadoPagoConfig({ accessToken: accessToken });
   const preference = new mercadopago.Preference(client);
   
+  // Gerar ID único para external_reference (será usado para buscar pagamentos)
+  const externalRef = `chat_${chatId}_${Date.now()}`;
+  
   const response = await preference.create({
     body: {
       items: [
@@ -25,6 +28,7 @@ async function createMercadoPagoPreference(chatId, item, value, settings) {
           currency_id: 'BRL'
         }
       ],
+      external_reference: externalRef,
       metadata: {
         chat_id: chatId
       }
@@ -33,7 +37,8 @@ async function createMercadoPagoPreference(chatId, item, value, settings) {
 
   return {
     id: response.id,
-    url: response.init_point
+    url: response.init_point,
+    external_reference: externalRef
   };
 }
 
@@ -105,9 +110,9 @@ async function checkAllPendingPayments() {
 
       for (const msg of pendingMessages) {
         try {
-          console.log(`[MP Polling] Verificando preference_id: ${msg.payment_id}`);
+          console.log(`[MP Polling] Verificando external_reference: ${msg.payment_id}`);
           
-          const response = await fetch(`https://api.mercadopago.com/v1/payments/search?preference_id=${msg.payment_id}`, {
+          const response = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${msg.payment_id}`, {
             headers: {
               'Authorization': `Bearer ${accessToken}`
             }
@@ -123,7 +128,7 @@ async function checkAllPendingPayments() {
 
           const data = await response.json();
           const payments = data.results || [];
-          console.log(`[MP Polling] Encontrados ${payments.length} pagamentos para preference ${msg.payment_id}`);
+          console.log(`[MP Polling] Encontrados ${payments.length} pagamentos para external_reference ${msg.payment_id}`);
 
           const approvedPayment = payments.find(p => p.status === 'approved');
 
@@ -200,7 +205,7 @@ async function checkAllPendingPayments() {
               console.log(`[MP Polling] WhatsApp não conectado para instância ${chat.instance_id}, mensagem não enviada`);
             }
           } else {
-            console.log(`[MP Polling] Nenhum pagamento aprovado encontrado para preference ${msg.payment_id}`);
+            console.log(`[MP Polling] Nenhum pagamento aprovado encontrado para external_reference ${msg.payment_id}`);
             if (payments.length > 0) {
               console.log(`[MP Polling] Status dos pagamentos: ${payments.map(p => p.status).join(', ')}`);
             }

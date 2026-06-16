@@ -436,7 +436,7 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
                 text: `🔗 Cobrança Gerada: ${billingItem} - R$ ${Number(billingValue).toFixed(2)}. Link para pagar: ${paymentData.url}`,
                 timestamp: new Date(),
                 is_ai: false,
-                payment_id: paymentData.id,
+                payment_id: paymentData.external_reference,
                 payment_url: paymentData.url,
                 payment_status: 'pending'
               };

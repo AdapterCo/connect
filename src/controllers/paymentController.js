@@ -35,7 +35,7 @@ async function createCharge(req, res) {
       text: `🔗 Cobrança Gerada: ${item} - R$ ${Number(value).toFixed(2)}. Link para pagar: ${paymentData.url}`,
       timestamp: new Date(),
       is_ai: false,
-      payment_id: paymentData.id,
+      payment_id: paymentData.external_reference,
       payment_url: paymentData.url,
       payment_status: 'pending'
     };
@@ -108,7 +108,7 @@ async function checkPaymentStatus(req, res) {
 
     for (const msg of pendingMessages) {
       try {
-        const response = await fetch(`https://api.mercadopago.com/v1/payments/search?preference_id=${msg.payment_id}`, {
+        const response = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${msg.payment_id}`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
