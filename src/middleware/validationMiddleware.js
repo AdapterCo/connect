@@ -82,7 +82,7 @@ function validateRegisterTenant(req, res, next) {
   }
 
   if (!planId || typeof planId !== 'string') {
-    return res.status(400).json({ error: 'Plano Ã© obrigatÃ³rio.' });
+    return res.status(400).json({ error: 'Plano é obrigatório.' });
   }
 
   req.body.companyName = companyName.trim();
@@ -149,33 +149,11 @@ function validateSchedule(req, res, next) {
   next();
 }
 
-function sanitizeString(str) {
-  if (typeof str !== 'string') return str;
-  return str
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-    .trim();
-}
-
-function sanitizeBody(req, res, next) {
-  if (req.body) {
-    for (const key in req.body) {
-      if (typeof req.body[key] === 'string') {
-        req.body[key] = sanitizeString(req.body[key]);
-      }
-    }
-  }
-  next();
-}
-
 module.exports = {
   validateLogin,
   validateRegister,
   validateRegisterTenant,
   validateMessage,
   validateCharge,
-  validateSchedule,
-  sanitizeBody
+  validateSchedule
 };

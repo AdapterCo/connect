@@ -6,7 +6,6 @@ export default function ForgotPassword() {
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [resetToken, setResetToken] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -16,11 +15,8 @@ export default function ForgotPassword() {
     setLoading(true);
 
     try {
-      const res = await api.post('/password-reset/request', { username });
+      await api.post('/password-reset/request', { username });
       setSuccess(true);
-      if (res.data.token) {
-        setResetToken(res.data.token);
-      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erro ao processar solicitação.');
     } finally {
@@ -49,21 +45,10 @@ export default function ForgotPassword() {
           {success ? (
             <div className="text-center">
               <div className="text-4xl mb-4">📧</div>
-              <h3 className="text-lg font-bold text-white mb-2">Link Gerado!</h3>
+              <h3 className="text-lg font-bold text-white mb-2">Solicitação Enviada!</h3>
               <p className="text-gray-400 text-sm mb-4">
-                Se o usuário existir, um link de recuperação foi gerado.
+                Se o usuário existir, instruções de recuperação serão enviadas.
               </p>
-              {resetToken && (
-                <div className="bg-gray-700/50 border border-gray-600 rounded-lg p-4 mb-4">
-                  <p className="text-xs text-gray-400 mb-2">Link de recuperação:</p>
-                  <a
-                    href={`/reset-password?token=${resetToken}`}
-                    className="text-indigo-400 hover:text-indigo-300 text-sm break-all"
-                  >
-                    Clique aqui para redefinir sua senha
-                  </a>
-                </div>
-              )}
               <Link
                 to="/login"
                 className="text-indigo-400 hover:text-indigo-300 text-sm"

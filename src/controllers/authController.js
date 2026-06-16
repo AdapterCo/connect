@@ -187,7 +187,7 @@ async function registerTenant(req, res) {
     });
 
     if (!plan || !plan.is_active || plan.price <= 0) {
-      return res.status(400).json({ error: 'Plano invÃ¡lido ou indisponÃ­vel.' });
+      return res.status(400).json({ error: 'Plano inválido ou indisponível.' });
     }
 
     const existingCompany = await prisma.company.findUnique({

@@ -66,9 +66,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   // PERFORMANCE: Atualiza apenas o chat específico no estado local sem re-fetch HTTP
-  updateChat: (updatedChat) => set((state) => ({
-    chats: state.chats.map((c) => c.id === updatedChat.id ? updatedChat : c)
-  })),
+  updateChat: (updatedChat) => set((state) => {
+    const exists = state.chats.some((c) => c.id === updatedChat.id);
+    if (exists) {
+      return { chats: state.chats.map((c) => c.id === updatedChat.id ? updatedChat : c) };
+    }
+    return { chats: [...state.chats, updatedChat] };
+  }),
 
   fetchChats: async () => {
     const response = await api.get('/chats');

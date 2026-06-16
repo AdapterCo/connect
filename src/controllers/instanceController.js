@@ -69,7 +69,7 @@ async function disconnectInstance(req, res) {
       return res.status(404).json({ error: 'Conexão não encontrada.' });
     }
 
-    await whatsappService.stopWhatsAppInstance(inst.id, true);
+    await whatsappService.stopWhatsAppInstance(inst.id, false);
     await Instance.updateStatus(inst.id, 'disconnected', null, req.user.company_id);
 
     res.json({ success: true });

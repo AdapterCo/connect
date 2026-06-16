@@ -33,13 +33,9 @@ async function requestPasswordReset(req, res) {
       }
     });
 
-    const resetUrl = `https://${process.env.DOMAIN || 'localhost:3000'}/reset-password?token=${token}`;
-
     res.json({
       success: true,
-      message: 'Token de recuperação gerado.',
-      reset_url: resetUrl,
-      token
+      message: 'Se o usuário existir, instruções de recuperação serão enviadas.'
     });
   } catch (error) {
     console.error('Erro ao solicitar reset de senha:', error);

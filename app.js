@@ -133,6 +133,10 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ error: err.message });
   }
   if (err) {
+    console.error('[Error Handler]', err);
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(500).json({ error: 'Erro interno do servidor.' });
+    }
     return res.status(400).json({ error: err.message });
   }
   next();

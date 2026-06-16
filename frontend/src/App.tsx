@@ -21,6 +21,11 @@ import Catalog from './pages/Catalog';
 import Orders from './pages/Orders';
 import Cardapio from './pages/Cardapio';
 
+function ProtectedLanding() {
+  const { isAuthenticated } = useAuthStore();
+  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />;
+}
+
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
 
@@ -31,7 +36,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Landing />} />
+        <Route path="/" element={<ProtectedLanding />} />
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />

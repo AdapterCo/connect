@@ -4,9 +4,13 @@ const { verifyToken } = require('./auth');
 let io = null;
 
 function initSocket(server) {
+  const corsOrigin = process.env.NODE_ENV === 'production'
+    ? [`https://${process.env.DOMAIN || 'connect.adapterco.com.br'}`]
+    : '*';
+
   io = new Server(server, {
     cors: {
-      origin: '*'
+      origin: corsOrigin
     }
   });
 
@@ -41,12 +45,6 @@ function getIO() {
   return io;
 }
 
-function emitToAll(event, data) {
-  if (io) {
-    io.emit(event, data);
-  }
-}
-
 function emitToCompany(companyId, event, data) {
   if (io) {
     io.to(companyId).emit(event, data);
@@ -56,6 +54,5 @@ function emitToCompany(companyId, event, data) {
 module.exports = {
   initSocket,
   getIO,
-  emitToAll,
   emitToCompany
 };
