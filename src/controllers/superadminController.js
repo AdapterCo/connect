@@ -70,8 +70,7 @@ async function createCompany(req, res) {
     const maxUsers = plan.max_users;
     const maxProducts = plan.max_products;
 
-    const salt = bcrypt.genSaltSync(10);
-    const hashedPassword = bcrypt.hashSync(admin_password, salt);
+    const hashedPassword = await bcrypt.hash(admin_password, 10);
 
     const suffix = Math.random().toString(36).substring(2, 6);
     const companyId = 'comp_' + Date.now() + '_' + suffix;

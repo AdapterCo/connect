@@ -379,7 +379,9 @@ async function createCheckoutPayment(invoiceId, payload) {
     const response = await payment.create({
       body: paymentData,
       requestOptions: {
-        idempotencyKey: `${signupCheckout.id}-${method}-${Date.now()}`
+        idempotencyKey: method === 'card'
+          ? `${signupCheckout.id}-${method}-${payload.token?.slice(-8) || ''}`
+          : `${signupCheckout.id}-${method}`
       }
     });
 
@@ -450,7 +452,9 @@ async function createCheckoutPayment(invoiceId, payload) {
   const response = await payment.create({
     body: paymentData,
     requestOptions: {
-      idempotencyKey: `${invoice.id}-${method}-${Date.now()}`
+      idempotencyKey: method === 'card'
+        ? `${invoice.id}-${method}-${payload.token?.slice(-8) || ''}`
+        : `${invoice.id}-${method}`
     }
   });
 

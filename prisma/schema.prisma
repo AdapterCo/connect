@@ -123,6 +123,10 @@ model Chat {
   instance      Instance  @relation(fields: [instance_id], references: [id], onDelete: Cascade)
   messages      Message[]
   orders        Order[]
+
+  @@index([company_id])
+  @@index([company_id, status])
+  @@index([instance_id])
 }
 
 model Message {
@@ -142,6 +146,9 @@ model Message {
   payment_url    String?
   payment_status String?
   chat           Chat     @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+
+  @@index([chat_id])
+  @@index([payment_id])
 }
 
 model ScheduledMessage {
@@ -157,6 +164,9 @@ model ScheduledMessage {
   company_id    String
   created_at    DateTime @default(now())
   company       Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@index([company_id])
+  @@index([scheduledTime])
 }
 
 model Log {
@@ -165,6 +175,8 @@ model Log {
   company_id String
   timestamp  DateTime @default(now())
   company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@index([company_id])
 }
 
 model Metric {
@@ -177,6 +189,9 @@ model Metric {
   company_id       String
   timestamp        DateTime @default(now())
   company          Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@index([company_id])
+  @@index([company_id, type])
 }
 
 model Subscription {
@@ -193,6 +208,9 @@ model Subscription {
   company               Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
   plan                  Plan      @relation(fields: [plan_id], references: [id], onDelete: Cascade)
   invoices              Invoice[]
+
+  @@index([company_id])
+  @@index([company_id, status])
 }
 
 model Invoice {
@@ -208,6 +226,9 @@ model Invoice {
   created_at      DateTime      @default(now())
   company         Company       @relation(fields: [company_id], references: [id], onDelete: Cascade)
   subscription    Subscription? @relation(fields: [subscription_id], references: [id], onDelete: SetNull)
+
+  @@index([company_id])
+  @@index([mp_payment_id])
 }
 
 model SignupCheckout {
@@ -229,6 +250,9 @@ model SignupCheckout {
   created_at         DateTime @default(now())
   updated_at         DateTime @updatedAt
   plan               Plan     @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+
+  @@index([mp_payment_id])
+  @@index([status])
 }
 
 model PasswordResetToken {
@@ -254,6 +278,8 @@ model AuditLog {
   user_agent String?
   timestamp  DateTime @default(now())
   company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@index([company_id])
 }
 
 model Category {
@@ -335,6 +361,10 @@ model Order {
   chat            Chat        @relation(fields: [chat_id], references: [id], onDelete: Cascade)
   company         Company     @relation(fields: [company_id], references: [id], onDelete: Cascade)
   items           OrderItem[]
+
+  @@index([company_id])
+  @@index([chat_id])
+  @@index([company_id, status])
 }
 
 model OrderItem {
@@ -353,13 +383,13 @@ model OrderItem {
 }
 
 model OrderItemAddon {
-  id         String       @id @default(uuid())
-  addon_id   String
-  quantity   Int          @default(1)
+  id            String       @id @default(uuid())
+  addon_id      String
+  quantity      Int          @default(1)
   order_item_id String
-  created_at DateTime     @default(now())
-  addon      ProductAddon @relation(fields: [addon_id], references: [id], onDelete: Cascade)
-  orderItem  OrderItem    @relation(fields: [order_item_id], references: [id], onDelete: Cascade)
+  created_at    DateTime     @default(now())
+  addon         ProductAddon @relation(fields: [addon_id], references: [id], onDelete: Cascade)
+  orderItem     OrderItem    @relation(fields: [order_item_id], references: [id], onDelete: Cascade)
 }
 
 model Printer {

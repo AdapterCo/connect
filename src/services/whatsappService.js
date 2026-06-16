@@ -14,6 +14,7 @@ const Instance = require('../models/Instance');
 const Metrics = require('../models/Metrics');
 const aiService = require('./aiService');
 const { createMercadoPagoPreference } = require('./mercadoPagoService');
+const { decrypt } = require('../utils/crypto');
 
 const activeConnections = {};
 
@@ -214,7 +215,8 @@ async function startWhatsAppInstance(instanceId, companyId) {
 
             const fileSavedName = `${mediaType}_incoming_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`;
             const savePath = path.join(UPLOAD_DIR, fileSavedName);
-            fs.writeFileSync(savePath, buffer);
+            // PERFORMANCE: Substituído fs.writeFileSync (bloqueante) por operação assíncrona
+            await fs.promises.writeFile(savePath, buffer);
 
             mediaInfo = {
               mediaUrl: `/uploads/${fileSavedName}`,
@@ -329,7 +331,9 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
     };
     await Chat.addMessage(chat.id, clientMsg);
 
-    emitToCompany(companyId, 'chats_updated', await Chat.findAll(companyId));
+    // PERFORMANCE: Emitir apenas o chat afetado, não toda a lista de chats do banco
+    const chatAfterClientMsg = await Chat.findById(chat.id, companyId);
+    emitToCompany(companyId, 'chat_updated', chatAfterClientMsg);
     emitToCompany(companyId, 'logs_updated', await Log.findAll(companyId));
 
     if (chat.is_blocked) {
@@ -342,9 +346,11 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
 
     const settings = await prisma.settings.findUnique({
       where: { company_id: companyId }
-    }) || await prisma.settings.findUnique({
-      where: { company_id: 'comp_default' }
     });
+    // Se não houver settings para esta empresa, IA permanece desabilitada (sem fallback)
+    if (!settings) {
+      return chat;
+    }
 
     if (settings.ai_enabled) {
       if (chat.ai_active === false) {
@@ -418,7 +424,8 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
               const mpSettings = {
                 ...settings,
                 mp_enabled: company.mp_enabled,
-                mp_access_token: company.mp_access_token,
+                // FIX: Descriptografar token antes de usar na API do MercadoPago
+                mp_access_token: company.mp_access_token ? decrypt(company.mp_access_token) : '',
                 mp_public_key: company.mp_public_key
               };
               
@@ -482,10 +489,12 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
       }
     }
 
-    emitToCompany(companyId, 'chats_updated', await Chat.findAll(companyId));
+    // PERFORMANCE: Emitir apenas o chat final atualizado, não toda a lista do banco
+    const finalChat = await Chat.findById(senderJid, companyId);
+    emitToCompany(companyId, 'chat_updated', finalChat);
     emitToCompany(companyId, 'logs_updated', await Log.findAll(companyId));
     
-    return await Chat.findById(senderJid, companyId);
+    return finalChat;
   } catch (error) {
     console.error('Error in handleIncomingWhatsAppMessage:', error);
   }

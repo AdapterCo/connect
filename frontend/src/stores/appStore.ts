@@ -19,6 +19,9 @@ interface AppState {
   selectChat: (chatId: string | null) => void;
   reset: () => void;
 
+  // PERFORMANCE: Nova ação para atualização granular de um único chat (via evento socket 'chat_updated')
+  updateChat: (chat: Chat) => void;
+
   fetchChats: () => Promise<void>;
   fetchInstances: () => Promise<void>;
   fetchUsers: () => Promise<void>;
@@ -62,6 +65,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     isLoading: false
   }),
 
+  // PERFORMANCE: Atualiza apenas o chat específico no estado local sem re-fetch HTTP
+  updateChat: (updatedChat) => set((state) => ({
+    chats: state.chats.map((c) => c.id === updatedChat.id ? updatedChat : c)
+  })),
+
   fetchChats: async () => {
     const response = await api.get('/chats');
     set({ chats: response.data });
@@ -87,53 +95,58 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ settings: response.data });
   },
 
+  // PERFORMANCE: Ações não chamam mais fetchChats() após cada operação.
+  // O evento socket 'chat_updated' retornado pelo backend atualiza o estado via updateChat().
+  // Isso elimina 9 requisições HTTP desnecessárias a cada interação com chats.
+
   sendMessage: async (chatId, text, isNote = false, mediaUrl, mediaType, fileName) => {
     await api.post(`/chats/${chatId}/message`, { text, isNote, mediaUrl, mediaType, fileName });
-    await get().fetchChats();
+    // Socket event 'chat_updated' irá atualizar o estado via useSocket
   },
 
   updateChatStatus: async (chatId, status) => {
-    await api.put(`/chats/${chatId}/status`, { status });
-    await get().fetchChats();
+    const response = await api.post(`/chats/${chatId}/status`, { status });
+    // Atualização otimista a partir da resposta da API
+    if (response.data?.chat) get().updateChat(response.data.chat);
   },
 
   assignChat: async (chatId, userId) => {
-    await api.put(`/chats/${chatId}/assign`, { userId });
-    await get().fetchChats();
+    const response = await api.post(`/chats/${chatId}/assign`, { userId });
+    if (response.data?.chat) get().updateChat(response.data.chat);
   },
 
   toggleAi: async (chatId, aiActive) => {
-    await api.put(`/chats/${chatId}/ai`, { aiActive });
-    await get().fetchChats();
+    const response = await api.post(`/chats/${chatId}/ai-toggle`, { aiActive });
+    if (response.data?.chat) get().updateChat(response.data.chat);
   },
 
   updateSector: async (chatId, sector) => {
-    await api.put(`/chats/${chatId}/sector`, { sector });
-    await get().fetchChats();
+    const response = await api.post(`/chats/${chatId}/sector`, { sector });
+    if (response.data?.chat) get().updateChat(response.data.chat);
   },
 
   toggleFavorite: async (chatId, isFavorite) => {
-    await api.put(`/chats/${chatId}/favorite`, { isFavorite });
-    await get().fetchChats();
+    const response = await api.post(`/chats/${chatId}/favorite`, { isFavorite });
+    if (response.data?.chat) get().updateChat(response.data.chat);
   },
 
   toggleArchive: async (chatId, isArchived) => {
-    await api.put(`/chats/${chatId}/archive`, { isArchived });
-    await get().fetchChats();
+    const response = await api.post(`/chats/${chatId}/archive`, { isArchived });
+    if (response.data?.chat) get().updateChat(response.data.chat);
   },
 
   toggleBlock: async (chatId, isBlocked) => {
-    await api.put(`/chats/${chatId}/block`, { isBlocked });
-    await get().fetchChats();
+    const response = await api.post(`/chats/${chatId}/block`, { isBlocked });
+    if (response.data?.chat) get().updateChat(response.data.chat);
   },
 
   addTag: async (chatId, tag) => {
-    await api.post(`/chats/${chatId}/tags`, { tag });
-    await get().fetchChats();
+    const response = await api.post(`/chats/${chatId}/tags`, { tag });
+    if (response.data?.chat) get().updateChat(response.data.chat);
   },
 
   deleteTag: async (chatId, tag) => {
-    await api.delete(`/chats/${chatId}/tags`, { data: { tag } });
-    await get().fetchChats();
+    const response = await api.delete(`/chats/${chatId}/tags`, { data: { tag } });
+    if (response.data?.chat) get().updateChat(response.data.chat);
   }
 }));

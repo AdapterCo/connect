@@ -5,27 +5,40 @@ const { encrypt, decrypt } = require('../utils/crypto');
 async function getSettings(req, res) {
   try {
     const companyId = req.user.company_id;
-    let settings = await prisma.settings.findUnique({
+
+    // FIX SEGURANÇA: Nunca fazer fallback para comp_default.
+    // Isso vazava as API keys do administrador da plataforma para qualquer novo tenant.
+    const settings = await prisma.settings.findUnique({
       where: { company_id: companyId }
     });
-
-    if (!settings) {
-      settings = await prisma.settings.findUnique({
-        where: { company_id: 'comp_default' }
-      });
-    }
 
     const company = await prisma.company.findUnique({
       where: { id: companyId }
     });
 
+    // Se não houver settings para esta empresa, retornar defaults vazios (sem keys de outra empresa)
+    const safeSettings = settings || {
+      id: null,
+      company_id: companyId,
+      ai_enabled: false,
+      ai_provider: 'mock',
+      gemini_key: null,
+      openai_key: null,
+      grok_key: null,
+      gemini_model: 'gemini-2.5-flash',
+      openai_model: 'gpt-4o-mini',
+      grok_model: 'grok-beta',
+      system_prompt: ''
+    };
+
     const result = {
-      ...settings,
-      gemini_key: settings?.gemini_key ? decrypt(settings.gemini_key) : '',
-      openai_key: settings?.openai_key ? decrypt(settings.openai_key) : '',
-      grok_key: settings?.grok_key ? decrypt(settings.grok_key) : '',
+      ...safeSettings,
+      gemini_key: safeSettings.gemini_key ? decrypt(safeSettings.gemini_key) : '',
+      openai_key: safeSettings.openai_key ? decrypt(safeSettings.openai_key) : '',
+      grok_key: safeSettings.grok_key ? decrypt(safeSettings.grok_key) : '',
       mp_enabled: company?.mp_enabled || false,
-      mp_access_token: company?.mp_access_token || '',
+      // FIX SEGURANÇA: mp_access_token agora é encriptado no banco; descriptografar na leitura
+      mp_access_token: company?.mp_access_token ? decrypt(company.mp_access_token) : '',
       mp_public_key: company?.mp_public_key || ''
     };
 
@@ -59,13 +72,13 @@ async function updateSettings(req, res) {
       create: {
         company_id: companyId,
         ai_enabled: data.ai_enabled || false,
-        ai_provider: data.ai_provider || 'gemini',
+        ai_provider: data.ai_provider || 'mock',
         gemini_key: data.gemini_key ? encrypt(data.gemini_key) : null,
         openai_key: data.openai_key ? encrypt(data.openai_key) : null,
         grok_key: data.grok_key ? encrypt(data.grok_key) : null,
         gemini_model: data.gemini_model || 'gemini-2.5-flash',
         openai_model: data.openai_model || 'gpt-4o-mini',
-        grok_model: data.grok_model || 'grok-4.3',
+        grok_model: data.grok_model || 'grok-beta',
         system_prompt: data.system_prompt || ''
       }
     });
@@ -73,8 +86,11 @@ async function updateSettings(req, res) {
     if (data.mp_enabled !== undefined || data.mp_access_token !== undefined || data.mp_public_key !== undefined) {
       const companyUpdate = {};
       if (data.mp_enabled !== undefined) companyUpdate.mp_enabled = data.mp_enabled;
-      if (data.mp_access_token !== undefined) companyUpdate.mp_access_token = data.mp_access_token;
-      if (data.mp_public_key !== undefined) companyUpdate.mp_public_key = data.mp_public_key;
+      // FIX SEGURANÇA: Encriptar mp_access_token antes de persistir no banco
+      if (data.mp_access_token !== undefined) {
+        companyUpdate.mp_access_token = data.mp_access_token ? encrypt(data.mp_access_token) : null;
+      }
+      if (data.mp_public_key !== undefined) companyUpdate.mp_public_key = data.mp_public_key || null;
 
       await prisma.company.update({
         where: { id: companyId },
@@ -94,7 +110,7 @@ async function updateSettings(req, res) {
       openai_key: settings.openai_key ? decrypt(settings.openai_key) : '',
       grok_key: settings.grok_key ? decrypt(settings.grok_key) : '',
       mp_enabled: company?.mp_enabled || false,
-      mp_access_token: company?.mp_access_token || '',
+      mp_access_token: company?.mp_access_token ? decrypt(company.mp_access_token) : '',
       mp_public_key: company?.mp_public_key || ''
     };
 

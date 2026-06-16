@@ -71,9 +71,9 @@ async function createChat(req, res) {
 
     await Log.add(`Cliente ${name} (+${cleanPhone}) adicionado ao CRM.`, req.user.company_id);
 
+    // PERFORMANCE: Para novo chat emitir lista completa (necessário para sidebar mostrar novo item)
     const allChats = await Chat.findAll(req.user.company_id);
     const allLogs = await Log.findAll(req.user.company_id);
-
     emitToCompany(req.user.company_id, 'chats_updated', allChats);
     emitToCompany(req.user.company_id, 'logs_updated', allLogs);
 
@@ -95,9 +95,9 @@ async function deleteChat(req, res) {
     await Chat.remove(req.params.id, req.user.company_id);
     await Log.add(`Cliente ${clientName} excluído do CRM.`, req.user.company_id);
 
+    // PERFORMANCE: Para remoção de chat emitir lista completa (necessário para sidebar remover item)
     const allChats = await Chat.findAll(req.user.company_id);
     const allLogs = await Log.findAll(req.user.company_id);
-
     emitToCompany(req.user.company_id, 'chats_updated', allChats);
     emitToCompany(req.user.company_id, 'logs_updated', allLogs);
 
@@ -137,10 +137,9 @@ async function updateStatus(req, res) {
     const updated = await Chat.update(req.params.id, updates, req.user.company_id);
     await Log.add(`Status do cliente ${chat.client_name} alterado manualmente de '${oldStatus}' para '${status}'.`, req.user.company_id);
 
-    const allChats = await Chat.findAll(req.user.company_id);
+    // PERFORMANCE: Emitir apenas o chat atualizado, não a lista completa
+    emitToCompany(req.user.company_id, 'chat_updated', updated);
     const allLogs = await Log.findAll(req.user.company_id);
-
-    emitToCompany(req.user.company_id, 'chats_updated', allChats);
     emitToCompany(req.user.company_id, 'logs_updated', allLogs);
 
     res.json({ success: true, chat: updated });
@@ -190,61 +189,62 @@ async function sendMessage(req, res) {
       const whatsappService = require('../services/whatsappService');
       const activeConns = whatsappService.getActiveConnections();
       const instanceId = chat.instance_id || 'inst_default';
+      const companyId = req.user.company_id;
 
-      function findOpenConnection(preferredId) {
-        if (preferredId && activeConns[preferredId] && activeConns[preferredId].connectionStatus === 'open' && activeConns[preferredId].sock) {
+      // SEGURANÇA: findOpenConnection restrito ao company_id do chat autenticado.
+      // Impede que um tenant use a conexão WhatsApp de outro tenant.
+      function findOpenConnectionForCompany(preferredId) {
+        if (preferredId && activeConns[preferredId]?.connectionStatus === 'open' &&
+            activeConns[preferredId].sock && activeConns[preferredId].companyId === companyId) {
           return preferredId;
         }
         for (const [key, c] of Object.entries(activeConns)) {
-          if (c.connectionStatus === 'open' && c.sock) {
+          if (c.connectionStatus === 'open' && c.sock && c.companyId === companyId) {
             return key;
           }
         }
         return null;
       }
 
-      const activeInstanceId = findOpenConnection(instanceId);
+      const activeInstanceId = findOpenConnectionForCompany(instanceId);
 
       if (!activeInstanceId) {
-        return res.status(503).json({ error: 'WhatsApp desconectado. Conecte uma instancia antes de enviar a mensagem.' });
+        return res.status(503).json({ error: 'WhatsApp desconectado. Conecte uma instância antes de enviar a mensagem.' });
       }
 
-      if (activeInstanceId) {
-        try {
-          const jid = chat.id;
-          if (mediaUrl) {
-            const mediaPath = path.join(__dirname, '../../public', mediaUrl);
-            if (mediaType === 'image') {
-              await whatsappService.sendMessage(activeInstanceId, jid, { image: { url: mediaPath }, caption: text || undefined });
-            } else if (mediaType === 'video') {
-              await whatsappService.sendMessage(activeInstanceId, jid, { video: { url: mediaPath }, caption: text || undefined });
-            } else if (mediaType === 'audio') {
-              await whatsappService.sendMessage(activeInstanceId, jid, { audio: { url: mediaPath }, mimetype: 'audio/mp4', ptt: true });
-            } else if (mediaType === 'document') {
-              await whatsappService.sendMessage(activeInstanceId, jid, { 
-                document: { url: mediaPath }, 
-                mimetype: 'application/octet-stream', 
-                fileName: fileName || 'Arquivo' 
-              });
-            } else {
-              await whatsappService.sendMessage(activeInstanceId, jid, { text: text });
-            }
+      try {
+        const jid = chat.id;
+        if (mediaUrl) {
+          const mediaPath = path.join(__dirname, '../../public', mediaUrl);
+          if (mediaType === 'image') {
+            await whatsappService.sendMessage(activeInstanceId, jid, { image: { url: mediaPath }, caption: text || undefined });
+          } else if (mediaType === 'video') {
+            await whatsappService.sendMessage(activeInstanceId, jid, { video: { url: mediaPath }, caption: text || undefined });
+          } else if (mediaType === 'audio') {
+            await whatsappService.sendMessage(activeInstanceId, jid, { audio: { url: mediaPath }, mimetype: 'audio/mp4', ptt: true });
+          } else if (mediaType === 'document') {
+            await whatsappService.sendMessage(activeInstanceId, jid, {
+              document: { url: mediaPath },
+              mimetype: 'application/octet-stream',
+              fileName: fileName || 'Arquivo'
+            });
           } else {
             await whatsappService.sendMessage(activeInstanceId, jid, { text: text });
           }
-        } catch (err) {
-          console.error('Erro ao enviar mensagem via WhatsApp:', err);
-          return res.status(502).json({ error: `Erro ao enviar mensagem via WhatsApp: ${err.message}` });
+        } else {
+          await whatsappService.sendMessage(activeInstanceId, jid, { text: text });
         }
-      } else {
-        console.warn(`[chatController] Nenhuma conexão WhatsApp aberta disponível. instance_id do chat: "${instanceId}", instâncias ativas: [${Object.keys(activeConns).join(', ')}]`);
+      } catch (err) {
+        console.error('Erro ao enviar mensagem via WhatsApp:', err);
+        return res.status(502).json({ error: `Erro ao enviar mensagem via WhatsApp: ${err.message}` });
       }
     }
 
     const createdMsg = await Chat.addMessage(chat.id, newMessage);
 
-    const allChats = await Chat.findAll(req.user.company_id);
-    emitToCompany(req.user.company_id, 'chats_updated', allChats);
+    // PERFORMANCE: Emitir apenas o chat afetado, não toda a lista
+    const updatedChat = await Chat.findById(chat.id, req.user.company_id);
+    emitToCompany(req.user.company_id, 'chat_updated', updatedChat);
 
     res.json({ success: true, message: { ...createdMsg, timestamp: createdMsg.timestamp.toISOString() } });
   } catch (error) {
@@ -255,7 +255,7 @@ async function sendMessage(req, res) {
 async function assignChat(req, res) {
   try {
     const { userId } = req.body;
-    
+
     const chat = await Chat.findById(req.params.id, req.user.company_id);
     if (!chat) {
       return res.status(404).json({ error: 'Conversa não encontrada.' });
@@ -272,14 +272,13 @@ async function assignChat(req, res) {
     };
 
     const updated = await Chat.update(req.params.id, updates, req.user.company_id);
-    
+
     const assignedName = assignedUser ? assignedUser.name : 'Ninguém (Fila de Espera)';
     await Log.add(`Conversa de ${chat.client_name} atribuída a: ${assignedName} (por: ${req.user.name}).`, req.user.company_id);
 
-    const allChats = await Chat.findAll(req.user.company_id);
+    // PERFORMANCE: Emitir apenas o chat atualizado
+    emitToCompany(req.user.company_id, 'chat_updated', updated);
     const allLogs = await Log.findAll(req.user.company_id);
-
-    emitToCompany(req.user.company_id, 'chats_updated', allChats);
     emitToCompany(req.user.company_id, 'logs_updated', allLogs);
 
     res.json({ success: true, chat: updated });
@@ -303,10 +302,9 @@ async function toggleAi(req, res) {
     const updated = await Chat.update(req.params.id, { ai_active: !!aiActive }, req.user.company_id);
     await Log.add(`IA do atendente virtual para ${chat.client_name} foi ${updated.ai_active ? 'ativada' : 'desativada'} por ${req.user.name}.`, req.user.company_id);
 
-    const allChats = await Chat.findAll(req.user.company_id);
+    // PERFORMANCE: Emitir apenas o chat atualizado
+    emitToCompany(req.user.company_id, 'chat_updated', updated);
     const allLogs = await Log.findAll(req.user.company_id);
-
-    emitToCompany(req.user.company_id, 'chats_updated', allChats);
     emitToCompany(req.user.company_id, 'logs_updated', allLogs);
 
     res.json({ success: true, chat: updated });
@@ -335,10 +333,9 @@ async function addTag(req, res) {
     const updated = await Chat.update(req.params.id, { tags: currentTags }, req.user.company_id);
     await Log.add(`Tag "${tag}" adicionada ao cliente ${chat.client_name} por ${req.user.name}.`, req.user.company_id);
 
-    const allChats = await Chat.findAll(req.user.company_id);
+    // PERFORMANCE: Emitir apenas o chat atualizado
+    emitToCompany(req.user.company_id, 'chat_updated', updated);
     const allLogs = await Log.findAll(req.user.company_id);
-
-    emitToCompany(req.user.company_id, 'chats_updated', allChats);
     emitToCompany(req.user.company_id, 'logs_updated', allLogs);
 
     res.json({ success: true, chat: updated });
@@ -363,10 +360,9 @@ async function deleteTag(req, res) {
     const updated = await Chat.update(req.params.id, { tags: currentTags }, req.user.company_id);
     await Log.add(`Tag "${tag}" removida do cliente ${chat.client_name} por ${req.user.name}.`, req.user.company_id);
 
-    const allChats = await Chat.findAll(req.user.company_id);
+    // PERFORMANCE: Emitir apenas o chat atualizado
+    emitToCompany(req.user.company_id, 'chat_updated', updated);
     const allLogs = await Log.findAll(req.user.company_id);
-
-    emitToCompany(req.user.company_id, 'chats_updated', allChats);
     emitToCompany(req.user.company_id, 'logs_updated', allLogs);
 
     res.json({ success: true, chat: updated });
@@ -390,11 +386,8 @@ async function toggleFavorite(req, res) {
     const updated = await Chat.update(req.params.id, { is_favorite: !!isFavorite }, req.user.company_id);
     await Log.add(`Conversa de ${chat.client_name} foi ${updated.is_favorite ? 'marcada como favorita' : 'desmarcada como favorita'} por ${req.user.name}.`, req.user.company_id);
 
-    const allChats = await Chat.findAll(req.user.company_id);
-    const allLogs = await Log.findAll(req.user.company_id);
-
-    emitToCompany(req.user.company_id, 'chats_updated', allChats);
-    emitToCompany(req.user.company_id, 'logs_updated', allLogs);
+    // PERFORMANCE: Emitir apenas o chat atualizado
+    emitToCompany(req.user.company_id, 'chat_updated', updated);
 
     res.json({ success: true, chat: updated });
   } catch (error) {
@@ -417,11 +410,8 @@ async function toggleArchive(req, res) {
     const updated = await Chat.update(req.params.id, { is_archived: !!isArchived }, req.user.company_id);
     await Log.add(`Conversa de ${chat.client_name} foi ${updated.is_archived ? 'arquivada' : 'desarquivada'} por ${req.user.name}.`, req.user.company_id);
 
-    const allChats = await Chat.findAll(req.user.company_id);
-    const allLogs = await Log.findAll(req.user.company_id);
-
-    emitToCompany(req.user.company_id, 'chats_updated', allChats);
-    emitToCompany(req.user.company_id, 'logs_updated', allLogs);
+    // PERFORMANCE: Emitir apenas o chat atualizado
+    emitToCompany(req.user.company_id, 'chat_updated', updated);
 
     res.json({ success: true, chat: updated });
   } catch (error) {
@@ -449,10 +439,9 @@ async function toggleBlock(req, res) {
     const updated = await Chat.update(req.params.id, updates, req.user.company_id);
     await Log.add(`Contato ${chat.client_name} foi ${updated.is_blocked ? 'BLOQUEADO' : 'DESBLOQUEADO'} por ${req.user.name}.`, req.user.company_id);
 
-    const allChats = await Chat.findAll(req.user.company_id);
+    // PERFORMANCE: Emitir apenas o chat atualizado
+    emitToCompany(req.user.company_id, 'chat_updated', updated);
     const allLogs = await Log.findAll(req.user.company_id);
-
-    emitToCompany(req.user.company_id, 'chats_updated', allChats);
     emitToCompany(req.user.company_id, 'logs_updated', allLogs);
 
     res.json({ success: true, chat: updated });
@@ -477,10 +466,9 @@ async function updateSector(req, res) {
     const sectorName = sector ? (sector === 'sales' ? 'Vendas' : (sector === 'support' ? 'Suporte' : 'Financeiro')) : 'Nenhum';
     await Log.add(`Setor da conversa de ${chat.client_name} alterado para: ${sectorName} por ${req.user.name}.`, req.user.company_id);
 
-    const allChats = await Chat.findAll(req.user.company_id);
+    // PERFORMANCE: Emitir apenas o chat atualizado
+    emitToCompany(req.user.company_id, 'chat_updated', updated);
     const allLogs = await Log.findAll(req.user.company_id);
-
-    emitToCompany(req.user.company_id, 'chats_updated', allChats);
     emitToCompany(req.user.company_id, 'logs_updated', allLogs);
 
     res.json({ success: true, chat: updated });

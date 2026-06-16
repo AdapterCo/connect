@@ -2,6 +2,7 @@ const mercadopago = require('mercadopago');
 const { prisma } = require('../config/database');
 const Chat = require('../models/Chat');
 const Log = require('../models/Log');
+const { decrypt } = require('../utils/crypto');
 
 async function createMercadoPagoPreference(chatId, item, value, settings) {
   const mpEnabled = settings.mp_enabled;
@@ -38,30 +39,43 @@ async function createMercadoPagoPreference(chatId, item, value, settings) {
 
 async function checkAllPendingPayments() {
   try {
+    // PERFORMANCE: Filtrar diretamente no banco apenas chats com mensagens de pagamento pendentes
+    // Evita table scan completo em toda a tabela de chats
     const chats = await prisma.chat.findMany({
+      where: {
+        messages: {
+          some: {
+            payment_status: 'pending',
+            payment_id: { not: null }
+          }
+        }
+      },
       include: {
         messages: {
-          orderBy: { timestamp: 'asc' }
-        }
+          where: {
+            payment_status: 'pending',
+            payment_id: { not: null }
+          }
+        },
+        company: true
       }
     });
 
     for (const chat of chats) {
       const companyId = chat.company_id || 'comp_default';
-      const company = await prisma.company.findUnique({
-        where: { id: companyId }
-      });
+      const company = chat.company;
 
       if (!company || !company.mp_access_token || !company.mp_enabled) continue;
 
-      const pendingMessages = chat.messages.filter(m => m.payment_id && m.payment_status === 'pending');
-      if (pendingMessages.length === 0) continue;
+      // FIX: Descriptografar mp_access_token antes de usar na API
+      const accessToken = decrypt(company.mp_access_token);
+      const pendingMessages = chat.messages; // Já filtrado pelo where acima
 
       for (const msg of pendingMessages) {
         try {
           const response = await fetch(`https://api.mercadopago.com/v1/payments/search?preference_id=${msg.payment_id}`, {
             headers: {
-              'Authorization': `Bearer ${company.mp_access_token}`
+              'Authorization': `Bearer ${accessToken}`
             }
           });
 

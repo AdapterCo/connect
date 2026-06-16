@@ -17,7 +17,7 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
     }
 
-    const isPasswordValid = bcrypt.compareSync(password, user.password);
+    const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
     }
@@ -151,8 +151,7 @@ async function register(req, res) {
       return res.status(400).json({ error: 'Este nome de usuário já está em uso.' });
     }
 
-    const salt = bcrypt.genSaltSync(10);
-    const hashedPassword = bcrypt.hashSync(password, salt);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = {
       id: 'usr_' + Date.now(),
@@ -213,8 +212,7 @@ async function registerTenant(req, res) {
       }
     });
 
-    const salt = bcrypt.genSaltSync(10);
-    const hashedPassword = bcrypt.hashSync(adminPassword, salt);
+    const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 1);

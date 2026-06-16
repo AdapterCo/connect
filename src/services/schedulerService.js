@@ -5,14 +5,16 @@ const Log = require('../models/Log');
 
 async function checkScheduledMessages() {
   try {
-    const pending = await prisma.scheduledMessage.findMany();
+    const now = new Date();
+    const pending = await prisma.scheduledMessage.findMany({
+      where: {
+        scheduledTime: { lte: now }
+      }
+    });
     if (pending.length === 0) return;
 
-    const now = new Date();
-
     for (const sch of pending) {
-      const schTime = new Date(sch.scheduledTime);
-      if (schTime <= now) {
+      {
         const companyId = sch.company_id || 'comp_default';
         const chat = await Chat.findById(sch.chat_id, companyId);
 

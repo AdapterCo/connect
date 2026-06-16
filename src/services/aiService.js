@@ -131,29 +131,23 @@ async function runAiAttendant(chat, clientMessage, settings) {
   }
 
   if (provider === 'grok') {
-    const modelName = settings.grok_model || "grok-4.3";
+    const modelName = settings.grok_model || "grok-beta";
 
-    const input = [
-      { role: "system", content: systemPrompt }
+    const messages = [
+      { role: "system", content: fullPrompt }
     ];
 
     chat.messages.slice(-10).forEach(m => {
       let role = 'user';
-      if (m.sender === 'attendant') role = 'assistant';
-      if (m.sender === 'system') role = 'assistant';
-      
-      input.push({
-        role: role,
-        content: m.text
-      });
+      if (m.sender === 'attendant' || m.sender === 'system') role = 'assistant';
+      if (m.text) {
+        messages.push({ role, content: m.text });
+      }
     });
 
-    input.push({
-      role: "user",
-      content: clientMessage
-    });
+    messages.push({ role: 'user', content: clientMessage });
 
-    const response = await fetch('https://api.x.ai/v1/responses', {
+    const response = await fetch('https://api.x.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -161,7 +155,8 @@ async function runAiAttendant(chat, clientMessage, settings) {
       },
       body: JSON.stringify({
         model: modelName,
-        input: input
+        messages,
+        response_format: { type: 'json_object' }
       })
     });
 
@@ -171,12 +166,12 @@ async function runAiAttendant(chat, clientMessage, settings) {
       try {
         parseErr = JSON.parse(errText);
       } catch (e) {}
-      const errMsg = parseErr?.error || parseErr?.message || errText;
+      const errMsg = parseErr?.error?.message || parseErr?.message || errText;
       throw new Error(`Erro na API do Grok: ${response.status} - ${typeof errMsg === 'object' ? JSON.stringify(errMsg) : errMsg}`);
     }
 
     const resData = await response.json();
-    const responseText = resData.output?.[0]?.content?.[0]?.text;
+    const responseText = resData.choices?.[0]?.message?.content;
     if (!responseText) {
       throw new Error('Formato de resposta da API do Grok inválido ou vazio.');
     }

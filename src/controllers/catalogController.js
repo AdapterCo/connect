@@ -296,30 +296,34 @@ async function updateProduct(req, res) {
       updateData.category_id = category_id;
     }
 
-    if (variants !== undefined) {
-      await prisma.productVariant.deleteMany({ where: { product_id: id } });
-      if (variants.length > 0) {
-        await prisma.productVariant.createMany({
-          data: variants.map(v => ({
-            name: v.name,
-            price_diff: parseFloat(v.price_diff) || 0,
-            product_id: id
-          }))
-        });
-      }
-    }
+    if (variants !== undefined || addons !== undefined) {
+      await prisma.$transaction(async (tx) => {
+        if (variants !== undefined) {
+          await tx.productVariant.deleteMany({ where: { product_id: id } });
+          if (variants.length > 0) {
+            await tx.productVariant.createMany({
+              data: variants.map(v => ({
+                name: v.name,
+                price_diff: parseFloat(v.price_diff) || 0,
+                product_id: id
+              }))
+            });
+          }
+        }
 
-    if (addons !== undefined) {
-      await prisma.productAddon.deleteMany({ where: { product_id: id } });
-      if (addons.length > 0) {
-        await prisma.productAddon.createMany({
-          data: addons.map(a => ({
-            name: a.name,
-            price: parseFloat(a.price) || 0,
-            product_id: id
-          }))
-        });
-      }
+        if (addons !== undefined) {
+          await tx.productAddon.deleteMany({ where: { product_id: id } });
+          if (addons.length > 0) {
+            await tx.productAddon.createMany({
+              data: addons.map(a => ({
+                name: a.name,
+                price: parseFloat(a.price) || 0,
+                product_id: id
+              }))
+            });
+          }
+        }
+      });
     }
 
     const updated = await prisma.product.update({

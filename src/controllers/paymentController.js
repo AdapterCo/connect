@@ -3,6 +3,8 @@ const { createMercadoPagoPreference } = require('../services/mercadoPagoService'
 const Log = require('../models/Log');
 const Chat = require('../models/Chat');
 const mercadopago = require('mercadopago');
+const { decrypt } = require('../utils/crypto');
+const { emitToCompany } = require('../config/socket');
 
 async function createCharge(req, res) {
   try {
@@ -20,21 +22,16 @@ async function createCharge(req, res) {
       where: { id: req.user.company_id }
     });
 
-    const settings = await prisma.settings.findUnique({
-      where: { company_id: req.user.company_id }
-    }) || await prisma.settings.findUnique({
-      where: { company_id: 'comp_default' }
-    });
-
+    // FIX: Removido fallback para comp_default (vazamento de credenciais)
+    // FIX: Descriptografar mp_access_token antes de passar ao serviço
     const mpSettings = {
-      ...settings,
       mp_enabled: company?.mp_enabled || false,
-      mp_access_token: company?.mp_access_token || '',
+      mp_access_token: company?.mp_access_token ? decrypt(company.mp_access_token) : '',
       mp_public_key: company?.mp_public_key || ''
     };
 
     const paymentData = await createMercadoPagoPreference(req.params.id, item, value, mpSettings);
-    
+
     const paymentMsg = {
       sender: 'system',
       text: `🔗 Cobrança Gerada: ${item} - R$ ${Number(value).toFixed(2)}. Link para pagar: ${paymentData.url}`,
@@ -54,9 +51,8 @@ async function createCharge(req, res) {
     const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
     if (conn && conn.connectionStatus === 'open' && conn.sock) {
       try {
-        const targetJid = chat.id;
-        await conn.sock.sendMessage(targetJid, { 
-          text: `💳 *Link de Pagamento Manual!*\n\n*Item:* ${item}\n*Valor:* R$ ${Number(value).toFixed(2)}\n\nLink para pagamento: ${paymentData.url}` 
+        await conn.sock.sendMessage(chat.id, {
+          text: `💳 *Link de Pagamento Manual!*\n\n*Item:* ${item}\n*Valor:* R$ ${Number(value).toFixed(2)}\n\nLink para pagamento: ${paymentData.url}`
         });
       } catch (err) {
         console.error(err);
@@ -70,127 +66,117 @@ async function createCharge(req, res) {
 }
 
 async function handleWebhook(req, res) {
+  // FIX CRÍTICO: Responder ao MercadoPago imediatamente para evitar retentativas
+  res.status(200).send('OK');
+
   try {
     const { action, data, type } = req.body;
-    
+
     if (action === 'payment.created' || action === 'payment.updated' || type === 'payment') {
-      const paymentId = data?.id || req.body?.data?.id;
-      if (paymentId) {
-        let chatId = null;
-        let companyId = 'comp_default';
-        
-        const defaultCompany = await prisma.company.findUnique({
-          where: { id: 'comp_default' }
-        });
+      const paymentId = data?.id ? String(data.id) : null;
+      if (!paymentId) return;
 
-        if (defaultCompany && defaultCompany.mp_access_token) {
-          try {
-            const tempClient = new mercadopago.MercadoPagoConfig({ accessToken: defaultCompany.mp_access_token });
-            const tempPayment = new mercadopago.Payment(tempClient);
-            const paymentDetails = await tempPayment.get({ id: paymentId });
-            chatId = paymentDetails.metadata?.chat_id;
-          } catch (e) {
-            console.error('Error fetching details with default token:', e);
+      // FIX CRÍTICO: Buscar qual empresa este pagamento pertence DIRETAMENTE no banco,
+      // sem usar o token da empresa padrão (comp_default) que falha para outros tenants.
+      const msgWithPayment = await prisma.message.findFirst({
+        where: { payment_id: paymentId },
+        include: {
+          chat: {
+            include: { company: true }
           }
         }
-        
-        if (chatId) {
-          const chat = await prisma.chat.findUnique({
-            where: { id: chatId }
+      });
+
+      if (!msgWithPayment || !msgWithPayment.chat?.company) {
+        console.log(`[Webhook MP] Pagamento ${paymentId} não associado a nenhum chat cadastrado.`);
+        return;
+      }
+
+      const company = msgWithPayment.chat.company;
+      const companyId = company.id;
+      const chatId = msgWithPayment.chat.id;
+
+      if (!company.mp_access_token || !company.mp_enabled) {
+        console.log(`[Webhook MP] Empresa ${companyId} sem MP habilitado ou sem token.`);
+        return;
+      }
+
+      // FIX: Descriptografar token da empresa correta para consultar o pagamento
+      const accessToken = decrypt(company.mp_access_token);
+      const client = new mercadopago.MercadoPagoConfig({ accessToken });
+      const payment = new mercadopago.Payment(client);
+      const freshDetails = await payment.get({ id: paymentId });
+
+      const status = freshDetails.status;
+      const value = freshDetails.transaction_amount;
+      const item = freshDetails.description;
+
+      // Atualizar status na mensagem
+      await prisma.message.update({
+        where: { id: msgWithPayment.id },
+        data: { payment_status: status }
+      });
+
+      if (status === 'approved') {
+        const chat = await Chat.findById(chatId, companyId);
+        if (!chat) return;
+
+        // Atualizar pedido pendente e imprimir
+        const pendingOrder = await prisma.order.findFirst({
+          where: { chat_id: chatId, status: 'pending' },
+          orderBy: { created_at: 'desc' }
+        });
+
+        if (pendingOrder) {
+          await prisma.order.update({
+            where: { id: pendingOrder.id },
+            data: { payment_status: 'paid', status: 'preparing' }
           });
-          if (chat) {
-            companyId = chat.company_id || 'comp_default';
+          try {
+            const printService = require('../services/printService');
+            await printService.printOrder(pendingOrder.id);
+          } catch (printErr) {
+            console.error('[Auto Print] Failed to print paid order:', printErr);
           }
         }
 
-        const company = await prisma.company.findUnique({
-          where: { id: companyId }
+        await Chat.addMessage(chatId, {
+          sender: 'system',
+          text: `✅ Pagamento REAL de R$ ${Number(value).toFixed(2)} recebido com sucesso via Mercado Pago! (Item: ${item})`,
+          timestamp: new Date(),
+          is_ai: false
         });
 
-        if (company && company.mp_access_token) {
-          const client = new mercadopago.MercadoPagoConfig({ accessToken: company.mp_access_token });
-          const payment = new mercadopago.Payment(client);
-          const freshDetails = await payment.get({ id: paymentId });
-          
-          const status = freshDetails.status;
-          const value = freshDetails.transaction_amount;
-          const item = freshDetails.description;
+        await Chat.addMessage(chatId, {
+          sender: 'system',
+          text: `🤖 Atendente IA: Alterando status do cliente de '${chat.status}' para 'finalizada'.`,
+          timestamp: new Date(),
+          is_ai: false
+        });
 
-          if (chatId) {
-            const chat = await Chat.findById(chatId, companyId);
-            if (chat) {
-              const matchingMsg = chat.messages.find(m => m.payment_id === paymentId);
-              if (matchingMsg) {
-                await prisma.message.update({
-                  where: { id: matchingMsg.id },
-                  data: { payment_status: status }
-                });
-              }
+        await Chat.update(chatId, { status: 'finalizada' }, companyId);
+        await Log.add(`Mercado Pago REAL: Pagamento APROVADO para ${chat.client_name}. Status atualizado para 'finalizada'.`, companyId);
 
-              if (status === 'approved') {
-                // Find and auto-print pending order in this chat
-                const pendingOrder = await prisma.order.findFirst({
-                  where: { chat_id: chat.id, status: 'pending' },
-                  orderBy: { created_at: 'desc' }
-                });
-
-                if (pendingOrder) {
-                  await prisma.order.update({
-                    where: { id: pendingOrder.id },
-                    data: { payment_status: 'paid', status: 'preparing' }
-                  });
-
-                  try {
-                    const printService = require('../services/printService');
-                    await printService.printOrder(pendingOrder.id);
-                  } catch (printErr) {
-                    console.error('[Auto Print] Failed to print paid order:', printErr);
-                  }
-                }
-
-                const confirmMsg1 = {
-                  sender: 'system',
-                  text: `✅ Pagamento REAL de R$ ${Number(value).toFixed(2)} recebido com sucesso via Mercado Pago! (Item: ${item})`,
-                  timestamp: new Date(),
-                  is_ai: false
-                };
-                
-                const confirmMsg2 = {
-                  sender: 'system',
-                  text: `🤖 Atendente IA: Alterando status do cliente de '${chat.status}' para 'finalizada'.`,
-                  timestamp: new Date(),
-                  is_ai: false
-                };
-
-                await Chat.addMessage(chat.id, confirmMsg1);
-                await Chat.addMessage(chat.id, confirmMsg2);
-                await Chat.update(chat.id, { status: 'finalizada' }, companyId);
-
-                await Log.add(`Mercado Pago REAL: Pagamento APROVADO para ${chat.client_name}. Status updated to 'finalizada'.`, companyId);
-
-                const { getActiveConnections } = require('../services/whatsappService');
-                const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
-                if (conn && conn.connectionStatus === 'open' && conn.sock) {
-                  try {
-                    const targetJid = chatId;
-                    await conn.sock.sendMessage(targetJid, { 
-                      text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(value).toFixed(2)} pelo item *${item}*. Obrigado!` 
-                    });
-                  } catch (err) {
-                    console.error(err);
-                  }
-                }
-              }
-            }
+        const { getActiveConnections } = require('../services/whatsappService');
+        const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
+        if (conn && conn.connectionStatus === 'open' && conn.sock) {
+          try {
+            await conn.sock.sendMessage(chatId, {
+              text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(value).toFixed(2)} pelo item *${item}*. Obrigado!`
+            });
+          } catch (err) {
+            console.error(err);
           }
         }
+
+        // Emitir evento granular para atualizar apenas este chat no frontend
+        const updatedChat = await Chat.findById(chatId, companyId);
+        emitToCompany(companyId, 'chat_updated', updatedChat);
       }
     }
   } catch (err) {
-    console.error(err);
+    console.error('[Webhook MP] Erro ao processar webhook:', err);
   }
-  
-  res.status(200).send('OK');
 }
 
 async function checkPaymentStatus(req, res) {
@@ -214,6 +200,9 @@ async function checkPaymentStatus(req, res) {
       return res.json({ message: 'Nenhum pagamento pendente encontrado neste chat.', chat });
     }
 
+    // FIX: Descriptografar token antes de usar
+    const accessToken = decrypt(company.mp_access_token);
+
     let updated = false;
     let approvedValue = 0;
     let approvedItem = '';
@@ -222,14 +211,14 @@ async function checkPaymentStatus(req, res) {
       try {
         const response = await fetch(`https://api.mercadopago.com/v1/payments/search?preference_id=${msg.payment_id}`, {
           headers: {
-            'Authorization': `Bearer ${company.mp_access_token}`
+            'Authorization': `Bearer ${accessToken}`
           }
         });
 
         if (response.ok) {
           const data = await response.json();
           const payments = data.results || [];
-          
+
           const approvedPayment = payments.find(p => p.status === 'approved');
           if (approvedPayment) {
             await prisma.message.update({
@@ -248,8 +237,7 @@ async function checkPaymentStatus(req, res) {
 
     if (updated) {
       const oldStatus = chat.status;
-      
-      // Find and auto-print pending order in this chat
+
       const pendingOrder = await prisma.order.findFirst({
         where: { chat_id: chat.id, status: 'pending' },
         orderBy: { created_at: 'desc' }
@@ -260,7 +248,6 @@ async function checkPaymentStatus(req, res) {
           where: { id: pendingOrder.id },
           data: { payment_status: 'paid', status: 'preparing' }
         });
-
         try {
           const printService = require('../services/printService');
           await printService.printOrder(pendingOrder.id);
@@ -269,39 +256,35 @@ async function checkPaymentStatus(req, res) {
         }
       }
 
-      const confirmMsg1 = {
+      await Chat.addMessage(chat.id, {
         sender: 'system',
         text: `✅ Pagamento REAL de R$ ${Number(approvedValue).toFixed(2)} verificado e aprovado via Mercado Pago! (Item: ${approvedItem})`,
         timestamp: new Date(),
         is_ai: false
-      };
+      });
 
-      const confirmMsg2 = {
+      await Chat.addMessage(chat.id, {
         sender: 'system',
         text: `🤖 Atendente IA: Alterando status do cliente de '${oldStatus}' para 'finalizada'.`,
         timestamp: new Date(),
         is_ai: false
-      };
+      });
 
-      await Chat.addMessage(chat.id, confirmMsg1);
-      await Chat.addMessage(chat.id, confirmMsg2);
       const finalChat = await Chat.update(chat.id, { status: 'finalizada' }, req.user.company_id);
-
       await Log.add(`Mercado Pago REAL (Verificação Manual): Pagamento APROVADO para ${chat.client_name}. Status atualizado para 'finalizada'.`, req.user.company_id);
 
       const { getActiveConnections } = require('../services/whatsappService');
       const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
       if (conn && conn.connectionStatus === 'open' && conn.sock) {
         try {
-          const targetJid = chatId;
-          await conn.sock.sendMessage(targetJid, { 
-            text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(approvedValue).toFixed(2)} pelo item *${approvedItem}*. Obrigado!` 
+          await conn.sock.sendMessage(chatId, {
+            text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(approvedValue).toFixed(2)} pelo item *${approvedItem}*. Obrigado!`
           });
         } catch (err) {
           console.error(err);
         }
       }
-      
+
       return res.json({ success: true, verified: true, chat: finalChat });
     }
 

@@ -106,8 +106,7 @@ async function resetPassword(req, res) {
       return res.status(400).json({ error: 'Token expirado. Solicite um novo link de recuperação.' });
     }
 
-    const salt = bcrypt.genSaltSync(10);
-    const hashedPassword = bcrypt.hashSync(newPassword, salt);
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await prisma.$transaction([
       prisma.user.update({

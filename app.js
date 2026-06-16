@@ -8,7 +8,7 @@ const fs = require('fs');
 const { UPLOAD_DIR } = require('./src/config/index');
 const authenticateToken = require('./src/middleware/authMiddleware');
 const { generalLimiter, authLimiter, apiLimiter, uploadLimiter } = require('./src/middleware/rateLimitMiddleware');
-const { sanitizeBody } = require('./src/middleware/validationMiddleware');
+
 
 const authRoutes = require('./src/routes/authRoutes');
 const chatRoutes = require('./src/routes/chatRoutes');
@@ -44,7 +44,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-app.use(sanitizeBody);
+
 
 app.use('/api/', generalLimiter);
 app.use('/api/auth/login', authLimiter);

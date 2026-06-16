@@ -100,8 +100,7 @@ async function initializeDatabase() {
         }
       });
 
-      const salt = bcrypt.genSaltSync(10);
-      const hashedPassword = bcrypt.hashSync('admin123', salt);
+      const hashedPassword = await bcrypt.hash('admin123', 10);
       await prisma.user.create({
         data: {
           id: 'usr_admin',
@@ -114,7 +113,7 @@ async function initializeDatabase() {
         }
       });
 
-      const superadminPassword = bcrypt.hashSync('superadmin123', salt);
+      const superadminPassword = await bcrypt.hash('superadmin123', 10);
       await prisma.user.create({
         data: {
           id: 'usr_superadmin',
