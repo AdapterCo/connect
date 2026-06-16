@@ -443,6 +443,22 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
               
               await Chat.addMessage(chat.id, paymentMsg);
               await Chat.update(chat.id, { status: 'interesse em compra' }, companyId);
+              
+              // Criar Order automaticamente para vincular ao pagamento
+              await prisma.order.create({
+                data: {
+                  chat_id: chat.id,
+                  status: 'pending',
+                  subtotal: Number(billingValue),
+                  discount: 0,
+                  total: Number(billingValue),
+                  payment_method: 'mercadopago',
+                  payment_status: 'pending',
+                  notes: `${billingItem} (via link de pagamento)`,
+                  company_id: companyId
+                }
+              });
+              
               await Log.add(`Cobrança gerada automaticamente pela IA para ${chat.client_name}: ${billingItem} (R$ ${billingValue})`, companyId);
 
               if (conn && conn.connectionStatus === 'open' && conn.sock) {

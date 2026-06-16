@@ -2,9 +2,7 @@ const { prisma } = require('../config/database');
 const { createMercadoPagoPreference } = require('../services/mercadoPagoService');
 const Log = require('../models/Log');
 const Chat = require('../models/Chat');
-const mercadopago = require('mercadopago');
 const { decrypt } = require('../utils/crypto');
-const { emitToCompany } = require('../config/socket');
 
 async function createCharge(req, res) {
   try {
@@ -45,6 +43,21 @@ async function createCharge(req, res) {
     const createdMsg = await Chat.addMessage(chat.id, paymentMsg);
     const updatedChat = await Chat.update(chat.id, { status: 'interesse em compra' }, req.user.company_id);
 
+    // Criar Order automaticamente para vincular ao pagamento
+    await prisma.order.create({
+      data: {
+        chat_id: chat.id,
+        status: 'pending',
+        subtotal: Number(value),
+        discount: 0,
+        total: Number(value),
+        payment_method: 'mercadopago',
+        payment_status: 'pending',
+        notes: `${item} (via link de pagamento)`,
+        company_id: req.user.company_id
+      }
+    });
+
     await Log.add(`Cobrança gerada manualmente por ${req.user.name}: ${item} (R$ ${value})`, req.user.company_id);
 
     const { getActiveConnections } = require('../services/whatsappService');
@@ -62,120 +75,6 @@ async function createCharge(req, res) {
     res.json({ success: true, paymentMessage: { ...createdMsg, timestamp: createdMsg.timestamp.toISOString() } });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao gerar cobrança: ' + error.message });
-  }
-}
-
-async function handleWebhook(req, res) {
-  // FIX CRÍTICO: Responder ao MercadoPago imediatamente para evitar retentativas
-  res.status(200).send('OK');
-
-  try {
-    const { action, data, type } = req.body;
-
-    if (action === 'payment.created' || action === 'payment.updated' || type === 'payment') {
-      const paymentId = data?.id ? String(data.id) : null;
-      if (!paymentId) return;
-
-      // FIX CRÍTICO: Buscar qual empresa este pagamento pertence DIRETAMENTE no banco,
-      // sem usar o token da empresa padrão (comp_default) que falha para outros tenants.
-      const msgWithPayment = await prisma.message.findFirst({
-        where: { payment_id: paymentId },
-        include: {
-          chat: {
-            include: { company: true }
-          }
-        }
-      });
-
-      if (!msgWithPayment || !msgWithPayment.chat?.company) {
-        console.log(`[Webhook MP] Pagamento ${paymentId} não associado a nenhum chat cadastrado.`);
-        return;
-      }
-
-      const company = msgWithPayment.chat.company;
-      const companyId = company.id;
-      const chatId = msgWithPayment.chat.id;
-
-      if (!company.mp_access_token || !company.mp_enabled) {
-        console.log(`[Webhook MP] Empresa ${companyId} sem MP habilitado ou sem token.`);
-        return;
-      }
-
-      // FIX: Descriptografar token da empresa correta para consultar o pagamento
-      const accessToken = decrypt(company.mp_access_token);
-      const client = new mercadopago.MercadoPagoConfig({ accessToken });
-      const payment = new mercadopago.Payment(client);
-      const freshDetails = await payment.get({ id: paymentId });
-
-      const status = freshDetails.status;
-      const value = freshDetails.transaction_amount;
-      const item = freshDetails.description;
-
-      // Atualizar status na mensagem
-      await prisma.message.update({
-        where: { id: msgWithPayment.id },
-        data: { payment_status: status }
-      });
-
-      if (status === 'approved') {
-        const chat = await Chat.findById(chatId, companyId);
-        if (!chat) return;
-
-        // Atualizar pedido pendente e imprimir
-        const pendingOrder = await prisma.order.findFirst({
-          where: { chat_id: chatId, status: 'pending' },
-          orderBy: { created_at: 'desc' }
-        });
-
-        if (pendingOrder) {
-          await prisma.order.update({
-            where: { id: pendingOrder.id },
-            data: { payment_status: 'paid', status: 'preparing' }
-          });
-          try {
-            const printService = require('../services/printService');
-            await printService.printOrder(pendingOrder.id);
-          } catch (printErr) {
-            console.error('[Auto Print] Failed to print paid order:', printErr);
-          }
-        }
-
-        await Chat.addMessage(chatId, {
-          sender: 'system',
-          text: `✅ Pagamento REAL de R$ ${Number(value).toFixed(2)} recebido com sucesso via Mercado Pago! (Item: ${item})`,
-          timestamp: new Date(),
-          is_ai: false
-        });
-
-        await Chat.addMessage(chatId, {
-          sender: 'system',
-          text: `🤖 Atendente IA: Alterando status do cliente de '${chat.status}' para 'finalizada'.`,
-          timestamp: new Date(),
-          is_ai: false
-        });
-
-        await Chat.update(chatId, { status: 'finalizada' }, companyId);
-        await Log.add(`Mercado Pago REAL: Pagamento APROVADO para ${chat.client_name}. Status atualizado para 'finalizada'.`, companyId);
-
-        const { getActiveConnections } = require('../services/whatsappService');
-        const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
-        if (conn && conn.connectionStatus === 'open' && conn.sock) {
-          try {
-            await conn.sock.sendMessage(chatId, {
-              text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(value).toFixed(2)} pelo item *${item}*. Obrigado!`
-            });
-          } catch (err) {
-            console.error(err);
-          }
-        }
-
-        // Emitir evento granular para atualizar apenas este chat no frontend
-        const updatedChat = await Chat.findById(chatId, companyId);
-        emitToCompany(companyId, 'chat_updated', updatedChat);
-      }
-    }
-  } catch (err) {
-    console.error('[Webhook MP] Erro ao processar webhook:', err);
   }
 }
 
@@ -297,6 +196,5 @@ async function checkPaymentStatus(req, res) {
 
 module.exports = {
   createCharge,
-  handleWebhook,
   checkPaymentStatus
 };
