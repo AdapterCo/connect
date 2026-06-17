@@ -5,6 +5,23 @@ const Log = require('../models/Log');
 const { decrypt } = require('../utils/crypto');
 const catalogController = require('../controllers/catalogController');
 
+function normalizePaymentCopy(response) {
+  if (!response || typeof response.message !== 'string') {
+    return response;
+  }
+
+  response.message = response.message
+    .replace(/Pagar pelo WhatsApp \(avise:/gi, 'Pagar pelo WhatsApp (aviso:')
+    .replace(/(?:🔗\s*)?Link de pagamento \(o pedido só entra na fila após a confirmação do pagamento\)/gi, '💬 Pagar pelo WhatsApp (aviso: pedido só entra na fila após confirmação do pagamento)')
+    .replace(/(?:🔗\s*)?Link de pagamento \(pedido só entra na fila após confirmação do pagamento\)/gi, '💬 Pagar pelo WhatsApp (aviso: pedido só entra na fila após confirmação do pagamento)')
+    .replace(/🔗\s*Link de pagamento\s*\((?:avise|aviso):/gi, '💬 Pagar pelo WhatsApp (aviso:')
+    .replace(/🔗\s*Link de pagamento\s*\(/gi, '💬 Pagar pelo WhatsApp (')
+    .replace(/🔗\s*Link de pagamento/gi, '💬 Pagar pelo WhatsApp')
+    .replace(/\n?📱\s*Pix na entrega/gi, '');
+
+  return response;
+}
+
 async function runAiAttendant(chat, clientMessage, settings) {
   const provider = settings.ai_provider || 'mock';
   const systemPrompt = settings.system_prompt;
@@ -76,7 +93,7 @@ async function runAiAttendant(chat, clientMessage, settings) {
   };
 
   if (provider === 'mock') {
-    return runMock();
+    return normalizePaymentCopy(runMock());
   }
 
   const geminiKey = settings.gemini_key ? decrypt(settings.gemini_key) : '';
@@ -111,7 +128,7 @@ async function runAiAttendant(chat, clientMessage, settings) {
           }, { apiVersion: 'v1beta' });
           const result = await model.generateContent(fullPrompt);
           const responseText = result.response.text();
-          return JSON.parse(cleanJsonString(responseText));
+          return normalizePaymentCopy(JSON.parse(cleanJsonString(responseText)));
         } catch (err) {
           lastErr = err;
           const errMsg = err.message || '';
@@ -153,7 +170,7 @@ async function runAiAttendant(chat, clientMessage, settings) {
       response_format: { type: "json_object" }
     });
     const responseText = completion.choices[0].message.content;
-    return JSON.parse(cleanJsonString(responseText));
+    return normalizePaymentCopy(JSON.parse(cleanJsonString(responseText)));
   }
 
   if (provider === 'grok') {
@@ -202,7 +219,7 @@ async function runAiAttendant(chat, clientMessage, settings) {
       throw new Error('Formato de resposta da API do Grok inválido ou vazio.');
     }
 
-    return JSON.parse(cleanJsonString(responseText));
+    return normalizePaymentCopy(JSON.parse(cleanJsonString(responseText)));
   }
 }
 
