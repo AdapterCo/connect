@@ -18,7 +18,7 @@ async function runAiAttendant(chat, clientMessage, settings) {
     .map(m => `${m.sender === 'client' ? 'Cliente' : 'Atendente'}: ${m.text}`)
     .join('\n');
 
-  const fullPrompt = `${systemPrompt}\n\n${catalogText}\n\nHistórico da conversa atual:\n${historyText}\nCliente: ${clientMessage}\n\nINSTRUÇÕES IMPORTANTES:\n\n1. Se o cliente quiser fazer um PEDIDO (delivery, entrega, pedir comida, etc):\n   - Monte o carrinho com os itens do catálogo\n   - Pergunte a forma de pagamento com estas opções:\n     💰 Dinheiro na entrega\n     💳 Cartão na entrega\n     📱 Pix na entrega\n     🔗 Link de pagamento (avise: pedido só entra na fila após confirmação do pagamento)\n   - Quando o cliente escolher pagamento presencial (dinheiro/cartão/pix), retorne create_order: true\n   - Quando o cliente escolher link de pagamento, retorne trigger_billing: true\n\n2. Se o cliente quiser comprar um SERVIÇO/PLANO via link:\n   - Retorne trigger_billing: true\n\nResponda estritamente com o JSON contendo:\n- "message": texto da resposta\n- "status": "iniciada" | "interesse em compra" | "finalizada"\n- "trigger_billing": boolean (gerar link de pagamento)\n- "billing_item": nome do item/serviço\n- "billing_value": valor numérico\n- "create_order": boolean (criar pedido presencial)\n- "payment_method": "cash" | "card" | "pix" | "mercadopago"\n- "order_items": array de { "product_name": string, "quantity": number, "variant_name": string|null, "addon_names": string[], "notes": string|null }\n- "delivery_address": string|null (endereço de entrega se fornecido)\n- "delivery_notes": string|null (observações gerais do pedido)`;
+  const fullPrompt = `${systemPrompt}\n\n${catalogText}\n\nHistórico da conversa atual:\n${historyText}\nCliente: ${clientMessage}\n\nINSTRUÇÕES IMPORTANTES:\n\n1. Se o cliente quiser fazer um PEDIDO (delivery, entrega, pedir comida, etc):\n   - Monte o carrinho com os itens do catálogo\n   - Pergunte a forma de pagamento com estas opções:\n     💰 Dinheiro na entrega\n     💳 Cartão na entrega\n     📱 Pix na entrega\n     💬 Pagar pelo WhatsApp (avise: pedido só entra na fila após confirmação do pagamento)\n   - Quando o cliente escolher pagamento presencial (dinheiro/cartão/pix), retorne create_order: true\n   - Quando o cliente escolher pagar pelo WhatsApp, retorne trigger_billing: true e payment_method: "mercadopago"\n\n2. Se o cliente quiser comprar um SERVIÇO/PLANO via link:\n   - Retorne trigger_billing: true\n\nResponda estritamente com o JSON contendo:\n- "message": texto da resposta\n- "status": "iniciada" | "interesse em compra" | "finalizada"\n- "trigger_billing": boolean (gerar pagamento pelo WhatsApp)\n- "billing_item": nome do item/serviço\n- "billing_value": valor numérico\n- "create_order": boolean (criar pedido presencial)\n- "payment_method": "cash" | "card" | "pix" | "mercadopago"\n- "order_items": array de { "product_name": string, "quantity": number, "variant_name": string|null, "addon_names": string[], "notes": string|null }\n- "delivery_address": string|null (endereço de entrega se fornecido)\n- "delivery_notes": string|null (observações gerais do pedido)`;
 
   const runMock = () => {
     const text = clientMessage.toLowerCase();
@@ -39,7 +39,7 @@ async function runAiAttendant(chat, clientMessage, settings) {
       response.message = "Olá! Seja muito bem-vindo ao nosso atendimento virtual. Como posso ajudar você hoje?";
       response.status = "iniciada";
     } else if (text.includes("pizza") || text.includes("pedido") || text.includes("quero pedir") || text.includes("delivery") || text.includes("entrega")) {
-      response.message = "🛒 *Seu Pedido:*\n• 1x Pizza Margherita - R$ 35,00\n*Total: R$ 35,00*\n\nComo deseja pagar?\n💰 Dinheiro na entrega\n💳 Cartão na entrega\n📱 Pix na entrega\n🔗 Link de pagamento (⚠️ pedido só entra na fila após confirmação do pagamento)";
+      response.message = "🛒 *Seu Pedido:*\n• 1x Pizza Margherita - R$ 35,00\n*Total: R$ 35,00*\n\nComo deseja pagar?\n💰 Dinheiro na entrega\n💳 Cartão na entrega\n📱 Pix na entrega\n💬 Pagar pelo WhatsApp (⚠️ pedido só entra na fila após confirmação do pagamento)";
       response.status = "interesse em compra";
     } else if (text.includes("dinheiro") || text.includes("cartão") || text.includes("pix") || text.includes("pagar na entrega")) {
       const paymentMethod = text.includes("dinheiro") ? "cash" : text.includes("cartão") ? "card" : "pix";
@@ -52,10 +52,11 @@ async function runAiAttendant(chat, clientMessage, settings) {
       ];
       response.delivery_address = "Rua Exemplo, 123";
       response.delivery_notes = null;
-    } else if (text.includes("link") || text.includes("pagar online")) {
-      response.message = "💳 Link de pagamento gerado!\n*Valor: R$ 35,00*\n\n⏰ Após o pagamento ser confirmado, seu pedido entrará automaticamente na fila de produção.";
+    } else if (text.includes("link") || text.includes("pagar online") || text.includes("pagar pelo whatsapp") || text.includes("pelo whatsapp")) {
+      response.message = "💳 Pagamento pelo WhatsApp gerado!\n*Valor: R$ 35,00*\n\n⏰ Após o pagamento ser confirmado, seu pedido entrará automaticamente na fila de produção.";
       response.status = "interesse em compra";
       response.trigger_billing = true;
+      response.payment_method = "mercadopago";
       response.billing_item = "Pizza Margherita";
       response.billing_value = 35.00;
     } else if (text.includes("preço") || text.includes("valor") || text.includes("quanto custa") || text.includes("plano") || text.includes("assinar") || text.includes("comprar") || text.includes("contratar")) {
