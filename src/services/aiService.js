@@ -147,8 +147,8 @@ async function runAiAttendant(chat, clientMessage, settings) {
     const completion = await openai.chat.completions.create({
       model: modelName,
       messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Histórico da conversa:\n${historyText}\n\nCliente: ${clientMessage}\n\nResponda apenas em formato JSON.` }
+        { role: "system", content: fullPrompt },
+        { role: "user", content: clientMessage }
       ],
       response_format: { type: "json_object" }
     });
