@@ -4,7 +4,7 @@ const Chat = require('../models/Chat');
 const Log = require('../models/Log');
 const { decrypt } = require('../utils/crypto');
 
-async function createMercadoPagoPreference(chatId, item, value, settings) {
+async function createMercadoPagoPreference(chatId, item, value, settings, orderData = null) {
   const mpEnabled = settings.mp_enabled;
   const accessToken = settings.mp_access_token;
 
@@ -18,6 +18,17 @@ async function createMercadoPagoPreference(chatId, item, value, settings) {
   // Gerar ID único para external_reference (será usado para buscar pagamentos)
   const externalRef = `chat_${chatId}_${Date.now()}`;
   
+  const metadata = {
+    chat_id: chatId
+  };
+  
+  // Se houver dados do pedido, salvar na metadata para recriar Order quando pago
+  if (orderData) {
+    metadata.order_items = orderData.items;
+    metadata.delivery_address = orderData.delivery_address;
+    metadata.delivery_notes = orderData.delivery_notes;
+  }
+  
   const response = await preference.create({
     body: {
       items: [
@@ -29,9 +40,7 @@ async function createMercadoPagoPreference(chatId, item, value, settings) {
         }
       ],
       external_reference: externalRef,
-      metadata: {
-        chat_id: chatId
-      }
+      metadata: metadata
     }
   });
 
@@ -110,6 +119,39 @@ async function checkAllPendingPayments() {
 
       for (const msg of pendingMessages) {
         try {
+          // Verificar se a cobrança tem mais de 1 hora
+          const messageAge = Date.now() - new Date(msg.timestamp).getTime();
+          const oneHour = 60 * 60 * 1000; // 1 hora em ms
+          
+          if (messageAge > oneHour) {
+            console.log(`[MP Polling] Cobrança ${msg.payment_id} expirada (mais de 1h), marcando como expired`);
+            await prisma.message.update({
+              where: { id: msg.id },
+              data: { payment_status: 'expired' }
+            });
+            
+            // Notificar cliente que o link expirou
+            await Chat.addMessage(chat.id, {
+              sender: 'system',
+              text: `⏰ O link de pagamento expirou após 1 hora. Se ainda tiver interesse, solicite um novo link.`,
+              timestamp: new Date(),
+              is_ai: false
+            });
+            
+            const { getActiveConnections } = require('./whatsappService');
+            const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
+            if (conn && conn.connectionStatus === 'open' && conn.sock) {
+              try {
+                await conn.sock.sendMessage(chat.id, {
+                  text: `⏰ *Link Expirado*\n\nO link de pagamento expirou após 1 hora. Se ainda tiver interesse, solicite um novo link.`
+                });
+              } catch (err) {
+                console.error('[MP Polling] Falha ao enviar mensagem de expiração:', err);
+              }
+            }
+            continue;
+          }
+          
           console.log(`[MP Polling] Verificando external_reference: ${msg.payment_id}`);
           
           const response = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${msg.payment_id}`, {
@@ -146,13 +188,120 @@ async function checkAllPendingPayments() {
              const oldStatus = chat.status;
             await Chat.update(chat.id, { status: 'finalizada' }, companyId);
 
+            // Buscar metadata do pagamento para recuperar itens do pedido
+            const paymentMetadata = approvedPayment.metadata || {};
+            const orderItems = paymentMetadata.order_items || [];
+            const deliveryAddress = paymentMetadata.delivery_address || null;
+            const deliveryNotes = paymentMetadata.delivery_notes || null;
+
             // Find and auto-print pending order in this chat
-            const pendingOrder = await prisma.order.findFirst({
+            let pendingOrder = await prisma.order.findFirst({
               where: { chat_id: chat.id, status: 'pending' },
               orderBy: { created_at: 'desc' }
             });
 
-            if (pendingOrder) {
+            // Se não existir pedido pendente e houver itens na metadata, criar Order
+            if (!pendingOrder && orderItems.length > 0) {
+              console.log(`[MP Polling] Criando pedido a partir da metadata do pagamento...`);
+              
+              // Buscar produtos do catálogo pelo nome
+              const catalogController = require('../controllers/catalogController');
+              const catalogCategories = await catalogController.getCatalogForAI(companyId);
+              const allProducts = [];
+              catalogCategories.forEach(cat => {
+                cat.products.forEach(prod => allProducts.push(prod));
+              });
+              
+              let subtotal = 0;
+              const itemsToCreate = [];
+              
+              for (const item of orderItems) {
+                const product = allProducts.find(p => 
+                  p.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === 
+                  (item.product_name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                );
+                
+                if (product) {
+                  let unitPrice = product.price;
+                  let variantId = null;
+                  
+                  if (item.variant_name && product.variants) {
+                    const variant = product.variants.find(v => 
+                      v.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === 
+                      item.variant_name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    );
+                    if (variant) {
+                      unitPrice += variant.price_diff;
+                      variantId = variant.id;
+                    }
+                  }
+                  
+                  let addonsTotal = 0;
+                  const itemAddons = [];
+                  if (item.addon_names && item.addon_names.length > 0 && product.addons) {
+                    for (const addonName of item.addon_names) {
+                      const addon = product.addons.find(a => 
+                        a.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === 
+                        addonName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                      );
+                      if (addon) {
+                        addonsTotal += addon.price;
+                        itemAddons.push({ addon_id: addon.id, quantity: 1 });
+                      }
+                    }
+                  }
+                  
+                  unitPrice += addonsTotal;
+                  const quantity = item.quantity || 1;
+                  const itemTotal = unitPrice * quantity;
+                  subtotal += itemTotal;
+                  
+                  itemsToCreate.push({
+                    product_id: product.id,
+                    variant_id: variantId,
+                    quantity,
+                    unit_price: unitPrice,
+                    total: itemTotal,
+                    notes: item.notes || null,
+                    addons: itemAddons.length > 0 ? { create: itemAddons } : undefined
+                  });
+                }
+              }
+              
+              if (itemsToCreate.length > 0) {
+                const total = subtotal;
+                const notes = [
+                  deliveryAddress ? `Endereço: ${deliveryAddress}` : null,
+                  deliveryNotes ? `Obs: ${deliveryNotes}` : null
+                ].filter(Boolean).join(' | ') || null;
+                
+                pendingOrder = await prisma.order.create({
+                  data: {
+                    chat_id: chat.id,
+                    status: 'preparing',
+                    subtotal,
+                    discount: 0,
+                    total,
+                    payment_method: 'mercadopago',
+                    payment_status: 'paid',
+                    notes,
+                    company_id: companyId,
+                    items: { create: itemsToCreate }
+                  }
+                });
+                
+                console.log(`[MP Polling] Pedido ${pendingOrder.id} criado com ${itemsToCreate.length} itens, R$ ${total.toFixed(2)}`);
+                
+                // Disparar impressão
+                try {
+                  const printService = require('./printService');
+                  await printService.printOrder(pendingOrder.id);
+                  console.log(`[MP Polling] Impressão disparada para pedido ${pendingOrder.id}`);
+                } catch (printErr) {
+                  console.error('[MP Polling] Falha ao imprimir:', printErr);
+                }
+              }
+            } else if (pendingOrder) {
               console.log(`[MP Polling] Atualizando pedido ${pendingOrder.id} para paid/preparing`);
               await prisma.order.update({
                 where: { id: pendingOrder.id },

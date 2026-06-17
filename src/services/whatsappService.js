@@ -415,6 +415,107 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
           await conn.sock.sendMessage(senderJid, { text: aiResponse.message });
         }
 
+        if (aiResponse.create_order) {
+          // Criar Order para pagamento presencial (delivery)
+          try {
+            const orderItems = aiResponse.order_items || [];
+            const paymentMethod = aiResponse.payment_method || 'cash';
+            
+            // Buscar produtos do catálogo pelo nome
+            const catalogCategories = await require('../controllers/catalogController').getCatalogForAI(companyId);
+            const allProducts = [];
+            catalogCategories.forEach(cat => {
+              cat.products.forEach(prod => allProducts.push(prod));
+            });
+            
+            let subtotal = 0;
+            const itemsToCreate = [];
+            
+            for (const item of orderItems) {
+              const product = allProducts.find(p => 
+                p.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === 
+                item.product_name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+              );
+              
+              if (product) {
+                let unitPrice = product.price;
+                let variantId = null;
+                
+                // Buscar variante se especificada
+                if (item.variant_name && product.variants) {
+                  const variant = product.variants.find(v => 
+                    v.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === 
+                    item.variant_name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                  );
+                  if (variant) {
+                    unitPrice += variant.price_diff;
+                    variantId = variant.id;
+                  }
+                }
+                
+                // Buscar addons se especificados
+                let addonsTotal = 0;
+                const itemAddons = [];
+                if (item.addon_names && item.addon_names.length > 0 && product.addons) {
+                  for (const addonName of item.addon_names) {
+                    const addon = product.addons.find(a => 
+                      a.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === 
+                      addonName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    );
+                    if (addon) {
+                      addonsTotal += addon.price;
+                      itemAddons.push({ addon_id: addon.id, quantity: 1 });
+                    }
+                  }
+                }
+                
+                unitPrice += addonsTotal;
+                const quantity = item.quantity || 1;
+                const itemTotal = unitPrice * quantity;
+                subtotal += itemTotal;
+                
+                itemsToCreate.push({
+                  product_id: product.id,
+                  variant_id: variantId,
+                  quantity,
+                  unit_price: unitPrice,
+                  total: itemTotal,
+                  notes: item.notes || null,
+                  addons: itemAddons.length > 0 ? { create: itemAddons } : undefined
+                });
+              }
+            }
+            
+            if (itemsToCreate.length > 0) {
+              const total = subtotal;
+              const notes = [
+                aiResponse.delivery_address ? `Endereço: ${aiResponse.delivery_address}` : null,
+                aiResponse.delivery_notes ? `Obs: ${aiResponse.delivery_notes}` : null
+              ].filter(Boolean).join(' | ') || null;
+              
+              await prisma.order.create({
+                data: {
+                  chat_id: chat.id,
+                  status: 'pending',
+                  subtotal,
+                  discount: 0,
+                  total,
+                  payment_method: paymentMethod,
+                  payment_status: 'pending',
+                  notes,
+                  company_id: companyId,
+                  items: { create: itemsToCreate }
+                }
+              });
+              
+              await Log.add(`Pedido presencial criado pela IA para ${chat.client_name}: ${itemsToCreate.length} itens, R$ ${total.toFixed(2)}, pagamento: ${paymentMethod}`, companyId);
+            }
+          } catch (orderErr) {
+            await Log.add(`Falha ao criar pedido presencial para ${chat.client_name}: ${orderErr.message}`, companyId);
+            console.error('[AI Order] Erro ao criar pedido:', orderErr);
+          }
+        }
+
         if (aiResponse.trigger_billing) {
           if (company?.mp_enabled) {
             const billingItem = aiResponse.billing_item || 'Produto CRM';
@@ -429,11 +530,15 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
                 mp_public_key: company.mp_public_key
               };
               
-              const paymentData = await createMercadoPagoPreference(chat.id, billingItem, billingValue, mpSettings);
+              const paymentData = await createMercadoPagoPreference(chat.id, billingItem, billingValue, mpSettings, {
+                items: aiResponse.order_items || [],
+                delivery_address: aiResponse.delivery_address || null,
+                delivery_notes: aiResponse.delivery_notes || null
+              });
               
               const paymentMsg = {
                 sender: 'system',
-                text: `🔗 Cobrança Gerada: ${billingItem} - R$ ${Number(billingValue).toFixed(2)}. Link para pagar: ${paymentData.url}`,
+                text: `🔗 Cobrança Gerada: ${billingItem} - R$ ${Number(billingValue).toFixed(2)}. Link para pagar: ${paymentData.url}\n\n⏰ *Link válido por 1 hora*`,
                 timestamp: new Date(),
                 is_ai: false,
                 payment_id: paymentData.external_reference,
@@ -444,26 +549,11 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
               await Chat.addMessage(chat.id, paymentMsg);
               await Chat.update(chat.id, { status: 'interesse em compra' }, companyId);
               
-              // Criar Order automaticamente para vincular ao pagamento
-              await prisma.order.create({
-                data: {
-                  chat_id: chat.id,
-                  status: 'pending',
-                  subtotal: Number(billingValue),
-                  discount: 0,
-                  total: Number(billingValue),
-                  payment_method: 'mercadopago',
-                  payment_status: 'pending',
-                  notes: `${billingItem} (via link de pagamento)`,
-                  company_id: companyId
-                }
-              });
-              
               await Log.add(`Cobrança gerada automaticamente pela IA para ${chat.client_name}: ${billingItem} (R$ ${billingValue})`, companyId);
 
               if (conn && conn.connectionStatus === 'open' && conn.sock) {
                 await conn.sock.sendMessage(senderJid, { 
-                  text: `💳 *Link de Pagamento Gerado!*\n\n*Item:* ${billingItem}\n*Valor:* R$ ${Number(billingValue).toFixed(2)}\n\nLink para pagamento: ${paymentData.url}` 
+                  text: `💳 *Link de Pagamento Gerado!*\n\n*Item:* ${billingItem}\n*Valor:* R$ ${Number(billingValue).toFixed(2)}\n\nLink para pagamento: ${paymentData.url}\n\n⏰ *Link válido por 1 hora*` 
                 });
               }
             } catch (payErr) {

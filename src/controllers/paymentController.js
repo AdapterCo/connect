@@ -32,7 +32,7 @@ async function createCharge(req, res) {
 
     const paymentMsg = {
       sender: 'system',
-      text: `🔗 Cobrança Gerada: ${item} - R$ ${Number(value).toFixed(2)}. Link para pagar: ${paymentData.url}`,
+      text: `🔗 Cobrança Gerada: ${item} - R$ ${Number(value).toFixed(2)}. Link para pagar: ${paymentData.url}\n\n⏰ *Link válido por 1 hora*`,
       timestamp: new Date(),
       is_ai: false,
       payment_id: paymentData.external_reference,
@@ -43,21 +43,6 @@ async function createCharge(req, res) {
     const createdMsg = await Chat.addMessage(chat.id, paymentMsg);
     const updatedChat = await Chat.update(chat.id, { status: 'interesse em compra' }, req.user.company_id);
 
-    // Criar Order automaticamente para vincular ao pagamento
-    await prisma.order.create({
-      data: {
-        chat_id: chat.id,
-        status: 'pending',
-        subtotal: Number(value),
-        discount: 0,
-        total: Number(value),
-        payment_method: 'mercadopago',
-        payment_status: 'pending',
-        notes: `${item} (via link de pagamento)`,
-        company_id: req.user.company_id
-      }
-    });
-
     await Log.add(`Cobrança gerada manualmente por ${req.user.name}: ${item} (R$ ${value})`, req.user.company_id);
 
     const { getActiveConnections } = require('../services/whatsappService');
@@ -65,7 +50,7 @@ async function createCharge(req, res) {
     if (conn && conn.connectionStatus === 'open' && conn.sock) {
       try {
         await conn.sock.sendMessage(chat.id, {
-          text: `💳 *Link de Pagamento Manual!*\n\n*Item:* ${item}\n*Valor:* R$ ${Number(value).toFixed(2)}\n\nLink para pagamento: ${paymentData.url}`
+          text: `💳 *Link de Pagamento Manual!*\n\n*Item:* ${item}\n*Valor:* R$ ${Number(value).toFixed(2)}\n\nLink para pagamento: ${paymentData.url}\n\n⏰ *Link válido por 1 hora*`
         });
       } catch (err) {
         console.error(err);
