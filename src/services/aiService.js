@@ -39,7 +39,7 @@ async function runAiAttendant(chat, clientMessage, settings) {
       response.message = "Olá! Seja muito bem-vindo ao nosso atendimento virtual. Como posso ajudar você hoje?";
       response.status = "iniciada";
     } else if (text.includes("pizza") || text.includes("pedido") || text.includes("quero pedir") || text.includes("delivery") || text.includes("entrega")) {
-      response.message = "🛒 *Seu Pedido:*\n• 1x Pizza Margherita - R$ 35,00\n*Total: R$ 35,00*\n\nComo deseja pagar?\n💰 Dinheiro na entrega\n💳 Cartão na entrega\n💬 Pagar pelo WhatsApp (⚠️ pedido só entra na fila após confirmação do pagamento)";
+      response.message = "🛒 *Seu Pedido:*\n• 1x Pizza Margherita - R$ 35,00\n*Total: R$ 35,00*\n\nComo deseja pagar?\n💰 Dinheiro na entrega\n💳 Cartão na entrega\n💬 Pagar pelo WhatsApp (aviso: pedido só entra na fila após confirmação do pagamento)";
       response.status = "interesse em compra";
     } else if (text.includes("dinheiro") || text.includes("cartão") || text.includes("pagar na entrega")) {
       const paymentMethod = text.includes("dinheiro") ? "cash" : "card";
