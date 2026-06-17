@@ -1,16 +1,16 @@
 const { verifyToken } = require('../config/auth');
+const authenticateToken = require('./authMiddleware');
 
 function requireSuperAdmin(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  
+  const token = authenticateToken.getBearerToken(req);
+
   if (!token) {
-    return res.status(401).json({ error: 'Token não fornecido.' });
+    return res.status(401).json({ error: 'Token nao fornecido.' });
   }
 
   const decoded = verifyToken(token);
   if (!decoded || decoded.role !== 'superadmin') {
-    return res.status(403).json({ error: 'Acesso negado. Requer privilégios de Super Admin.' });
+    return res.status(403).json({ error: 'Acesso negado. Requer privilegios de Super Admin.' });
   }
 
   req.user = decoded;

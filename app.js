@@ -4,10 +4,12 @@ const helmet = require('helmet');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const { UPLOAD_DIR } = require('./src/config/index');
 const authenticateToken = require('./src/middleware/authMiddleware');
 const { generalLimiter, authLimiter, apiLimiter, uploadLimiter } = require('./src/middleware/rateLimitMiddleware');
+const { requestId, noStoreApi, requireJsonContentType } = require('./src/middleware/securityMiddleware');
 
 
 const authRoutes = require('./src/routes/authRoutes');
@@ -29,8 +31,27 @@ const printerRoutes = require('./src/routes/printerRoutes');
 
 const app = express();
 
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      "default-src": ["'self'"],
+      "base-uri": ["'self'"],
+      "connect-src": ["'self'", "wss:", "https:"],
+      "font-src": ["'self'", "data:"],
+      "form-action": ["'self'"],
+      "frame-ancestors": ["'none'"],
+      "img-src": ["'self'", "data:", "blob:", "https:"],
+      "media-src": ["'self'", "blob:"],
+      "object-src": ["'none'"],
+      "script-src": ["'self'", "https://cdn.jsdelivr.net"],
+      "style-src": ["'self'", "'unsafe-inline'"],
+      "upgrade-insecure-requests": []
+    }
+  },
   crossOriginEmbedderPolicy: false
 }));
 
@@ -42,7 +63,17 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '1mb' }));
+app.use(requestId);
+app.use(noStoreApi);
+app.use(requireJsonContentType);
+app.use(express.json({
+  limit: '1mb',
+  verify: (req, res, buf) => {
+    if (req.originalUrl && req.originalUrl.includes('/webhook/')) {
+      req.rawBody = Buffer.from(buf);
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 
@@ -51,23 +82,47 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/register-tenant', authLimiter);
 
-app.use(express.static(path.join(__dirname, 'public')));
-
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-const ALLOWED_MIMETYPES = [
-  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-  'video/mp4', 'video/quicktime',
-  'audio/mpeg', 'audio/ogg', 'audio/mp4', 'audio/wav',
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'text/plain'
-];
+app.use('/uploads', express.static(UPLOAD_DIR, {
+  dotfiles: 'deny',
+  fallthrough: false,
+  immutable: true,
+  maxAge: '1h',
+  setHeaders: (res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; media-src 'self'; sandbox");
+  }
+}));
+
+app.use(express.static(path.join(__dirname, 'public'), {
+  dotfiles: 'deny',
+  index: false,
+  setHeaders: (res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+  }
+}));
+
+const ALLOWED_MIMETYPES = new Map([
+  ['image/jpeg', ['.jpg', '.jpeg']],
+  ['image/png', ['.png']],
+  ['image/gif', ['.gif']],
+  ['image/webp', ['.webp']],
+  ['video/mp4', ['.mp4']],
+  ['video/quicktime', ['.mov']],
+  ['audio/mpeg', ['.mp3']],
+  ['audio/ogg', ['.ogg']],
+  ['audio/mp4', ['.m4a', '.mp4']],
+  ['audio/wav', ['.wav']],
+  ['application/pdf', ['.pdf']],
+  ['application/msword', ['.doc']],
+  ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', ['.docx']],
+  ['application/vnd.ms-excel', ['.xls']],
+  ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ['.xlsx']],
+  ['text/plain', ['.txt']]
+]);
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -76,8 +131,10 @@ const storage = multer.diskStorage({
     cb(null, UPLOAD_DIR);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const uniqueName = `upload_${Date.now()}_${Math.floor(Math.random() * 10000)}${ext}`;
+    const allowedExtensions = ALLOWED_MIMETYPES.get(file.mimetype) || [];
+    const originalExt = path.extname(file.originalname || '').toLowerCase();
+    const ext = allowedExtensions.includes(originalExt) ? originalExt : allowedExtensions[0];
+    const uniqueName = `upload_${Date.now()}_${crypto.randomUUID()}${ext}`;
     cb(null, uniqueName);
   }
 });
@@ -86,10 +143,12 @@ const upload = multer({
   storage,
   limits: { fileSize: MAX_FILE_SIZE },
   fileFilter: (req, file, cb) => {
-    if (ALLOWED_MIMETYPES.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
+    const allowedExtensions = ALLOWED_MIMETYPES.get(file.mimetype);
+    const originalExt = path.extname(file.originalname || '').toLowerCase();
+    if (!allowedExtensions || !allowedExtensions.includes(originalExt)) {
       cb(new Error('Tipo de arquivo não permitido.'));
+    } else {
+      cb(null, true);
     }
   }
 });
@@ -103,7 +162,7 @@ app.post('/api/upload', authenticateToken, uploadLimiter, upload.single('file'),
     success: true,
     url: relativeUrl,
     mimetype: req.file.mimetype,
-    filename: req.file.originalname,
+    filename: path.basename(req.file.originalname),
     size: req.file.size
   });
 });

@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "check": "node --check app.js && node --check server.js",
+    "security:smoke": "node scripts/security-smoke-test.js"
   },
   "keywords": [
     "crm",

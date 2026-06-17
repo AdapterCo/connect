@@ -1,4 +1,6 @@
 const billingService = require('../services/billingService');
+const { MP_WEBHOOK_SECRET } = require('../config/index');
+const { verifyHmacSignature } = require('../utils/webhookSignature');
 
 async function listPlans(req, res) {
   try {
@@ -95,6 +97,12 @@ async function cancelSubscription(req, res) {
 
 async function handleBillingWebhook(req, res) {
   try {
+    const signature = req.get('x-signature') || req.get('x-hub-signature-256');
+    const requestId = req.get('x-request-id');
+    if (!verifyHmacSignature({ rawBody: req.rawBody, payload: req.body, requestId, signature, secret: MP_WEBHOOK_SECRET })) {
+      return res.status(401).json({ error: 'Assinatura de webhook invalida.' });
+    }
+
     const { type, data } = req.body;
 
     if (type === 'payment') {
