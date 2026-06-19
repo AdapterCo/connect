@@ -7,7 +7,13 @@
     "start": "node server.js",
     "dev": "node server.js",
     "check": "node --check app.js && node --check server.js",
-    "security:smoke": "node scripts/security-smoke-test.js"
+    "check:all-js": "node scripts/check-all-js.js",
+    "security:smoke": "node scripts/security-smoke-test.js",
+    "security:audit": "npm audit --audit-level=high",
+    "secret:scan": "node scripts/secret-scan.js",
+    "crypto:migrate": "node scripts/migrate-crypto.js",
+    "crypto:migrate:dry": "node scripts/migrate-crypto.js --dry-run",
+    "devsecops:local": "node scripts/devsecops-local.js"
   },
   "keywords": [
     "crm",

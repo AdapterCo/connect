@@ -28,6 +28,7 @@ const auditRoutes = require('./src/routes/auditRoutes');
 const catalogRoutes = require('./src/routes/catalogRoutes');
 const orderRoutes = require('./src/routes/orderRoutes');
 const printerRoutes = require('./src/routes/printerRoutes');
+const privacyRoutes = require('./src/routes/privacyRoutes');
 
 const app = express();
 
@@ -47,7 +48,10 @@ app.use(helmet({
       "img-src": ["'self'", "data:", "blob:", "https:"],
       "media-src": ["'self'", "blob:"],
       "object-src": ["'none'"],
-      "script-src": ["'self'", "https://cdn.jsdelivr.net"],
+      // [A6] Qualquer script externo adicionado aqui DEVE usar SRI (Subresource Integrity)
+      // via atributo integrity="sha256-..." no elemento <script> correspondente.
+      // Não adicionar domínios novos sem hash SRI correspondente.
+      "script-src": ["'self'", "https://cdn.jsdelivr.net", "https://sdk.mercadopago.com"],
       "style-src": ["'self'", "'unsafe-inline'"],
       "upgrade-insecure-requests": []
     }
@@ -183,6 +187,15 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/orders', apiLimiter, orderRoutes);
 app.use('/api/printers', apiLimiter, printerRoutes);
+app.use('/api/privacy', apiLimiter, privacyRoutes);
+
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
 
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {

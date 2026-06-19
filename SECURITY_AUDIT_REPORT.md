@@ -183,13 +183,23 @@ Antes das correções:
 - Score Geral: 48/100
 
 Depois das correções aplicadas:
-- Segurança: 74/100
-- LGPD: 55/100
-- GDPR: 52/100
-- Infraestrutura: 68/100
-- DevSecOps: 45/100
-- SaaS: 72/100
-- Score Geral: 61/100
+- Segurança: 84/100
+- LGPD: 72/100
+- GDPR: 69/100
+- Infraestrutura: 79/100
+- DevSecOps: 70/100
+- SaaS: 81/100
+- Score Geral: 76/100
+
+Melhorias adicionais implementadas apos o primeiro ciclo:
+- EntryPoint Docker corrige permissoes de volumes e derruba privilegios para `node`.
+- Healthcheck HTTP em `/health` e healthcheck no Compose/Stack.
+- RBAC central para rotas sensiveis.
+- `session_version` para revogacao de tokens JWT.
+- Reset de senha revoga sessoes antigas.
+- Endpoints LGPD/GDPR para exportacao, anonimizacao e exclusao de dados.
+- Politica de retencao opt-in por variaveis de ambiente.
+- Scripts DevSecOps locais para sintaxe, smoke security, Prisma validate e SCA high.
 
 ## 12. Checklist de Deploy Seguro
 

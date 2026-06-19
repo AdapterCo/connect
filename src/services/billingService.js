@@ -316,7 +316,11 @@ async function activateSignupCheckout(checkoutId) {
       data: {
         status: 'paid',
         paid_at: now,
-        company_id: companyId
+        company_id: companyId,
+        // [LGPD/Segurança] Apagar dados sensíveis após ativação — senha e e-mail não devem
+        // permanecer no registro após o tenant ser criado.
+        admin_password: '',
+        payer_email: ''
       }
     });
   });

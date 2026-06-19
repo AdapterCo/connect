@@ -7,6 +7,7 @@ const whatsappService = require('./src/services/whatsappService');
 const schedulerService = require('./src/services/schedulerService');
 const mercadoPagoService = require('./src/services/mercadoPagoService');
 const billingService = require('./src/services/billingService');
+const retentionService = require('./src/services/retentionService');
 const Log = require('./src/models/Log');
 
 const server = http.createServer(app);
@@ -16,6 +17,7 @@ initSocket(server);
 let schedulerRunning = false;
 let paymentsRunning = false;
 let billingRunning = false;
+let retentionRunning = false;
 
 server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
@@ -68,6 +70,21 @@ setInterval(async () => {
     billingRunning = false;
   }
 }, 3600000);
+
+setInterval(async () => {
+  if (retentionRunning) return;
+  retentionRunning = true;
+  try {
+    const result = await retentionService.applyRetentionPolicy();
+    if (!result.skipped) {
+      await Log.add(`Politica de retencao executada: ${JSON.stringify(result)}.`);
+    }
+  } catch (err) {
+    console.error('[Retention] Erro ao executar politica de retencao:', err);
+  } finally {
+    retentionRunning = false;
+  }
+}, 24 * 60 * 60 * 1000);
 
 function gracefulShutdown(signal) {
   console.log(`\n[${signal}] Shutting down gracefully...`);

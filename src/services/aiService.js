@@ -160,7 +160,8 @@ async function runAiAttendant(chat, clientMessage, settings) {
 
   if (provider === 'openai') {
     const modelName = settings.openai_model || "gpt-4o-mini";
-    const openai = new OpenAI({ apiKey: openaiKey });
+    // [A4] Timeout de 30s para evitar DoS por hold de resposta
+    const openai = new OpenAI({ apiKey: openaiKey, timeout: 30_000, maxRetries: 2 });
     const completion = await openai.chat.completions.create({
       model: modelName,
       messages: [
@@ -190,18 +191,27 @@ async function runAiAttendant(chat, clientMessage, settings) {
 
     messages.push({ role: 'user', content: clientMessage });
 
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${grokKey}`
-      },
-      body: JSON.stringify({
-        model: modelName,
-        messages,
-        response_format: { type: 'json_object' }
-      })
-    });
+    // [A4] AbortController com timeout de 30s para evitar DoS por hold de resposta
+    const grokController = new AbortController();
+    const grokTimeout = setTimeout(() => grokController.abort(), 30_000);
+    let response;
+    try {
+      response = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${grokKey}`
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages,
+          response_format: { type: 'json_object' }
+        }),
+        signal: grokController.signal
+      });
+    } finally {
+      clearTimeout(grokTimeout);
+    }
 
     if (!response.ok) {
       const errText = await response.text();

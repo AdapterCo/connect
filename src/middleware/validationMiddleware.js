@@ -5,8 +5,8 @@ function validateLogin(req, res, next) {
     return res.status(400).json({ error: 'Usuário é obrigatório.' });
   }
 
-  if (!password || typeof password !== 'string' || password.length < 6) {
-    return res.status(400).json({ error: 'Senha deve ter pelo menos 6 caracteres.' });
+  if (!password || typeof password !== 'string' || password.length < 10) {
+    return res.status(400).json({ error: 'Senha deve ter pelo menos 10 caracteres.' });
   }
 
   if (username.length > 50) {
@@ -32,8 +32,8 @@ function validateRegister(req, res, next) {
     return res.status(400).json({ error: 'Usuário deve conter apenas letras, números e underscore.' });
   }
 
-  if (!password || typeof password !== 'string' || password.length < 6) {
-    return res.status(400).json({ error: 'Senha deve ter pelo menos 6 caracteres.' });
+  if (!password || typeof password !== 'string' || password.length < 10) {
+    return res.status(400).json({ error: 'Senha deve ter pelo menos 10 caracteres.' });
   }
 
   if (password.length > 128) {
@@ -77,8 +77,8 @@ function validateRegisterTenant(req, res, next) {
     return res.status(400).json({ error: 'Username do admin deve conter apenas letras, números e underscore.' });
   }
 
-  if (!adminPassword || typeof adminPassword !== 'string' || adminPassword.length < 6) {
-    return res.status(400).json({ error: 'Senha do admin deve ter pelo menos 6 caracteres.' });
+  if (!adminPassword || typeof adminPassword !== 'string' || adminPassword.length < 10) {
+    return res.status(400).json({ error: 'Senha do admin deve ter pelo menos 10 caracteres.' });
   }
 
   if (!planId || typeof planId !== 'string') {

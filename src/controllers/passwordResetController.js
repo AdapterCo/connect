@@ -82,8 +82,8 @@ async function resetPassword(req, res) {
       return res.status(400).json({ error: 'Token e nova senha são obrigatórios.' });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: 'Senha deve ter pelo menos 6 caracteres.' });
+    if (newPassword.length < 10) {
+      return res.status(400).json({ error: 'Senha deve ter pelo menos 10 caracteres.' });
     }
 
     if (newPassword.length > 128) {
@@ -107,7 +107,7 @@ async function resetPassword(req, res) {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: resetToken.user_id },
-        data: { password: hashedPassword }
+        data: { password: hashedPassword, session_version: { increment: 1 }, status: 'offline' }
       }),
       prisma.passwordResetToken.update({
         where: { id: resetToken.id },

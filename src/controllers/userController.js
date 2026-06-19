@@ -64,7 +64,36 @@ async function deleteUser(req, res) {
   }
 }
 
+async function revokeSessions(req, res) {
+  try {
+    const userId = req.params.id;
+    const targetUser = await User.findById(userId, req.user.company_id);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Atendente nao encontrado.' });
+    }
+
+    if (req.user.role !== 'admin' && req.user.id !== userId) {
+      return res.status(403).json({ error: 'Apenas administradores podem revogar sessoes de outros usuarios.' });
+    }
+
+    await prisma.user.updateMany({
+      where: { id: userId, company_id: req.user.company_id },
+      data: { session_version: { increment: 1 }, status: 'offline' }
+    });
+
+    await Log.add(`Sessoes do atendente ${targetUser.name} revogadas por ${req.user.name}.`, req.user.company_id);
+
+    const allUsers = await User.findAll(req.user.company_id);
+    emitToCompany(req.user.company_id, 'users_updated', allUsers);
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao revogar sessoes.' });
+  }
+}
+
 module.exports = {
   listUsers,
-  deleteUser
+  deleteUser,
+  revokeSessions
 };

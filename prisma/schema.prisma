@@ -65,6 +65,7 @@ model User {
   password        String
   role            String
   status          String               @default("offline")
+  session_version Int                  @default(0)
   company_id      String
   created_at      DateTime             @default(now())
   updated_at      DateTime             @updatedAt

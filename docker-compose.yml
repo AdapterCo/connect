@@ -28,7 +28,12 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - PLATFORM_MP_ACCESS_TOKEN=${PLATFORM_MP_ACCESS_TOKEN}
       - PLATFORM_MP_PUBLIC_KEY=${PLATFORM_MP_PUBLIC_KEY}
+      - MP_WEBHOOK_SECRET=${MP_WEBHOOK_SECRET}
       - DOMAIN=${DOMAIN:-connect.adapterco.com.br}
+      - RETENTION_ENABLED=${RETENTION_ENABLED:-false}
+      - AUDIT_LOG_RETENTION_DAYS=${AUDIT_LOG_RETENTION_DAYS:-365}
+      - SYSTEM_LOG_RETENTION_DAYS=${SYSTEM_LOG_RETENTION_DAYS:-180}
+      - MESSAGE_RETENTION_DAYS=${MESSAGE_RETENTION_DAYS:-0}
 
     volumes:
       - auth_data:/app/auth_info_baileys
@@ -36,6 +41,13 @@ services:
 
     depends_on:
       - db
+
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3009/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
     labels:
       - "traefik.enable=true"

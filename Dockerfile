@@ -18,10 +18,13 @@ COPY --chown=node:node --from=frontend-build /app/frontend/dist ./public
 
 RUN npx prisma generate
 
-RUN mkdir -p /app/public/uploads /app/auth_info_baileys && chown -R node:node /app
+RUN mkdir -p /app/public/uploads /app/auth_info_baileys \
+    && chmod +x /app/scripts/docker-entrypoint.sh \
+    && chown -R node:node /app
 
 USER node
 
 EXPOSE 3009
 
+ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
 CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]

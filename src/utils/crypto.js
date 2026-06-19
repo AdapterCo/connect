@@ -2,6 +2,9 @@ const crypto = require('crypto');
 const { ENCRYPTION_KEY } = require('../config/index');
 
 const GCM_ALGORITHM = 'aes-256-gcm';
+// [M5] Legado: AES-256-CBC sem autenticação — suporte mantido apenas para leitura de registros
+// antigos. DEADLINE: migrar todos os registros existentes para GCM e remover este suporte.
+// Execute: node scripts/migrate-crypto.js (a ser criado) para re-encriptar com v2:.
 const LEGACY_ALGORITHM = 'aes-256-cbc';
 const IV_LENGTH_GCM = 12;
 const IV_LENGTH_LEGACY = 16;

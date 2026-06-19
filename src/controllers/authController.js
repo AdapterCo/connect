@@ -13,6 +13,8 @@ async function login(req, res) {
     }
 
     const user = await User.findByUsername(username);
+    // [A5 - Anti-Enumeration] Mensagem idêntica para usuário inexistente e senha incorreta
+    // para não revelar se um username é válido (OWASP A07).
     if (!user) {
       return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
     }
@@ -63,7 +65,8 @@ async function login(req, res) {
       username: user.username,
       role: user.role,
       name: user.name,
-      company_id: user.company_id
+      company_id: user.company_id,
+      session_version: user.session_version || 0
     });
 
     res.json({
