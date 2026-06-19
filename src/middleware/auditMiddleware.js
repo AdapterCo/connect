@@ -37,7 +37,7 @@ function audit(entity, action) {
 function sanitizeBody(body) {
   if (!body) return null;
   const sanitized = { ...body };
-  const sensitiveFields = ['password', 'adminPassword', 'token', 'secret', 'key', 'access_token', 'mp_access_token', 'gemini_key', 'openai_key', 'grok_key'];
+  const sensitiveFields = ['password', 'adminPassword', 'token', 'secret', 'key', 'access_token', 'mp_access_token', 'gemini_key', 'openai_key', 'grok_key', 'groq_key'];
   sensitiveFields.forEach(field => {
     if (sanitized[field]) {
       sanitized[field] = '***';

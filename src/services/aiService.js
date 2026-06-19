@@ -5,6 +5,17 @@ const Log = require('../models/Log');
 const { decrypt } = require('../utils/crypto');
 const catalogController = require('../controllers/catalogController');
 
+const DEFAULT_AI_MODELS = {
+  gemini: 'gemini-2.5-flash',
+  openai: 'gpt-4o-mini',
+  groq: 'llama-3.3-70b-versatile'
+};
+
+function normalizeProvider(provider) {
+  if (provider === 'grok') return 'groq';
+  return provider || 'mock';
+}
+
 function normalizePaymentCopy(response) {
   if (!response || typeof response.message !== 'string') {
     return response;
@@ -23,7 +34,7 @@ function normalizePaymentCopy(response) {
 }
 
 async function runAiAttendant(chat, clientMessage, settings) {
-  const provider = settings.ai_provider || 'mock';
+  const provider = normalizeProvider(settings.ai_provider);
   const systemPrompt = settings.system_prompt;
   const companyId = chat.company_id || 'comp_default';
 
@@ -98,7 +109,7 @@ async function runAiAttendant(chat, clientMessage, settings) {
 
   const geminiKey = settings.gemini_key ? decrypt(settings.gemini_key) : '';
   const openaiKey = settings.openai_key ? decrypt(settings.openai_key) : '';
-  const grokKey = settings.grok_key ? decrypt(settings.grok_key) : '';
+  const groqKey = settings.grok_key ? decrypt(settings.grok_key) : '';
 
   if (provider === 'gemini' && !geminiKey) {
     throw new Error('Chave de API do Gemini não configurada.');
@@ -106,13 +117,13 @@ async function runAiAttendant(chat, clientMessage, settings) {
   if (provider === 'openai' && !openaiKey) {
     throw new Error('Chave de API da OpenAI não configurada.');
   }
-  if (provider === 'grok' && !grokKey) {
-    throw new Error('Chave de API da xAI (Grok) não configurada.');
+  if (provider === 'groq' && !groqKey) {
+    throw new Error('Chave de API da Groq não configurada.');
   }
 
   if (provider === 'gemini') {
-    const primaryModel = settings.gemini_model || "gemini-2.5-flash";
-    const fallbackModel = primaryModel === "gemini-2.5-flash" ? "gemini-2.0-flash" : "gemini-2.5-flash";
+    const primaryModel = settings.gemini_model || DEFAULT_AI_MODELS.gemini;
+    const fallbackModel = primaryModel === DEFAULT_AI_MODELS.gemini ? "gemini-2.0-flash" : DEFAULT_AI_MODELS.gemini;
     const genAI = new GoogleGenerativeAI(geminiKey);
     
     const attemptContentGeneration = async (modelName) => {
@@ -159,7 +170,7 @@ async function runAiAttendant(chat, clientMessage, settings) {
   } 
 
   if (provider === 'openai') {
-    const modelName = settings.openai_model || "gpt-4o-mini";
+    const modelName = settings.openai_model || DEFAULT_AI_MODELS.openai;
     // [A4] Timeout de 30s para evitar DoS por hold de resposta
     const openai = new OpenAI({ apiKey: openaiKey, timeout: 30_000, maxRetries: 2 });
     const completion = await openai.chat.completions.create({
@@ -174,59 +185,25 @@ async function runAiAttendant(chat, clientMessage, settings) {
     return normalizePaymentCopy(JSON.parse(cleanJsonString(responseText)));
   }
 
-  if (provider === 'grok') {
-    const modelName = settings.grok_model || "grok-beta";
-
-    const messages = [
-      { role: "system", content: fullPrompt }
-    ];
-
-    chat.messages.slice(-10).forEach(m => {
-      let role = 'user';
-      if (m.sender === 'attendant' || m.sender === 'system') role = 'assistant';
-      if (m.text) {
-        messages.push({ role, content: m.text });
-      }
+  if (provider === 'groq') {
+    const modelName = settings.grok_model || DEFAULT_AI_MODELS.groq;
+    const groq = new OpenAI({
+      apiKey: groqKey,
+      baseURL: 'https://api.groq.com/openai/v1',
+      timeout: 30_000,
+      maxRetries: 2
     });
-
-    messages.push({ role: 'user', content: clientMessage });
-
-    // [A4] AbortController com timeout de 30s para evitar DoS por hold de resposta
-    const grokController = new AbortController();
-    const grokTimeout = setTimeout(() => grokController.abort(), 30_000);
-    let response;
-    try {
-      response = await fetch('https://api.x.ai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${grokKey}`
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages,
-          response_format: { type: 'json_object' }
-        }),
-        signal: grokController.signal
-      });
-    } finally {
-      clearTimeout(grokTimeout);
-    }
-
-    if (!response.ok) {
-      const errText = await response.text();
-      let parseErr;
-      try {
-        parseErr = JSON.parse(errText);
-      } catch (e) {}
-      const errMsg = parseErr?.error?.message || parseErr?.message || errText;
-      throw new Error(`Erro na API do Grok: ${response.status} - ${typeof errMsg === 'object' ? JSON.stringify(errMsg) : errMsg}`);
-    }
-
-    const resData = await response.json();
-    const responseText = resData.choices?.[0]?.message?.content;
+    const completion = await groq.chat.completions.create({
+      model: modelName,
+      messages: [
+        { role: "system", content: fullPrompt },
+        { role: "user", content: clientMessage }
+      ],
+      response_format: { type: "json_object" }
+    });
+    const responseText = completion.choices?.[0]?.message?.content;
     if (!responseText) {
-      throw new Error('Formato de resposta da API do Grok inválido ou vazio.');
+      throw new Error('Formato de resposta da API da Groq inválido ou vazio.');
     }
 
     return normalizePaymentCopy(JSON.parse(cleanJsonString(responseText)));

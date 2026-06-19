@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import api from '../services/api';
 
+const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+
 export default function SettingsAI() {
   const { settings, fetchSettings } = useAppStore();
   const [formData, setFormData] = useState({
@@ -9,10 +11,10 @@ export default function SettingsAI() {
     ai_provider: 'mock',
     gemini_key: '',
     openai_key: '',
-    grok_key: '',
+    groq_key: '',
     gemini_model: 'gemini-2.5-flash',
     openai_model: 'gpt-4o-mini',
-    grok_model: 'grok-4.3',
+    groq_model: DEFAULT_GROQ_MODEL,
     system_prompt: ''
   });
   const [saving, setSaving] = useState(false);
@@ -31,13 +33,13 @@ export default function SettingsAI() {
     if (settings) {
       setFormData({
         ai_enabled: settings.ai_enabled,
-        ai_provider: settings.ai_provider,
+        ai_provider: settings.ai_provider === 'grok' ? 'groq' : settings.ai_provider,
         gemini_key: settings.gemini_key || '',
         openai_key: settings.openai_key || '',
-        grok_key: settings.grok_key || '',
+        groq_key: settings.groq_key || settings.grok_key || '',
         gemini_model: settings.gemini_model || 'gemini-2.5-flash',
         openai_model: settings.openai_model || 'gpt-4o-mini',
-        grok_model: settings.grok_model || 'grok-4.3',
+        groq_model: settings.groq_model || settings.grok_model || DEFAULT_GROQ_MODEL,
         system_prompt: settings.system_prompt || ''
       });
     }
@@ -48,7 +50,11 @@ export default function SettingsAI() {
     setSaveStatus(null);
 
     try {
-      await api.post('/settings', formData);
+      await api.post('/settings', {
+        ...formData,
+        grok_key: formData.groq_key,
+        grok_model: formData.groq_model
+      });
       await fetchSettings();
       setSaveStatus({ type: 'success', message: 'Configurações de IA salvas com sucesso.' });
     } catch (err: any) {
@@ -93,7 +99,7 @@ export default function SettingsAI() {
               <option value="mock">Modo Demonstrativo (Mock)</option>
               <option value="gemini">Google Gemini</option>
               <option value="openai">OpenAI ChatGPT</option>
-              <option value="grok">xAI Grok</option>
+              <option value="groq">Groq</option>
             </select>
           </div>
 
@@ -145,15 +151,15 @@ export default function SettingsAI() {
             </>
           )}
 
-          {formData.ai_provider === 'grok' && (
+          {formData.ai_provider === 'groq' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Grok API Key</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Groq API Key</label>
                 <input
                   type="password"
-                  value={formData.grok_key}
-                  onChange={(e) => updateFormData({ grok_key: e.target.value })}
-                  placeholder="xai-..."
+                  value={formData.groq_key}
+                  onChange={(e) => updateFormData({ groq_key: e.target.value })}
+                  placeholder="gsk_..."
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -161,8 +167,8 @@ export default function SettingsAI() {
                 <label className="block text-sm font-medium text-gray-300 mb-2">Modelo</label>
                 <input
                   type="text"
-                  value={formData.grok_model}
-                  onChange={(e) => updateFormData({ grok_model: e.target.value })}
+                  value={formData.groq_model}
+                  onChange={(e) => updateFormData({ groq_model: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>

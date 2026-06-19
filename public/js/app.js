@@ -90,6 +90,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  socket.on('chat_updated', (chat) => {
+    if (!chat || !chat.id) return;
+
+    const idx = state.chats.findIndex(c => c.id === chat.id);
+    if (idx >= 0) {
+      state.chats[idx] = chat;
+    } else {
+      state.chats.push(chat);
+    }
+
+    renderClientList();
+    updateDashboardStats();
+    if (state.currentView === 'kanban') {
+      renderKanban();
+    }
+    if (state.selectedChatId === chat.id) {
+      renderActiveChat(chat);
+      renderActiveChatHeader(chat);
+    }
+  });
+
   socket.on('logs_updated', (logs) => {
     state.logs = logs;
     renderLogs();
@@ -394,16 +415,17 @@ function updateWhatsAppConnectionUI() {
 
 function populateSettingsForm() {
   document.getElementById('ai-enabled-toggle').checked = !!state.settings.ai_enabled;
-  document.getElementById('ai-provider-select').value = state.settings.ai_provider || 'mock';
+  const aiProvider = state.settings.ai_provider === 'grok' ? 'groq' : (state.settings.ai_provider || 'mock');
+  document.getElementById('ai-provider-select').value = aiProvider;
   document.getElementById('gemini-key-input').value = state.settings.gemini_key || '';
   document.getElementById('openai-key-input').value = state.settings.openai_key || '';
-  document.getElementById('grok-key-input').value = state.settings.grok_key || '';
+  document.getElementById('grok-key-input').value = state.settings.groq_key || state.settings.grok_key || '';
   document.getElementById('system-prompt-input').value = state.settings.system_prompt || '';
 
   // Model names
   document.getElementById('gemini-model-input').value = state.settings.gemini_model || 'gemini-1.5-flash';
   document.getElementById('openai-model-input').value = state.settings.openai_model || 'gpt-4o-mini';
-  document.getElementById('grok-model-input').value = state.settings.grok_model || 'grok-4.3';
+  document.getElementById('grok-model-input').value = state.settings.groq_model || state.settings.grok_model || 'llama-3.3-70b-versatile';
 
   document.getElementById('mp-enabled-toggle').checked = !!state.settings.mp_enabled;
   document.getElementById('mp-access-token-input').value = state.settings.mp_access_token || '';
@@ -421,7 +443,7 @@ function handleAiProviderFields() {
   } else if (provider === 'openai') {
     document.getElementById('openai-key-group').style.display = 'block';
     document.getElementById('openai-model-group').style.display = 'block';
-  } else if (provider === 'grok') {
+  } else if (provider === 'groq') {
     document.getElementById('grok-key-group').style.display = 'block';
     document.getElementById('grok-model-group').style.display = 'block';
   }

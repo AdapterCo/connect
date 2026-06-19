@@ -69,13 +69,15 @@ export interface Settings {
   id: string;
   company_id: string;
   ai_enabled: boolean;
-  ai_provider: 'mock' | 'gemini' | 'openai' | 'grok';
+  ai_provider: 'mock' | 'gemini' | 'openai' | 'groq' | 'grok';
   gemini_key: string;
   openai_key: string;
   grok_key: string;
+  groq_key?: string;
   gemini_model: string;
   openai_model: string;
   grok_model: string;
+  groq_model?: string;
   system_prompt: string;
   mp_enabled: boolean;
   mp_access_token: string;

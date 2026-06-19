@@ -32,6 +32,8 @@ if (!fs.existsSync(prismaCli)) {
 const commands = [
   [process.execPath, [npmCli, 'run', 'check:all-js']],
   [process.execPath, [prismaCli, 'validate']],
+  [process.execPath, [npmCli, 'run', 'ai:smoke']],
+  [process.execPath, [npmCli, 'run', 'whatsapp:smoke']],
   [process.execPath, [npmCli, 'run', 'security:smoke']],
   [process.execPath, [npmCli, 'run', 'secret:scan']],
   [process.execPath, [npmCli, 'audit', '--audit-level=high']]

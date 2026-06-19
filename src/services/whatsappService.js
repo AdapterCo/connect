@@ -149,12 +149,16 @@ async function startWhatsAppInstance(instanceId, companyId) {
     });
 
     sock.ev.on('messages.upsert', async (m) => {
-      const msg = m.messages[0];
-      if (!msg) return;
-      
-      if (!msg.key.fromMe && m.type === 'notify') {
-        const senderJid = msg.key.remoteJid;
-        if (senderJid.endsWith('@g.us') || senderJid === 'status@broadcast') return;
+      if (!Array.isArray(m.messages) || m.messages.length === 0) return;
+
+      for (const msg of m.messages) {
+        if (!msg) continue;
+        try {
+          if (msg.key.fromMe || m.type !== 'notify') continue;
+
+          const senderJid = msg.key.remoteJid;
+          if (!senderJid) continue;
+          if (senderJid.endsWith('@g.us') || senderJid === 'status@broadcast') continue;
         
         const phone = senderJid.split('@')[0];
         const name = msg.pushName || `Cliente (+${phone.slice(-4)})`;
@@ -168,13 +172,26 @@ async function startWhatsAppInstance(instanceId, companyId) {
         };
 
         const content = getMessageContent(msg.message);
-        if (!content) return;
+        if (!content) {
+          console.warn(`[WhatsApp:${instanceId}] Mensagem sem conteudo processavel de ${senderJid}`);
+          continue;
+        }
 
         const imageMsg = content.imageMessage;
         const videoMsg = content.videoMessage;
         const audioMsg = content.audioMessage;
         const docMsg = content.documentMessage;
-        const text = content.conversation || content.extendedTextMessage?.text || imageMsg?.caption || videoMsg?.caption || '';
+        const text = content.conversation ||
+          content.extendedTextMessage?.text ||
+          content.buttonsResponseMessage?.selectedDisplayText ||
+          content.buttonsResponseMessage?.selectedButtonId ||
+          content.listResponseMessage?.title ||
+          content.listResponseMessage?.singleSelectReply?.selectedRowId ||
+          content.templateButtonReplyMessage?.selectedDisplayText ||
+          content.templateButtonReplyMessage?.selectedId ||
+          imageMsg?.caption ||
+          videoMsg?.caption ||
+          '';
         
         let mediaInfo = null;
         if (imageMsg || videoMsg || audioMsg || docMsg) {
@@ -228,8 +245,19 @@ async function startWhatsAppInstance(instanceId, companyId) {
           }
         }
 
-        if (!text && !mediaInfo) return;
+        if (!text && !mediaInfo) {
+          console.warn(`[WhatsApp:${instanceId}] Mensagem ignorada sem texto/midia suportada de ${senderJid}`);
+          continue;
+        }
         await handleIncomingWhatsAppMessage(senderJid, name, text, mediaInfo, instanceId, companyId);
+        } catch (msgErr) {
+          console.error(`[WhatsApp:${instanceId}] Erro ao processar mensagem recebida:`, msgErr);
+          try {
+            await Log.add(`Erro ao processar mensagem recebida no WhatsApp (${instanceId}): ${msgErr.message}`, companyId);
+          } catch (logErr) {
+            console.error(logErr);
+          }
+        }
       }
     });
 

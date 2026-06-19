@@ -8,6 +8,8 @@
     "dev": "node server.js",
     "check": "node --check app.js && node --check server.js",
     "check:all-js": "node scripts/check-all-js.js",
+    "ai:smoke": "node scripts/ai-provider-smoke-test.js",
+    "whatsapp:smoke": "node scripts/whatsapp-flow-smoke-test.js",
     "security:smoke": "node scripts/security-smoke-test.js",
     "security:audit": "npm audit --audit-level=high",
     "secret:scan": "node scripts/secret-scan.js",

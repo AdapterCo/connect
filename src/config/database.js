@@ -95,7 +95,7 @@ async function initializeDatabase() {
           grok_key: encrypt(''),
           gemini_model: 'gemini-2.5-flash',
           openai_model: 'gpt-4o-mini',
-          grok_model: 'grok-4.3',
+          grok_model: 'llama-3.3-70b-versatile',
           system_prompt: 'Você é um assistente virtual de atendimento. Seja cordial e ajude o cliente.'
         }
       });
