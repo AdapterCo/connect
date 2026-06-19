@@ -48,6 +48,7 @@ export interface Message {
 
 export interface Chat {
   id: string;
+  remote_jid?: string | null;
   client_name: string;
   client_phone: string;
   status: 'iniciada' | 'interesse em compra' | 'finalizada';

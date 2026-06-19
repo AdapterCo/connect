@@ -142,7 +142,7 @@ async function checkAllPendingPayments() {
             const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
             if (conn && conn.connectionStatus === 'open' && conn.sock) {
               try {
-                await conn.sock.sendMessage(chat.id, {
+                await conn.sock.sendMessage(Chat.getRemoteJid(chat), {
                   text: `⏰ *Link Expirado*\n\nO link de pagamento expirou após 1 hora. Se ainda tiver interesse, solicite um novo link.`
                 });
               } catch (err) {
@@ -342,7 +342,7 @@ async function checkAllPendingPayments() {
             const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
             if (conn && conn.connectionStatus === 'open' && conn.sock) {
               try {
-                const targetJid = chat.id;
+                const targetJid = Chat.getRemoteJid(chat);
                 await conn.sock.sendMessage(targetJid, { 
                   text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(approvedValue).toFixed(2)} pelo item *${approvedItem}*. Obrigado!` 
                 });

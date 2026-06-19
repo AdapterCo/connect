@@ -49,7 +49,7 @@ async function createCharge(req, res) {
     const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
     if (conn && conn.connectionStatus === 'open' && conn.sock) {
       try {
-        await conn.sock.sendMessage(chat.id, {
+        await conn.sock.sendMessage(Chat.getRemoteJid(chat), {
           text: `💳 *Link de Pagamento Manual!*\n\n*Item:* ${item}\n*Valor:* R$ ${Number(value).toFixed(2)}\n\nLink para pagamento: ${paymentData.url}\n\n⏰ *Link válido por 1 hora*`
         });
       } catch (err) {
@@ -161,7 +161,7 @@ async function checkPaymentStatus(req, res) {
       const conn = getActiveConnections()[chat.instance_id || 'inst_default'];
       if (conn && conn.connectionStatus === 'open' && conn.sock) {
         try {
-          await conn.sock.sendMessage(chatId, {
+          await conn.sock.sendMessage(Chat.getRemoteJid(chat), {
             text: `✅ *Pagamento Aprovado!*\n\nConfirmamos o recebimento de R$ ${Number(approvedValue).toFixed(2)} pelo item *${approvedItem}*. Obrigado!`
           });
         } catch (err) {

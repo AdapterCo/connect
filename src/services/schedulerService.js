@@ -39,7 +39,7 @@ async function checkScheduledMessages() {
 
           if (connectionStatus === 'open' && sock) {
             try {
-              const targetJid = sch.chat_id;
+              const targetJid = Chat.getRemoteJid(chat);
               if (sch.media_url) {
                 const mediaPath = path.join(__dirname, '../../public', sch.media_url);
                 if (sch.media_type === 'image') {

@@ -37,17 +37,19 @@ async function createChat(req, res) {
     const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
     const cleanPhone = phone.split('@')[0];
 
-    const existing = await Chat.findById(jid, req.user.company_id);
+    const defaultInst = await prisma.instance.findFirst({
+      where: { company_id: req.user.company_id }
+    });
+    const instanceId = defaultInst ? defaultInst.id : 'inst_default';
+
+    const existing = await Chat.findByRemoteJid(jid, req.user.company_id, instanceId);
     if (existing) {
       return res.status(400).json({ error: 'Cliente com este identificador já cadastrado nesta empresa.' });
     }
 
-    const defaultInst = await prisma.instance.findFirst({
-      where: { company_id: req.user.company_id }
-    });
-
     const newChat = {
-      id: jid,
+      id: Chat.createChatId(req.user.company_id, instanceId, jid),
+      remote_jid: jid,
       client_name: name,
       client_phone: cleanPhone,
       status: 'iniciada',
@@ -57,7 +59,7 @@ async function createChat(req, res) {
       is_blocked: false,
       sector: null,
       company_id: req.user.company_id,
-      instance_id: defaultInst ? defaultInst.id : 'inst_default'
+      instance_id: instanceId
     };
 
     const createdChat = await Chat.create(newChat, req.user.company_id);
@@ -213,7 +215,7 @@ async function sendMessage(req, res) {
       }
 
       try {
-        const jid = chat.id;
+        const jid = Chat.getRemoteJid(chat);
         if (mediaUrl) {
           const mediaPath = path.join(__dirname, '../../public', mediaUrl);
           if (mediaType === 'image') {

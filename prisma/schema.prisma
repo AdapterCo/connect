@@ -104,6 +104,7 @@ model Instance {
 
 model Chat {
   id            String    @id
+  remote_jid    String?
   client_name   String
   client_phone  String
   status        String    @default("iniciada")
@@ -128,6 +129,8 @@ model Chat {
   @@index([company_id])
   @@index([company_id, status])
   @@index([instance_id])
+  @@index([remote_jid])
+  @@unique([company_id, instance_id, remote_jid])
 }
 
 model Message {

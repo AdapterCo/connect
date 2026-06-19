@@ -321,12 +321,13 @@ async function stopWhatsAppInstance(instanceId, clearSession = false) {
 async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageText, mediaInfo, instanceId, companyId) {
   try {
     const senderJid = rawSenderJid;
-    let chat = await Chat.findById(senderJid, companyId);
+    let chat = await Chat.findByRemoteJid(senderJid, companyId, instanceId);
     const cleanPhone = senderJid.split('@')[0];
 
     if (!chat) {
       const newChatData = {
-        id: senderJid,
+        id: Chat.createChatId(companyId, instanceId, senderJid),
+        remote_jid: senderJid,
         client_name: clientName || `Cliente (+${cleanPhone.slice(-4)})`,
         client_phone: cleanPhone,
         status: 'iniciada',
@@ -440,7 +441,7 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
 
         const conn = activeConnections[instanceId];
         if (conn && conn.connectionStatus === 'open' && conn.sock) {
-          await conn.sock.sendMessage(senderJid, { text: aiResponse.message });
+          await conn.sock.sendMessage(Chat.getRemoteJid(chat), { text: aiResponse.message });
         }
 
         if (aiResponse.create_order) {
@@ -580,7 +581,7 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
               await Log.add(`Cobrança gerada automaticamente pela IA para ${chat.client_name}: ${billingItem} (R$ ${billingValue})`, companyId);
 
               if (conn && conn.connectionStatus === 'open' && conn.sock) {
-                await conn.sock.sendMessage(senderJid, { 
+                await conn.sock.sendMessage(Chat.getRemoteJid(chat), { 
                   text: `💳 *Link de Pagamento Gerado!*\n\n*Item:* ${billingItem}\n*Valor:* R$ ${Number(billingValue).toFixed(2)}\n\nLink para pagamento: ${paymentData.url}\n\n⏰ *Link válido por 1 hora*` 
                 });
               }
@@ -613,7 +614,7 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
         const conn = activeConnections[instanceId];
         if (conn && conn.connectionStatus === 'open' && conn.sock) {
           try {
-            await conn.sock.sendMessage(senderJid, {
+            await conn.sock.sendMessage(Chat.getRemoteJid(chat), {
               text: `⚠️ *Erro no Atendente de IA:* Desculpe, não conseguimos processar sua mensagem devido a um erro técnico temporário. Por favor, tente novamente em alguns instantes.`
             });
           } catch (waErr) {
@@ -624,7 +625,7 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
     }
 
     // PERFORMANCE: Emitir apenas o chat final atualizado, não toda a lista do banco
-    const finalChat = await Chat.findById(senderJid, companyId);
+    const finalChat = await Chat.findById(chat.id, companyId);
     emitToCompany(companyId, 'chat_updated', finalChat);
     emitToCompany(companyId, 'logs_updated', await Log.findAll(companyId));
     
