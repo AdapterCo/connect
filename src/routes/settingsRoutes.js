@@ -9,5 +9,6 @@ const router = express.Router();
 
 router.get('/', authenticateToken, checkCompanyActive, requireMinimumRole('admin'), settingsController.getSettings);
 router.post('/', authenticateToken, checkCompanyActive, requireMinimumRole('admin'), audit('settings', 'update'), settingsController.updateSettings);
+router.post('/test-key', authenticateToken, checkCompanyActive, requireMinimumRole('admin'), settingsController.testAiKey);
 
 module.exports = router;

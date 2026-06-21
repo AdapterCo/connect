@@ -1,6 +1,8 @@
 const { prisma } = require('../config/database');
 const Log = require('../models/Log');
 const { encrypt, decrypt } = require('../utils/crypto');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const OpenAI = require('openai');
 
 const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
 const AI_PROVIDERS = new Set(['mock', 'gemini', 'openai', 'groq']);
@@ -142,7 +144,87 @@ async function updateSettings(req, res) {
   }
 }
 
+async function testAiKey(req, res) {
+  try {
+    const companyId = req.user.company_id;
+    const { provider, key, model } = req.body;
+
+    if (!provider || !key) {
+      return res.status(400).json({ ok: false, error: 'Provedor e chave sao obrigatorios.' });
+    }
+
+    if (provider === 'openai') {
+      const openai = new OpenAI({ apiKey: key, timeout: 15_000, maxRetries: 0 });
+      try {
+        const resp = await openai.chat.completions.create({
+          model: model || 'gpt-4o-mini',
+          messages: [{ role: 'user', content: 'responda apenas com o json: {"ok":true}' }],
+          response_format: { type: 'json_object' },
+          max_tokens: 20
+        });
+        const text = resp.choices?.[0]?.message?.content || '{}';
+        await Log.add(`Teste de chave OpenAI realizado com sucesso por ${req.user.name}.`, companyId);
+        return res.json({ ok: true, model: model || 'gpt-4o-mini', response: text });
+      } catch (err) {
+        const status = err.status || err.statusCode;
+        const code = err.code || err.error?.code;
+        const msg = err.error?.message || err.message || String(err);
+        const detail = [status && `HTTP ${status}`, code, msg].filter(Boolean).join(' | ');
+        return res.json({ ok: false, error: detail });
+      }
+    }
+
+    if (provider === 'gemini') {
+      const { GoogleGenerativeAI: GGA } = require('@google/generative-ai');
+      try {
+        const genAI = new GGA(key);
+        const mdl = genAI.getGenerativeModel(
+          { model: model || 'gemini-2.5-flash', generationConfig: { responseMimeType: 'application/json' } },
+          { apiVersion: 'v1beta' }
+        );
+        const result = await mdl.generateContent('responda apenas com o json: {"ok":true}');
+        const text = result.response.text();
+        await Log.add(`Teste de chave Gemini realizado com sucesso por ${req.user.name}.`, companyId);
+        return res.json({ ok: true, model: model || 'gemini-2.5-flash', response: text });
+      } catch (err) {
+        const msg = err.message || String(err);
+        return res.json({ ok: false, error: msg });
+      }
+    }
+
+    if (provider === 'groq') {
+      const groq = new OpenAI({
+        apiKey: key,
+        baseURL: 'https://api.groq.com/openai/v1',
+        timeout: 15_000,
+        maxRetries: 0
+      });
+      try {
+        const resp = await groq.chat.completions.create({
+          model: model || 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: 'responda apenas com o json: {"ok":true}' }],
+          response_format: { type: 'json_object' },
+          max_tokens: 20
+        });
+        const text = resp.choices?.[0]?.message?.content || '{}';
+        await Log.add(`Teste de chave Groq realizado com sucesso por ${req.user.name}.`, companyId);
+        return res.json({ ok: true, model: model || 'llama-3.3-70b-versatile', response: text });
+      } catch (err) {
+        const status = err.status || err.statusCode;
+        const msg = err.error?.message || err.message || String(err);
+        const detail = [status && `HTTP ${status}`, msg].filter(Boolean).join(' | ');
+        return res.json({ ok: false, error: detail });
+      }
+    }
+
+    return res.status(400).json({ ok: false, error: 'Provedor nao suportado: ' + provider });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: 'Erro interno ao testar chave: ' + error.message });
+  }
+}
+
 module.exports = {
   getSettings,
-  updateSettings
+  updateSettings,
+  testAiKey
 };

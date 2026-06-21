@@ -173,16 +173,27 @@ async function runAiAttendant(chat, clientMessage, settings) {
     const modelName = settings.openai_model || DEFAULT_AI_MODELS.openai;
     // [A4] Timeout de 30s para evitar DoS por hold de resposta
     const openai = new OpenAI({ apiKey: openaiKey, timeout: 30_000, maxRetries: 2 });
-    const completion = await openai.chat.completions.create({
-      model: modelName,
-      messages: [
-        { role: "system", content: fullPrompt },
-        { role: "user", content: clientMessage }
-      ],
-      response_format: { type: "json_object" }
-    });
-    const responseText = completion.choices[0].message.content;
-    return normalizePaymentCopy(JSON.parse(cleanJsonString(responseText)));
+    try {
+      const completion = await openai.chat.completions.create({
+        model: modelName,
+        messages: [
+          { role: "system", content: fullPrompt },
+          { role: "user", content: clientMessage }
+        ],
+        response_format: { type: "json_object" }
+      });
+      const responseText = completion.choices[0].message.content;
+      return normalizePaymentCopy(JSON.parse(cleanJsonString(responseText)));
+    } catch (openaiErr) {
+      // Extrair detalhes estruturados do erro da API OpenAI para facilitar diagnostico
+      const status = openaiErr.status || openaiErr.statusCode;
+      const code = openaiErr.code || openaiErr.error?.code;
+      const errMsg = openaiErr.error?.message || openaiErr.message || String(openaiErr);
+      const detail = [status && `HTTP ${status}`, code, errMsg].filter(Boolean).join(' | ');
+      console.error(`[OpenAI] Erro na chamada (modelo: ${modelName}):`, detail);
+      await Log.add(`[OpenAI] Erro: ${detail}`, companyId);
+      throw new Error(`OpenAI (${modelName}): ${detail}`);
+    }
   }
 
   if (provider === 'groq') {

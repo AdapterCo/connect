@@ -19,9 +19,12 @@ export default function SettingsAI() {
   });
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [testingKey, setTestingKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const updateFormData = (data: Partial<typeof formData>) => {
     setSaveStatus(null);
+    setTestResult(null);
     setFormData({ ...formData, ...data });
   };
 
@@ -48,6 +51,7 @@ export default function SettingsAI() {
   const handleSave = async () => {
     setSaving(true);
     setSaveStatus(null);
+    setTestResult(null);
 
     try {
       await api.post('/settings', {
@@ -66,6 +70,48 @@ export default function SettingsAI() {
       setSaving(false);
     }
   };
+
+  const handleTestKey = async () => {
+    const provider = formData.ai_provider;
+    const keyMap: Record<string, string> = {
+      openai: formData.openai_key,
+      gemini: formData.gemini_key,
+      groq: formData.groq_key
+    };
+    const modelMap: Record<string, string> = {
+      openai: formData.openai_model,
+      gemini: formData.gemini_model,
+      groq: formData.groq_model
+    };
+    const key = keyMap[provider] || '';
+    if (!key) {
+      setTestResult({ ok: false, message: 'Informe a chave de API antes de testar.' });
+      return;
+    }
+    setTestingKey(true);
+    setTestResult(null);
+    try {
+      const res = await api.post('/settings/test-key', {
+        provider,
+        key,
+        model: modelMap[provider]
+      });
+      if (res.data.ok) {
+        setTestResult({ ok: true, message: `✅ Chave válida! Modelo: ${res.data.model}` });
+      } else {
+        setTestResult({ ok: false, message: `❌ Erro da API: ${res.data.error}` });
+      }
+    } catch (err: any) {
+      setTestResult({
+        ok: false,
+        message: `❌ ${err.response?.data?.error || err.message || 'Erro ao testar chave.'}`
+      });
+    } finally {
+      setTestingKey(false);
+    }
+  };
+
+  const showTestButton = ['openai', 'gemini', 'groq'].includes(formData.ai_provider);
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -135,7 +181,7 @@ export default function SettingsAI() {
                   type="password"
                   value={formData.openai_key}
                   onChange={(e) => updateFormData({ openai_key: e.target.value })}
-                  placeholder="sk-..."
+                  placeholder="sk-proj-..."
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -186,13 +232,39 @@ export default function SettingsAI() {
             <p className="text-xs text-gray-500 mt-1">Defina as regras de negócio e como o bot deve conduzir a conversa.</p>
           </div>
 
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {saving ? 'Salvando...' : 'Salvar Configurações'}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {saving ? 'Salvando...' : 'Salvar Configurações'}
+            </button>
+
+            {showTestButton && (
+              <button
+                onClick={handleTestKey}
+                disabled={testingKey || saving}
+                className="px-5 bg-gray-700 text-white py-3 rounded-lg font-medium hover:bg-gray-600 disabled:opacity-50 border border-gray-600 whitespace-nowrap"
+                title="Testa a chave com uma chamada real à API do provedor selecionado"
+              >
+                {testingKey ? 'Testando...' : '🔌 Testar Chave'}
+              </button>
+            )}
+          </div>
+
+          {testResult && (
+            <div
+              role="status"
+              className={`rounded-lg border px-4 py-3 text-sm font-mono break-all ${
+                testResult.ok
+                  ? 'border-green-500/40 bg-green-500/10 text-green-300'
+                  : 'border-red-500/40 bg-red-500/10 text-red-300'
+              }`}
+            >
+              {testResult.message}
+            </div>
+          )}
 
           {saveStatus && (
             <div
