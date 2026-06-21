@@ -255,7 +255,7 @@ export default function Cardapio() {
                         <p className="text-xs text-gray-400 mt-1 line-clamp-2">{prod.description}</p>
                       )}
                       <p className="text-sm font-bold mt-2" style={{ color: primaryHex }}>
-                        R$ {prod.price.toFixed(2)}
+                        {prod.variants.length > 0 ? 'A partir de ' : ''}R$ {prod.price.toFixed(2)}
                       </p>
                     </div>
                     {prod.image_url && (
