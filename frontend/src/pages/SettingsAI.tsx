@@ -4,6 +4,16 @@ import api from '../services/api';
 
 const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
 
+const VALID_OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-mini', 'o1'];
+const VALID_GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+const VALID_GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'];
+
+function safeModel(value: string | undefined, validList: string[], fallback: string): string {
+  if (!value) return fallback;
+  const clean = value.trim();
+  return validList.includes(clean) ? clean : fallback;
+}
+
 export default function SettingsAI() {
   const { settings, fetchSettings } = useAppStore();
   const [formData, setFormData] = useState({
@@ -40,9 +50,9 @@ export default function SettingsAI() {
         gemini_key: settings.gemini_key || '',
         openai_key: settings.openai_key || '',
         groq_key: settings.groq_key || settings.grok_key || '',
-        gemini_model: settings.gemini_model || 'gemini-2.5-flash',
-        openai_model: settings.openai_model || 'gpt-4o-mini',
-        groq_model: settings.groq_model || settings.grok_model || DEFAULT_GROQ_MODEL,
+        gemini_model: safeModel(settings.gemini_model, VALID_GEMINI_MODELS, 'gemini-2.5-flash'),
+        openai_model: safeModel(settings.openai_model, VALID_OPENAI_MODELS, 'gpt-4o-mini'),
+        groq_model: safeModel(settings.groq_model || settings.grok_model, VALID_GROQ_MODELS, DEFAULT_GROQ_MODEL),
         system_prompt: settings.system_prompt || ''
       });
     }
@@ -163,12 +173,17 @@ export default function SettingsAI() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Modelo</label>
-                <input
-                  type="text"
+                <select
                   value={formData.gemini_model}
                   onChange={(e) => updateFormData({ gemini_model: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
-                />
+                >
+                  <option value="gemini-2.5-flash">gemini-2.5-flash (recomendado)</option>
+                  <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                  <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                  <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                  <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                </select>
               </div>
             </>
           )}
@@ -187,12 +202,18 @@ export default function SettingsAI() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Modelo</label>
-                <input
-                  type="text"
+                <select
                   value={formData.openai_model}
                   onChange={(e) => updateFormData({ openai_model: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
-                />
+                >
+                  <option value="gpt-4o-mini">gpt-4o-mini (recomendado — rápido e barato)</option>
+                  <option value="gpt-4o">gpt-4o (mais inteligente)</option>
+                  <option value="gpt-4-turbo">gpt-4-turbo</option>
+                  <option value="gpt-3.5-turbo">gpt-3.5-turbo (mais barato)</option>
+                  <option value="o1-mini">o1-mini</option>
+                  <option value="o1">o1</option>
+                </select>
               </div>
             </>
           )}
@@ -211,12 +232,17 @@ export default function SettingsAI() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Modelo</label>
-                <input
-                  type="text"
+                <select
                   value={formData.groq_model}
                   onChange={(e) => updateFormData({ groq_model: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
-                />
+                >
+                  <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (recomendado)</option>
+                  <option value="llama-3.1-70b-versatile">llama-3.1-70b-versatile</option>
+                  <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (mais rápido)</option>
+                  <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                  <option value="gemma2-9b-it">gemma2-9b-it</option>
+                </select>
               </div>
             </>
           )}
