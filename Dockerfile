@@ -1,17 +1,13 @@
-FROM node:20-bookworm-slim
+FROM node:18-alpine
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
-
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --only=production
 
 COPY . .
 
 RUN npx prisma generate
-
-RUN mkdir -p /app/public/uploads /app/auth_info_baileys
 
 EXPOSE 3000
 

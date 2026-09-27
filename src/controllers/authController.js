@@ -9,7 +9,7 @@ const { encrypt } = require('../utils/crypto');
 async function login(req, res) {
   try {
     const { username, password } = req.body;
-    if (!username || !password) {
+    if (typeof username !== 'string' || typeof password !== 'string' || !username || !password || password.length > 256) {
       return res.status(400).json({ error: 'Usuário e senha são obrigatórios.' });
     }
 
@@ -39,6 +39,7 @@ async function login(req, res) {
       company_id: user.company_id
     });
 
+    res.cookie('crm_media', token, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/uploads', maxAge: 86400000 });
     res.json({
       success: true,
       token,
@@ -57,6 +58,7 @@ async function login(req, res) {
 }
 
 async function logout(req, res) {
+  res.clearCookie('crm_media', { path: '/uploads' });
   try {
     const userId = req.user.id;
     const companyId = req.user.company_id;
@@ -119,6 +121,7 @@ async function register(req, res) {
       return res.status(403).json({ error: 'Acesso negado. Supervisores só podem cadastrar Vendedores, Suporte ou Outro.' });
     }
 
+    if (typeof password !== 'string' || password.length < 12 || Buffer.byteLength(password) > 72) return res.status(400).json({ error: 'Senha deve ter ao menos 12 caracteres e no maximo 72 bytes.' });
     const existing = await User.findByUsername(username);
     if (existing) {
       return res.status(400).json({ error: 'Este nome de usuário já está em uso.' });
@@ -156,6 +159,7 @@ async function registerTenant(req, res) {
       return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
     }
 
+    if (typeof adminPassword !== 'string' || adminPassword.length < 12 || Buffer.byteLength(adminPassword) > 72) return res.status(400).json({ error: 'Senha deve ter ao menos 12 caracteres e no maximo 72 bytes.' });
     const existingCompany = await prisma.company.findUnique({
       where: { slug: companySlug }
     });

@@ -13,7 +13,6 @@ const Chat = require('../models/Chat');
 const Instance = require('../models/Instance');
 const Metrics = require('../models/Metrics');
 const aiService = require('./aiService');
-const { createMercadoPagoPreference } = require('./mercadoPagoService');
 
 const activeConnections = {};
 
@@ -198,6 +197,8 @@ async function startWhatsAppInstance(instanceId, companyId) {
               if (!fileName.includes('.')) fileName = `${fileName}.${ext}`;
             }
 
+            if (!/^(jpg|jpeg|png|gif|webp|mp4|mp3|ogg|wav|pdf|txt)$/i.test(ext) || buffer.length > 20 * 1024 * 1024) throw new Error('Midia nao suportada ou maior que 20 MB.');
+            ext = ext.toLowerCase();
             const fileSavedName = `${mediaType}_incoming_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`;
             const savePath = path.join(UPLOAD_DIR, fileSavedName);
             fs.writeFileSync(savePath, buffer);
@@ -327,11 +328,9 @@ async function handleIncomingWhatsAppMessage(senderJid, clientName, messageText,
 
     const settings = await prisma.settings.findUnique({
       where: { company_id: companyId }
-    }) || await prisma.settings.findUnique({
-      where: { company_id: 'comp_default' }
     });
 
-    if (settings.ai_enabled) {
+    if (settings?.ai_enabled) {
       if (chat.ai_active === false) {
         return chat;
       }
@@ -394,57 +393,6 @@ async function handleIncomingWhatsAppMessage(senderJid, clientName, messageText,
           await conn.sock.sendMessage(senderJid, { text: aiResponse.message });
         }
 
-        if (aiResponse.trigger_billing) {
-          if (company?.mp_enabled) {
-            const billingItem = aiResponse.billing_item || 'Produto CRM';
-            const billingValue = aiResponse.billing_value || 100.00;
-            
-            try {
-              const mpSettings = {
-                ...settings,
-                mp_enabled: company.mp_enabled,
-                mp_access_token: company.mp_access_token,
-                mp_public_key: company.mp_public_key
-              };
-              
-              const paymentData = await createMercadoPagoPreference(chat.id, billingItem, billingValue, mpSettings);
-              
-              const paymentMsg = {
-                sender: 'system',
-                text: `🔗 Cobrança Gerada: ${billingItem} - R$ ${Number(billingValue).toFixed(2)}. Link para pagar: ${paymentData.url}`,
-                timestamp: new Date(),
-                is_ai: false,
-                payment_id: paymentData.id,
-                payment_url: paymentData.url,
-                payment_status: 'pending'
-              };
-              
-              await Chat.addMessage(chat.id, paymentMsg);
-              await Chat.update(chat.id, { status: 'interesse em compra' }, companyId);
-              await Log.add(`Cobrança gerada automaticamente pela IA para ${chat.client_name}: ${billingItem} (R$ ${billingValue})`, companyId);
-
-              if (conn && conn.connectionStatus === 'open' && conn.sock) {
-                await conn.sock.sendMessage(senderJid, { 
-                  text: `💳 *Link de Pagamento Gerado!*\n\n*Item:* ${billingItem}\n*Valor:* R$ ${Number(billingValue).toFixed(2)}\n\nLink para pagamento: ${paymentData.url}` 
-                });
-              }
-            } catch (payErr) {
-              await Log.add(`Falha ao gerar cobrança automática para ${chat.client_name}: ${payErr.message}`, companyId);
-              
-              await Chat.addMessage(chat.id, {
-                sender: 'system',
-                text: `⚠️ Erro ao gerar cobrança Mercado Pago: ${payErr.message}. Verifique as configurações.`,
-                timestamp: new Date()
-              });
-            }
-          } else {
-            await Chat.addMessage(chat.id, {
-              sender: 'system',
-              text: `⚠️ O assistente tentou gerar uma cobrança, mas o módulo de recebimento automático do Mercado Pago está desativado nas configurações.`,
-              timestamp: new Date()
-            });
-          }
-        }
       } catch (err) {
         await Log.add(`Erro ao processar IA para ${chat.client_name}: ${err.message}`, companyId);
         

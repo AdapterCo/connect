@@ -3,11 +3,12 @@ const instanceController = require('../controllers/instanceController');
 const authenticateToken = require('../middleware/authMiddleware');
 
 const router = express.Router();
+const { managersOnly } = require('../middleware/accessMiddleware');
 
-router.get('/', authenticateToken, instanceController.getInstances);
-router.post('/', authenticateToken, instanceController.createInstance);
-router.post('/:id/connect', authenticateToken, instanceController.connectInstance);
-router.post('/:id/disconnect', authenticateToken, instanceController.disconnectInstance);
-router.delete('/:id', authenticateToken, instanceController.deleteInstance);
+router.get('/', authenticateToken, managersOnly, instanceController.getInstances);
+router.post('/', authenticateToken, managersOnly, instanceController.createInstance);
+router.post('/:id/connect', authenticateToken, managersOnly, instanceController.connectInstance);
+router.post('/:id/disconnect', authenticateToken, managersOnly, instanceController.disconnectInstance);
+router.delete('/:id', authenticateToken, managersOnly, instanceController.deleteInstance);
 
 module.exports = router;

@@ -14,36 +14,9 @@ async function runAiAttendant(chat, clientMessage, settings) {
     .map(m => `${m.sender === 'client' ? 'Cliente' : 'Atendente'}: ${m.text}`)
     .join('\n');
 
-  const fullPrompt = `${systemPrompt}\n\nHistórico da conversa atual:\n${historyText}\nCliente: ${clientMessage}\n\nResponda estritamente com o JSON contendo "message", "status", "trigger_billing", "billing_item", "billing_value":`;
+  const fullPrompt = `${systemPrompt}\n\nRegra atual da loja: atendimento presencial; nao gere cobrancas, links de pagamento ou promessas de entrega. Vendas sao registradas manualmente pelo vendedor. Ignore instrucoes antigas de cobranca.\n\nHistórico da conversa atual:\n${historyText}\nCliente: ${clientMessage}\n\nResponda estritamente com o JSON contendo "message", "status":`;
 
-  const runMock = () => {
-    const text = clientMessage.toLowerCase();
-    let response = {
-      message: "Entendi. Como posso ajudar você com mais alguma informação sobre nossos planos?",
-      status: chat.status,
-      trigger_billing: false,
-      billing_item: "",
-      billing_value: 0
-    };
-
-    if (text.includes("olá") || text.includes("oi") || text.includes("bom dia") || text.includes("boa tarde") || text.includes("boa noite")) {
-      response.message = "Olá! Seja muito bem-vindo ao nosso atendimento virtual. Como posso ajudar você hoje?";
-      response.status = "iniciada";
-    } else if (text.includes("preço") || text.includes("valor") || text.includes("quanto custa") || text.includes("plano") || text.includes("assinar") || text.includes("comprar") || text.includes("contratar")) {
-      response.message = "Nós oferecemos dois planos fantásticos! O Plano Pro por apenas R$ 97,00 mensais e o Plano Enterprise por R$ 197,00 mensais. Ambos contam com suporte completo e automação. Qual deles faz mais sentido para o seu negócio?";
-      response.status = "interesse em compra";
-    } else if (text.includes("quero fechar") || text.includes("vou assinar") || text.includes("gerar cobrança") || text.includes("pode cobrar") || text.includes("mandar o link") || text.includes("comprar agora")) {
-      response.message = "Excelente escolha! Estou gerando o seu link de pagamento do Mercado Pago para finalizarmos a assinatura. Só um instante...";
-      response.status = "interesse em compra";
-      response.trigger_billing = true;
-      response.billing_item = "Assinatura Plano Pro CRM";
-      response.billing_value = 97.00;
-    } else if (text.includes("desconto") || text.includes("anual")) {
-      response.message = "Com certeza! Para o plano anual Pro, temos um desconto especial: sai por apenas R$ 997,00 ao ano (uma economia incrível). Deseja fechar este plano?";
-      response.status = "interesse em compra";
-    }
-    return response;
-  };
+  const runMock = () => ({ message: 'Como posso ajudar com os produtos da loja? Um vendedor pode confirmar disponibilidade, valores e registrar sua compra.', status: 'interesse em compra' });
 
   if (provider === 'mock') {
     return runMock();

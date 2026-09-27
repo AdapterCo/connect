@@ -1,0 +1,15 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { scope, validate, period } = require('../src/services/productService');
+const seller = { id: 'seller1', company_id: 'company1', role: 'seller' };
+const valid = { name: 'Moto', serial: 'abc123', color: 'Preta', condition: 'new', seller_id: seller.id, price: '1000.50', down_payment: '100.25', payment_method: 'pix' };
+test('seller queries always include company and own id', () => assert.deepEqual(scope(seller), { company_id: 'company1', seller_id: 'seller1' }));
+test('managers see only their company', () => { for (const role of ['admin', 'supervisor']) assert.deepEqual(scope({ ...seller, role }), { company_id: 'company1' }); });
+test('missing tenant is rejected', () => assert.throws(() => scope({ id: 's' })));
+test('seller cannot assign another seller', () => assert.throws(() => validate({ ...valid, seller_id: 'other' }, seller)));
+test('normalize serial and ignore injected ownership/status', () => { const data = validate({ ...valid, company_id: 'other', status: 'sold', sold_at: '2020-01-01' }, seller); assert.equal(data.serial, 'ABC123'); assert.equal(data.company_id, undefined); assert.equal(data.status, undefined); });
+test('validate monetary bounds and precision', () => { for (const value of ['-1', 'NaN', 'Infinity', '1.001', '1e3', '10000000000', '', null, '0']) assert.throws(() => validate({ ...valid, price: value }, seller)); assert.throws(() => validate({ ...valid, down_payment: '1001' }, seller)); });
+test('validate mandatory fields and enumerations', () => { for (const change of [{ name: '' }, { serial: '' }, { color: {} }, { condition: 'broken' }, { payment_method: 'mp' }]) assert.throws(() => validate({ ...valid, ...change }, seller)); });
+test('all four payment methods accepted', () => { for (const payment_method of ['cash', 'pix', 'card', 'boleto']) assert.equal(validate({ ...valid, payment_method }, seller).payment_method, payment_method); });
+test('period uses inclusive local days with exclusive next midnight', () => { const result = period({ from: '2026-09-01', to: '2026-09-27' }); assert.equal(result.sold_at.gte.toISOString(), '2026-09-01T03:00:00.000Z'); assert.equal(result.sold_at.lt.toISOString(), '2026-09-28T03:00:00.000Z'); });
+test('reject invalid and reversed dates', () => { for (const query of [{ from: '2026-02-30' }, { from: 'tomorrow' }, { from: '2026-09-28', to: '2026-09-27' }]) assert.throws(() => period(query)); });

@@ -38,7 +38,7 @@ async function checkScheduledMessages() {
           if (connectionStatus === 'open' && sock) {
             try {
               if (sch.media_url) {
-                const mediaPath = path.join(__dirname, '../../public', sch.media_url);
+                const mediaPath = require('../utils/media').mediaPath(sch.media_url);
                 if (sch.media_type === 'image') {
                   await sock.sendMessage(sch.chat_id, { image: { url: mediaPath }, caption: sch.text || undefined });
                 } else if (sch.media_type === 'video') {

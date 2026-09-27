@@ -1,6 +1,6 @@
 const { prisma } = require('../config/database');
 const Log = require('../models/Log');
-const { encrypt, decrypt } = require('../utils/crypto');
+const { encrypt } = require('../utils/crypto');
 
 async function getSettings(req, res) {
   try {
@@ -9,24 +9,11 @@ async function getSettings(req, res) {
       where: { company_id: companyId }
     });
 
-    if (!settings) {
-      settings = await prisma.settings.findUnique({
-        where: { company_id: 'comp_default' }
-      });
-    }
-
-    const company = await prisma.company.findUnique({
-      where: { id: companyId }
-    });
-
     const result = {
       ...settings,
-      gemini_key: settings?.gemini_key ? decrypt(settings.gemini_key) : '',
-      openai_key: settings?.openai_key ? decrypt(settings.openai_key) : '',
-      grok_key: settings?.grok_key ? decrypt(settings.grok_key) : '',
-      mp_enabled: company?.mp_enabled || false,
-      mp_access_token: company?.mp_access_token || '',
-      mp_public_key: company?.mp_public_key || ''
+      gemini_key: '',
+      openai_key: '',
+      grok_key: '',
     };
 
     res.json(result);
@@ -49,9 +36,9 @@ async function updateSettings(req, res) {
       system_prompt: data.system_prompt !== undefined ? data.system_prompt : undefined
     };
 
-    if (data.gemini_key !== undefined) updateData.gemini_key = encrypt(data.gemini_key);
-    if (data.openai_key !== undefined) updateData.openai_key = encrypt(data.openai_key);
-    if (data.grok_key !== undefined) updateData.grok_key = encrypt(data.grok_key);
+    if (data.gemini_key) updateData.gemini_key = encrypt(data.gemini_key);
+    if (data.openai_key) updateData.openai_key = encrypt(data.openai_key);
+    if (data.grok_key) updateData.grok_key = encrypt(data.grok_key);
 
     const settings = await prisma.settings.upsert({
       where: { company_id: companyId },
@@ -70,32 +57,13 @@ async function updateSettings(req, res) {
       }
     });
 
-    if (data.mp_enabled !== undefined || data.mp_access_token !== undefined || data.mp_public_key !== undefined) {
-      const companyUpdate = {};
-      if (data.mp_enabled !== undefined) companyUpdate.mp_enabled = data.mp_enabled;
-      if (data.mp_access_token !== undefined) companyUpdate.mp_access_token = data.mp_access_token;
-      if (data.mp_public_key !== undefined) companyUpdate.mp_public_key = data.mp_public_key;
-
-      await prisma.company.update({
-        where: { id: companyId },
-        data: companyUpdate
-      });
-    }
-
     await Log.add(`Configurações de sistema atualizadas por ${req.user.name}.`, companyId);
-
-    const company = await prisma.company.findUnique({
-      where: { id: companyId }
-    });
 
     const result = {
       ...settings,
-      gemini_key: settings.gemini_key ? decrypt(settings.gemini_key) : '',
-      openai_key: settings.openai_key ? decrypt(settings.openai_key) : '',
-      grok_key: settings.grok_key ? decrypt(settings.grok_key) : '',
-      mp_enabled: company?.mp_enabled || false,
-      mp_access_token: company?.mp_access_token || '',
-      mp_public_key: company?.mp_public_key || ''
+      gemini_key: '',
+      openai_key: '',
+      grok_key: '',
     };
 
     res.json({ success: true, settings: result });

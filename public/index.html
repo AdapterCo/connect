@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Adapter Connect - CRM WhatsApp com IA</title>
-  <link rel="stylesheet" href="css/style.css?v=1.0.2">
+  <title>WhatsApp AI CRM - Dashboard Premium</title>
+  <link rel="stylesheet" href="css/style.css?v=2.0.0">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -14,10 +14,10 @@
     <!-- SIDEBAR NAVIGATION -->
     <aside class="sidebar">
       <div class="logo-area">
-        <div class="logo-icon">A</div>
+        <div class="logo-icon">W</div>
         <div class="logo-text">
-          <h1>Adapter Connect</h1>
-          <span>CRM WhatsApp com IA</span>
+          <h1>WhatsApp CRM</h1>
+          <span>AI Attendant Active</span>
         </div>
       </div>
       
@@ -42,10 +42,7 @@
           <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.813 15.904L9 21m8.913-5.096L17 21M9.543 3.01c1.502-1.51 3.87-1.541 5.422-.1l-1.07 1.07M9.543 3.01c-1.503 1.51-1.531 3.885-.099 5.437l1.07-1.07M9.543 3.01L14.73 8.2M17.062 8.347c1.502-1.51 3.87-1.541 5.422-.1l-1.07 1.07M17.062 8.347c-1.503 1.51-1.53 3.885-.099 5.437l1.07-1.07M17.062 8.347L22.25 13.5M12 9.75v-3m0 9v3m-3-6H6m9 0h3" stroke-linecap="round" stroke-linejoin="round"></path></svg>
           Configurações IA
         </div>
-        <div class="nav-item" data-view="config-mp" id="nav-config-mp">
-          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-5.625-12h17.25c.621 0 1.125.504 1.125 1.125v13.5c0 .621-.504 1.125-1.125 1.125H3.375A1.125 1.125 0 012.25 18V4.875c0-.621.504-1.125 1.125-1.125z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-          Recebimentos / MP
-        </div>
+        <div class="nav-item" data-view="products" id="nav-products">Produtos e vendas</div>
         <div class="nav-item" data-view="team" id="nav-team" style="display: none;">
           <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.109A11.386 11.386 0 0110.089 21c-2.243 0-4.352-.647-6.124-1.768v-.109m0 .109a1.183 1.183 0 01-1-1.183v-2.203a5.977 5.977 0 014.714-5.893m0 0a3.978 3.978 0 012.286-4.665M6.75 7.5a3 3 0 116 0 3 3 0 01-6 0zm11.25 1.5a2.25 2.25 0 114.5 0 2.25 2.25 0 01-4.5 0z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
           Gestão de Equipe
@@ -76,7 +73,7 @@
           <button id="logout-btn" style="background: none; border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer; font-weight: 600; font-family: var(--font-body);">Sair</button>
         </div>
         <div style="font-size: 10px; color: var(--text-dimmed); text-align: center; margin-top: 4px;">
-          Adapter Connect v1.0.2
+          CRM WhatsApp IA v1.0.2
         </div>
       </div>
     </aside>
@@ -497,40 +494,36 @@
           </div>
         </div>
         
-        <!-- MERCADO PAGO CONFIG VIEW -->
-        <div id="view-config-mp" class="view-section">
-          <div class="config-layout glass-card">
-            <div class="card-header">
-              <h3>Integração com Mercado Pago</h3>
+        <div id="view-products" class="view-section">
+          <div class="glass-card" style="padding:24px">
+            <h3>Produtos e vendas da loja</h3>
+            <p>Cadastre cada moto ou aparelho e registre a venda quando concluída.</p>
+            <form id="product-form" class="product-grid">
+              <input type="hidden" name="id">
+              <label>Produto<input name="name" required maxlength="160"></label>
+              <label>Vendedor<select name="seller_id" required></select></label>
+              <label>Valor (R$)<input name="price" type="number" min="0.01" max="9999999999.99" step="0.01" required></label>
+              <label>Forma de pagamento<select name="payment_method" required><option value="cash">Dinheiro</option><option value="pix">Pix</option><option value="card">Cartão</option><option value="boleto">Boleto</option></select></label>
+              <label>Entrada (R$)<input name="down_payment" type="number" min="0" step="0.01" value="0" required></label>
+              <label>Chassi / IMEI<input name="serial" required maxlength="80"></label>
+              <label>Cor<input name="color" required maxlength="60"></label>
+              <label>Memória<input name="memory" maxlength="60" placeholder="Ex.: 128 GB / não se aplica"></label>
+              <label>Estado da moto / aparelho<select name="condition" required><option value="new">Novo</option><option value="used">Usado</option><option value="refurbished">Recondicionado</option></select></label>
+              <button class="save-btn" type="submit">Salvar produto</button>
+              <button class="btn-secondary" type="button" id="product-reset">Limpar formulário</button>
+            </form>
+            <p id="product-feedback" role="status" aria-live="polite"></p>
+            <div class="product-grid" style="margin-top:24px">
+              <label>Vendas desde<input id="sales-from" type="date"></label>
+              <label>Vendas até<input id="sales-to" type="date"></label>
+              <button class="btn-secondary" id="sales-refresh">Atualizar métricas</button>
             </div>
-            
-            <div class="toggle-container">
-              <div class="toggle-info">
-                <h4>Ativar Recebimento Automático (Cobranças)</h4>
-                <p>Permite que a IA gere links do Mercado Pago e envie nas conversas para o cliente realizar o pagamento.</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="mp-enabled-toggle">
-                <span class="slider"></span>
-              </label>
-            </div>
-            
-            <div class="form-group">
-              <label for="mp-access-token-input">Mercado Pago Access Token</label>
-              <input type="password" id="mp-access-token-input" placeholder="Inserir Access Token (APP_USR-...)">
-              <span class="form-helper">Configure o seu Access Token de Produção ou Sandbox oficial do Mercado Pago.</span>
-            </div>
-            
-            <div class="form-group">
-              <label>Link de Webhook para API Real</label>
-              <input type="text" readonly value="https://connect.adapterco.com.br/api/webhook/mercadopago" style="background-color: rgba(255,255,255,0.02); color: var(--text-muted); cursor: not-allowed;">
-              <span class="form-helper">Configure este endereço no painel de desenvolvedor do Mercado Pago para receber notificações reais de pagamento de forma instantânea.</span>
-            </div>
-            
-            <button class="save-btn" id="save-mp-settings-btn">Salvar Configurações de Recebimento</button>
+            <p id="sales-summary"></p>
+            <div style="overflow:auto"><table class="store-table"><thead><tr><th>Vendedor</th><th>Vendas</th><th>Total vendido</th><th>Ticket médio</th><th>Entradas</th></tr></thead><tbody id="sales-rows"></tbody></table></div>
+            <h3 style="margin-top:24px">Produtos cadastrados</h3>
+            <div style="overflow:auto"><table class="store-table"><thead><tr><th>Produto</th><th>Chassi / IMEI</th><th>Detalhes</th><th>Vendedor</th><th>Valor</th><th>Pagamento / entrada</th><th>Status</th><th>Ações</th></tr></thead><tbody id="product-rows"></tbody></table></div>
           </div>
         </div>
-        
         <!-- TERMINAL LOGS VIEW -->
         <div id="view-logs" class="view-section">
           <div class="glass-card">
@@ -827,6 +820,7 @@
 
   <!-- Socket.io and JavaScript logic -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="js/app.js?v=1.0.2"></script>
+  <script src="js/app.js?v=2.0.0"></script>
+  <script src="js/products.js?v=2.0.0"></script>
 </body>
 </html>

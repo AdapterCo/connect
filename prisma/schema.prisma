@@ -22,6 +22,7 @@ model Company {
   mp_webhook_url  String?
   created_at      DateTime           @default(now())
   updated_at      DateTime           @updatedAt
+  products        Product[]
   users           User[]
   settings        Settings?
   instances       Instance[]
@@ -41,6 +42,8 @@ model User {
   company_id String
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+  products   Product[]
+  @@unique([id, company_id])
   company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
 }
 
@@ -148,4 +151,26 @@ model Metric {
   company_id       String
   timestamp        DateTime @default(now())
   company          Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id String @id @default(uuid())
+  company_id String
+  seller_id String
+  name String
+  price Decimal @db.Decimal(12, 2)
+  down_payment Decimal @default(0) @db.Decimal(12, 2)
+  payment_method String
+  serial String
+  color String
+  memory String?
+  condition String
+  status String @default("stock")
+  sold_at DateTime?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  seller User @relation(fields: [seller_id, company_id], references: [id, company_id], onDelete: Restrict)
+  @@unique([company_id, serial])
+  @@index([company_id, seller_id, status, sold_at])
 }

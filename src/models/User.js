@@ -2,7 +2,8 @@ const { prisma } = require('../config/database');
 
 async function findAll(companyId) {
   return prisma.user.findMany({
-    where: { company_id: companyId }
+    where: { company_id: companyId },
+    select: { id: true, name: true, username: true, role: true, status: true, company_id: true }
   });
 }
 

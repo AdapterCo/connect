@@ -21,7 +21,7 @@ const views = {
   kanban: document.getElementById('view-kanban'),
   'connect-whatsapp': document.getElementById('view-connect-whatsapp'),
   'config-ai': document.getElementById('view-config-ai'),
-  'config-mp': document.getElementById('view-config-mp'),
+  products: document.getElementById('view-products'),
   team: document.getElementById('view-team'),
   reports: document.getElementById('view-reports'),
   logs: document.getElementById('view-logs')
@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
   state.settings = {};
 
   setupNavigation();
-  loadSettings();
+  if (['admin', 'supervisor'].includes(currentUser.role)) loadSettings();
   loadChats();
   loadLogs();
   loadWhatsAppStatus();
@@ -163,6 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function loadWhatsAppStatus() {
+  if (!['admin', 'supervisor'].includes(currentUser.role)) return;
   try {
     const res = await fetch('/api/instances', {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('crm_token')}` }
@@ -223,6 +224,7 @@ async function loadChats() {
 }
 
 async function loadLogs() {
+  if (!['admin', 'supervisor'].includes(currentUser.role)) return;
   try {
     const response = await fetch('/api/logs', {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('crm_token')}` }
@@ -251,6 +253,7 @@ function setupNavigation() {
 
 function switchView(viewName) {
   state.currentView = viewName;
+  if (viewName === 'products') window.loadStore?.();
   
   Object.keys(views).forEach(key => {
     if (key === viewName) {
@@ -266,7 +269,7 @@ function switchView(viewName) {
     kanban: 'Pipeline de Vendas (Kanban)',
     'connect-whatsapp': 'Conectar WhatsApp Real',
     'config-ai': 'Configurações de Inteligência Artificial',
-    'config-mp': 'Integração Mercado Pago',
+    products: 'Produtos e vendas',
     team: 'Gestão de Equipe (Membros)',
     reports: 'Relatórios / Métricas Analíticas',
     logs: 'Terminal de Operações'
@@ -351,7 +354,7 @@ function updateWhatsAppConnectionUI() {
 
     card.innerHTML = `
       <div class="instance-header">
-        <div class="instance-title">${escapeHTML(inst.name)}</div>
+        <div class="instance-title">${escapeHtml(inst.name)}</div>
         <div class="instance-status-badge ${statusBadgeClass}">${statusLabel}</div>
       </div>
       <div class="instance-info">
@@ -361,7 +364,7 @@ function updateWhatsAppConnectionUI() {
         </div>
         <div class="instance-info-item">
           <span class="instance-info-label">Número de Telefone:</span>
-          <span class="instance-info-value">${phoneText}</span>
+          <span class="instance-info-value">${escapeHtml(phoneText)}</span>
         </div>
       </div>
       <div class="instance-actions">
@@ -405,8 +408,6 @@ function populateSettingsForm() {
   document.getElementById('openai-model-input').value = state.settings.openai_model || 'gpt-4o-mini';
   document.getElementById('grok-model-input').value = state.settings.grok_model || 'grok-4.3';
 
-  document.getElementById('mp-enabled-toggle').checked = !!state.settings.mp_enabled;
-  document.getElementById('mp-access-token-input').value = state.settings.mp_access_token || '';
 
   handleAiProviderFields();
 }
@@ -516,14 +517,14 @@ function renderClientList() {
     const cleanLastMsg = lastMsg.length > 30 ? lastMsg.substring(0, 30) + '...' : lastMsg;
 
     item.innerHTML = `
-      <div class="client-avatar">${chat.client_name.charAt(0).toUpperCase()}</div>
+      <div class="client-avatar">${escapeHtml(chat.client_name.charAt(0).toUpperCase())}</div>
       <div class="client-details">
         <div class="client-meta">
-          <span class="client-name">${chat.client_name}</span>
+          <span class="client-name">${escapeHtml(chat.client_name)}</span>
           <span class="client-status-dot ${statusClass}" title="${chat.status}"></span>
         </div>
         <div class="client-phone" style="display:flex; justify-content:space-between; align-items:center;">
-          <span>+${chat.client_phone}</span>
+          <span>+${escapeHtml(chat.client_phone)}</span>
           <span style="font-size:10px; color:var(--text-dimmed); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:110px;">${cleanLastMsg}</span>
         </div>
       </div>
@@ -555,7 +556,7 @@ function selectChat(chatId) {
   document.getElementById('chat-active-state').style.display = 'flex';
 
   document.getElementById('chat-header-name').innerText = chat.client_name;
-  document.getElementById('chat-header-phone').innerText = `+${chat.client_phone}`;
+  document.getElementById('chat-header-phone').innerText = `+${escapeHtml(chat.client_phone)}`;
   document.getElementById('chat-header-avatar').innerText = chat.client_name.charAt(0).toUpperCase();
   document.getElementById('chat-status-select').value = chat.status;
   document.getElementById('chat-sector-select').value = chat.sector || '';
@@ -600,30 +601,11 @@ function renderActiveChat(chat) {
             </div>
             <div style="color: #fff;">${escapeHtml(msgText)}</div>
           `;
-        } else if (msg.payment_url) {
-          const isApproved = msg.payment_status === 'approved';
-          const statusText = isApproved ? '✅ Pago' : '⏳ Aguardando Pagamento';
-          
-          const cleanedText = msgText.split(' Link para pagar: ')[0].split(' Clique no link para pagar: ')[0] || msgText;
-          content = `
-            <div style="font-weight:600; margin-bottom: 4px;">💳 Fatura Mercado Pago</div>
-            <div>${cleanedText}</div>
-            <div style="margin-top:8px; font-weight: bold; color: ${isApproved ? 'var(--status-finalizada)' : 'var(--status-interesse)'};">${statusText}</div>
-          `;
-
-          if (!isApproved) {
-            content += `
-              <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
-                <a href="${msg.payment_url}" target="_blank" class="payment-link-btn" style="margin-top:0;">Pagar Conta</a>
-                <button onclick="checkPaymentStatus('${chat.id}')" class="check-payment-btn">Verificar Status</button>
-              </div>
-            `;
-          }
         } else {
           content = escapeHtml(msgText);
         }
 
-        if (msg.media_url) {
+        if (typeof msg.media_url === 'string' && /^\/uploads\/[a-zA-Z0-9_.-]+$/.test(msg.media_url)) {
           let mediaHtml = '';
           if (msg.media_type === 'image') {
             mediaHtml = `<a href="${msg.media_url}" target="_blank"><img src="${msg.media_url}" class="message-media-img" alt="Imagem"></a>`;
@@ -634,7 +616,7 @@ function renderActiveChat(chat) {
           } else {
             const fname = msg.file_name || 'Arquivo';
             mediaHtml = `
-              <a href="${msg.media_url}" target="_blank" class="message-media-doc" download="${fname}">
+              <a href="${msg.media_url}" target="_blank" class="message-media-doc" download="${escapeHtml(fname)}">
                 <div class="message-media-doc-icon">📁</div>
                 <div class="message-media-doc-info">
                   <div class="message-media-doc-name">${escapeHtml(fname)}</div>
@@ -733,7 +715,6 @@ function renderDashboardLogs() {
 function setupEventListeners() {
   document.getElementById('ai-provider-select').addEventListener('change', handleAiProviderFields);
   document.getElementById('save-ai-settings-btn').addEventListener('click', saveAiSettings);
-  document.getElementById('save-mp-settings-btn').addEventListener('click', saveMpSettings);
   document.getElementById('clear-logs-btn').addEventListener('click', clearLogs);
 
   // Reports CSV Export
@@ -1210,36 +1191,6 @@ async function saveAiSettings() {
   }
 }
 
-// Save MP Config Form
-async function saveMpSettings() {
-  const payload = {
-    mp_enabled: document.getElementById('mp-enabled-toggle').checked,
-    mp_access_token: document.getElementById('mp-access-token-input').value
-  };
-
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('crm_token')}`
-      },
-      body: JSON.stringify(payload)
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      state.settings = data.settings;
-      showToast('Configurações de Recebimento salvas!', 'success');
-      loadLogs();
-    } else {
-      throw new Error('Server error');
-    }
-  } catch (err) {
-    showToast('Erro ao salvar configurações de recebimento.', 'error');
-  }
-}
-
 // Clear logs on server
 async function clearLogs() {
   try {
@@ -1424,7 +1375,7 @@ function showToast(message, type = 'info') {
   if (type === 'warning') icon = '⚠️';
   if (type === 'error') icon = '❌';
 
-  toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+  toast.innerHTML = `<span>${icon}</span> <span>${escapeHtml(message)}</span>`;
   container.appendChild(toast);
 
   setTimeout(() => {
@@ -1444,39 +1395,10 @@ function insertQuickMessage(text) {
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.innerText = text;
-  return div.innerHTML;
+  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-async function checkPaymentStatus(chatId) {
-  try {
-    showToast('Verificando status de pagamento...', 'info');
-    const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/check-payment`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('crm_token')}` }
-    });
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data.verified) {
-        showToast('Pagamento Aprovado com sucesso!', 'success');
-        await loadChats();
-        const updated = state.chats.find(c => c.id === chatId);
-        if (updated) {
-          renderActiveChat(updated);
-        }
-      } else {
-        showToast('Pagamento ainda pendente no Mercado Pago.', 'warning');
-      }
-    } else {
-      const err = await response.json();
-      showToast(err.error || 'Erro ao verificar pagamento.', 'error');
-    }
-  } catch (err) {
-    showToast('Erro de conexão ao verificar pagamento.', 'error');
-  }
-}
-
-// Multi-attendant dashboard and WebSocket operations
 async function loadAllUsers() {
   try {
     const response = await fetch('/api/users', {
@@ -1536,7 +1458,7 @@ function renderUsersList() {
 
     item.innerHTML = `
       <div>
-        <div style="font-weight: 600; color: #fff;">${u.name} (@${u.username})</div>
+        <div style="font-weight: 600; color: #fff;">${escapeHtml(u.name)} (@${escapeHtml(u.username)})</div>
         <div style="font-size: 10px; color: var(--text-muted);">${roleText} - ${statusText}</div>
       </div>
       <div>
@@ -1584,6 +1506,9 @@ function setupAttendantUI() {
     }
   }
 
+  if (!isAdminOrSupervisor) ['nav-config-ai', 'nav-connect-whatsapp', 'nav-logs'].forEach(id => document.getElementById(id).style.display = 'none');
+  if (!['admin', 'supervisor', 'seller'].includes(currentUser.role)) document.getElementById('nav-products').style.display = 'none';
+
   // Filter tabs event listeners
   document.querySelectorAll('.filter-tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -1624,7 +1549,11 @@ function renderActiveChatHeader(chat) {
     chat.tags.forEach(tag => {
       const badge = document.createElement('span');
       badge.style.cssText = 'background: rgba(99, 102, 241, 0.15); border: 1px solid var(--primary); color: #fff; border-radius: 4px; padding: 2px 6px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-family: var(--font-body);';
-      badge.innerHTML = `${tag} <span onclick="removeChatTag('${chat.id}', '${tag}')" style="cursor: pointer; opacity: 0.6; font-weight: bold; margin-left: 2px;">&times;</span>`;
+      badge.textContent = tag;
+      const remove = document.createElement('button');
+      remove.textContent = '×';
+      remove.onclick = () => removeChatTag(chat.id, tag);
+      badge.appendChild(remove);
       tagsContainer.appendChild(badge);
     });
   }
@@ -1726,7 +1655,7 @@ function renderActiveChatHeader(chat) {
         other: 'Outro'
       };
       const rText = roleTranslations[u.role] || u.role;
-      assignSelect.innerHTML += `<option value="${u.id}" ${chat.assigned_to === u.id ? 'selected' : ''}>${u.name} (${rText})</option>`;
+      assignSelect.innerHTML += `<option value="${u.id}" ${chat.assigned_to === u.id ? 'selected' : ''}>${escapeHtml(u.name)} (${rText})</option>`;
     });
 
     const newAssignSelect = assignSelect.cloneNode(true);
@@ -2128,7 +2057,7 @@ function renderKanban() {
     if (chat.tags && chat.tags.length > 0) {
       tagsHtml = '<div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px;">';
       chat.tags.slice(0, 3).forEach(t => {
-        tagsHtml += `<span style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); color: #fff; font-size: 8px; padding: 1px 4px; border-radius: 3px; font-family: var(--font-body); font-weight: 600;">${t}</span>`;
+        tagsHtml += `<span style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); color: #fff; font-size: 8px; padding: 1px 4px; border-radius: 3px; font-family: var(--font-body); font-weight: 600;">${escapeHtml(t)}</span>`;
       });
       tagsHtml += '</div>';
     }
@@ -2142,12 +2071,12 @@ function renderKanban() {
 
     card.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-        <span style="font-weight: 700; color: #fff; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;" title="${chat.client_name}">${chat.client_name}</span>
+        <span style="font-weight: 700; color: #fff; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;" title="${escapeHtml(chat.client_name)}">${escapeHtml(chat.client_name)}</span>
         <span style="font-size: 9px; padding: 2px 5px; border-radius: 4px; font-weight: 600; font-family: var(--font-body); background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-muted);">${sectorText}</span>
       </div>
-      <div style="font-size: 11px; color: var(--text-dimmed); margin-top: 4px;">+${chat.client_phone}</div>
+      <div style="font-size: 11px; color: var(--text-dimmed); margin-top: 4px;">+${escapeHtml(chat.client_phone)}</div>
       <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 10px; border-top: 1px solid rgba(255,255,255,0.03); padding-top: 6px;">
-        <span style="color: var(--text-muted);">Resp: <strong style="color:#fff;">${assignedName}</strong></span>
+        <span style="color: var(--text-muted);">Resp: <strong style="color:#fff;">${escapeHtml(assignedName)}</strong></span>
         ${chat.is_favorite ? '<span style="color: #eab308; font-size:12px;">★</span>' : ''}
       </div>
       ${tagsHtml}
@@ -2276,7 +2205,7 @@ async function loadReportsData() {
       const statusClass = u.status === 'online' ? '🟢 Online' : '⚫ Offline';
 
       tr.innerHTML = `
-        <td style="padding: 12px; font-weight: 600;">${u.name}</td>
+        <td style="padding: 12px; font-weight: 600;">${escapeHtml(u.name)}</td>
         <td style="padding: 12px;">${roleTranslations[u.role] || u.role}</td>
         <td style="padding: 12px; text-align: center; font-size: 11px;">${statusClass}</td>
         <td style="padding: 12px; text-align: center; font-weight: 700;">${u.activeChats}</td>
@@ -2408,7 +2337,8 @@ function exportReportsCSV() {
   csvContent += 'DESEMPENHO POR ATENDENTE\n';
   csvContent += 'Nome;Cargo;Status;Chats Ativos;Respostas Enviadas;TMR Médio (s);TMA Médio (s)\n';
   data.attendants.forEach(u => {
-    csvContent += `${u.name};${u.role};${u.status};${u.activeChats};${u.repliesCount};${u.tmr};${u.tma}\n`;
+    const cell = value => '"' + (/^[=+@\-\t\r]/.test(String(value)) ? "'" : '') + String(value).replace(/"/g, '""') + '"';
+    csvContent += [u.name, u.role, u.status, u.activeChats, u.repliesCount, u.tmr, u.tma].map(cell).join(';') + '\n';
   });
   csvContent += '\n';
 
@@ -2431,7 +2361,7 @@ function exportReportsCSV() {
 }
 
 window.insertQuickMessage = insertQuickMessage;
-window.checkPaymentStatus = checkPaymentStatus;
+
 window.deleteUser = deleteUser;
 window.removeChatTag = removeChatTag;
 window.allowDrop = allowDrop;

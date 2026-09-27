@@ -1,0 +1,8 @@
+.env
+.git
+node_modules
+auth_info*
+public/uploads
+scratch
+*.log
+.npm-cache

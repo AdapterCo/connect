@@ -42,6 +42,9 @@ async function deleteUser(req, res) {
       return res.status(403).json({ error: 'Acesso negado. Supervisores não podem excluir Administradores ou outros Supervisores.' });
     }
 
+    if (await prisma.product.count({ where: { seller_id: userId, company_id: req.user.company_id } })) return res.status(409).json({ error: 'Vendedor possui produtos ou vendas vinculados. Preserve o historico.' });
+    const io = require('../config/socket').getIO();
+    if (io) io.in('user:' + userId).disconnectSockets(true);
     const userName = targetUser.name;
     await User.remove(userId, req.user.company_id);
 
