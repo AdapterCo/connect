@@ -12,3 +12,8 @@ vite.err.log
 scratch/
 .git/
 README.md
+
+.npm-cache/
+.kilo/
+public/uploads/
+auth_info*/

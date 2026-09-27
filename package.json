@@ -1,7 +1,7 @@
 {
   "name": "adapter-connect",
   "version": "1.0.0",
-  "description": "Adapter Connect - CRM WhatsApp com Atendente Virtual IA e integração Mercado Pago",
+  "description": "Adapter Connect - CRM WhatsApp com Atendente Virtual IA e integra\u00e7\u00e3o Mercado Pago",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -15,7 +15,8 @@
     "secret:scan": "node scripts/secret-scan.js",
     "crypto:migrate": "node scripts/migrate-crypto.js",
     "crypto:migrate:dry": "node scripts/migrate-crypto.js --dry-run",
-    "devsecops:local": "node scripts/devsecops-local.js"
+    "devsecops:local": "node scripts/devsecops-local.js",
+    "test": "node --test tests/*.test.js"
   },
   "keywords": [
     "crm",

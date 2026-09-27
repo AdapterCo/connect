@@ -1,0 +1,13 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
+process.env.JWT_SECRET = 'test-only-secret-'.repeat(3);
+process.env.ENCRYPTION_KEY = 'test-only-key-'.repeat(3);
+let seen;
+require.cache[require.resolve('../src/config/database')] = { exports: { prisma: { chat: { findFirst: async ({ where }) => { seen = where; return null; } } } } };
+const { mediaPath, ownerPrefix, canAccessMedia } = require('../src/utils/media');
+const seller = { id: 's1', company_id: 'c1', role: 'seller' };
+test('media rejects traversal, remote URLs and executable content', () => { for (const value of ['/uploads/../../.env', 'https://example.com/a.jpg', '/uploads/evil.html', '/uploads/a.svg', '/uploads/a.jpg" onerror="alert(1)']) assert.throws(() => mediaPath(value)); });
+test('media ownership includes tenant', () => assert.notEqual(ownerPrefix(seller), ownerPrefix({ ...seller, company_id: 'c2' })));
+test('own uploads accessible before sending', async () => assert.equal(await canAccessMedia(seller, '/uploads/' + ownerPrefix(seller) + '_file.jpg'), true));
+test('other uploads require an owned chat in the same company', async () => { assert.equal(await canAccessMedia(seller, '/uploads/other.jpg'), false); assert.equal(seen.company_id, 'c1'); assert.equal(seen.assigned_to, 's1'); });

@@ -17,7 +17,7 @@ const chatRoutes = require('./src/routes/chatRoutes');
 const instanceRoutes = require('./src/routes/instanceRoutes');
 const settingsRoutes = require('./src/routes/settingsRoutes');
 const userRoutes = require('./src/routes/userRoutes');
-const paymentRoutes = require('./src/routes/paymentRoutes');
+const productRoutes = require('./src/routes/productRoutes');
 const reportRoutes = require('./src/routes/reportRoutes');
 const scheduleRoutes = require('./src/routes/scheduleRoutes');
 const superadminRoutes = require('./src/routes/superadminRoutes');
@@ -26,7 +26,6 @@ const billingRoutes = require('./src/routes/billingRoutes');
 const passwordResetRoutes = require('./src/routes/passwordResetRoutes');
 const auditRoutes = require('./src/routes/auditRoutes');
 const catalogRoutes = require('./src/routes/catalogRoutes');
-const orderRoutes = require('./src/routes/orderRoutes');
 const printerRoutes = require('./src/routes/printerRoutes');
 const privacyRoutes = require('./src/routes/privacyRoutes');
 
@@ -90,17 +89,35 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-app.use('/uploads', express.static(UPLOAD_DIR, {
+app.use('/uploads', (req, res, next) => {
+  const cookie = (req.headers.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith('crm_media='));
+  if (!req.headers.authorization && cookie) req.headers.authorization = 'Bearer ' + cookie.slice('crm_media='.length);
+  next();
+}, authenticateToken, async (req, res, next) => {
+  try {
+    if (!await require('./src/utils/media').canAccessMedia(req.user, '/uploads' + req.path)) return res.status(404).end();
+    next();
+  } catch { res.status(404).end(); }
+}, express.static(UPLOAD_DIR, {
   dotfiles: 'deny',
   fallthrough: false,
-  immutable: true,
-  maxAge: '1h',
+  immutable: false,
+  maxAge: 0,
   setHeaders: (res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; media-src 'self'; sandbox");
   }
 }));
 
+app.use((req, res, next) => {
+  try {
+    const requestedPath = path.resolve(__dirname, 'public', '.' + decodeURIComponent(req.path));
+    const uploadsPath = path.resolve(__dirname, 'public/uploads');
+    if (requestedPath === uploadsPath || requestedPath.startsWith(uploadsPath + path.sep)) return res.status(404).end();
+    next();
+  } catch { res.status(400).end(); }
+});
 app.use(express.static(path.join(__dirname, 'public'), {
   dotfiles: 'deny',
   index: false,
@@ -138,7 +155,7 @@ const storage = multer.diskStorage({
     const allowedExtensions = ALLOWED_MIMETYPES.get(file.mimetype) || [];
     const originalExt = path.extname(file.originalname || '').toLowerCase();
     const ext = allowedExtensions.includes(originalExt) ? originalExt : allowedExtensions[0];
-    const uniqueName = `upload_${Date.now()}_${crypto.randomUUID()}${ext}`;
+    const uniqueName = `${require('./src/utils/media').ownerPrefix(req.user)}_${crypto.randomUUID()}${ext}`;
     cb(null, uniqueName);
   }
 });
@@ -178,14 +195,14 @@ app.use('/api/chats', apiLimiter, scheduleRoutes);
 app.use('/api/instances', apiLimiter, instanceRoutes);
 app.use('/api/settings', apiLimiter, settingsRoutes);
 app.use('/api/users', apiLimiter, userRoutes);
-app.use('/api', paymentRoutes);
+app.use('/api/products', apiLimiter, productRoutes);
 app.use('/api', reportRoutes);
 app.use('/api/superadmin', superadminRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/billing', apiLimiter, billingRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/catalog', catalogRoutes);
-app.use('/api/orders', apiLimiter, orderRoutes);
+app.use('/api/orders', (req, res) => res.status(410).json({ error: 'Pedidos de delivery foram substituidos pelo registro de vendas.' }));
 app.use('/api/printers', apiLimiter, printerRoutes);
 app.use('/api/privacy', apiLimiter, privacyRoutes);
 
@@ -213,6 +230,8 @@ app.use((err, req, res, next) => {
   }
   next();
 });
+
+app.use('/api', (req, res) => res.status(404).json({ error: 'Endpoint nao encontrado.' }));
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

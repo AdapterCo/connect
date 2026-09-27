@@ -71,6 +71,9 @@ model User {
   updated_at      DateTime             @updatedAt
   company         Company              @relation(fields: [company_id], references: [id], onDelete: Cascade)
   resetTokens     PasswordResetToken[]
+  soldProducts    Product[]
+
+  @@unique([id, company_id])
 }
 
 model Settings {
@@ -305,6 +308,19 @@ model Category {
 }
 
 model Product {
+  seller_id    String?
+  seller       User? @relation(fields: [seller_id, company_id], references: [id, company_id], onDelete: Restrict)
+  down_payment Decimal @default(0) @db.Decimal(12, 2)
+  payment_method String?
+  serial       String?
+  color        String?
+  memory       String?
+  condition    String?
+  status       String @default("stock")
+  sold_at      DateTime?
+
+  @@unique([company_id, serial])
+  @@index([company_id, seller_id, status, sold_at])
   id           String            @id @default(uuid())
   name         String
   slug         String

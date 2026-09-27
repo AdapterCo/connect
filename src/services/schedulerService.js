@@ -41,7 +41,7 @@ async function checkScheduledMessages() {
             try {
               const targetJid = Chat.getRemoteJid(chat);
               if (sch.media_url) {
-                const mediaPath = path.join(__dirname, '../../public', sch.media_url);
+                const mediaPath = require('../utils/media').mediaPath(sch.media_url);
                 if (sch.media_type === 'image') {
                   await sock.sendMessage(targetJid, { image: { url: mediaPath }, caption: sch.text || undefined });
                 } else if (sch.media_type === 'video') {

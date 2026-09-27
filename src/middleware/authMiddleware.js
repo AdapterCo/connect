@@ -14,7 +14,7 @@ async function authenticateToken(req, res, next) {
   }
 
   const decoded = verifyToken(token);
-  if (!decoded) {
+  if (!decoded || typeof decoded.id !== 'string' || typeof decoded.company_id !== 'string') {
     return res.status(403).json({ error: 'Token invalido ou expirado.' });
   }
 
@@ -22,12 +22,13 @@ async function authenticateToken(req, res, next) {
     if (decoded.id && decoded.company_id && decoded.role !== 'superadmin') {
       const user = await prisma.user.findFirst({
         where: { id: decoded.id, company_id: decoded.company_id },
-        select: { session_version: true }
+        select: { id: true, name: true, username: true, company_id: true, role: true, session_version: true }
       });
 
       if (!user || Number(user.session_version || 0) !== Number(decoded.session_version || 0)) {
         return res.status(401).json({ error: 'Sessao expirada. Faça login novamente.' });
       }
+      Object.assign(decoded, user);
     }
   } catch (error) {
     return res.status(500).json({ error: 'Erro ao validar sessao.' });

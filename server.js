@@ -5,7 +5,6 @@ const { initializeDatabase, prisma } = require('./src/config/database');
 const { initSocket } = require('./src/config/socket');
 const whatsappService = require('./src/services/whatsappService');
 const schedulerService = require('./src/services/schedulerService');
-const mercadoPagoService = require('./src/services/mercadoPagoService');
 const billingService = require('./src/services/billingService');
 const retentionService = require('./src/services/retentionService');
 const Log = require('./src/models/Log');
@@ -15,7 +14,6 @@ const server = http.createServer(app);
 initSocket(server);
 
 let schedulerRunning = false;
-let paymentsRunning = false;
 let billingRunning = false;
 let retentionRunning = false;
 
@@ -46,18 +44,7 @@ setInterval(async () => {
   }
 }, 10000);
 
-setInterval(async () => {
-  if (paymentsRunning) return;
-  paymentsRunning = true;
-  try {
-    console.log('[Server] Executando polling de pagamentos...');
-    await mercadoPagoService.checkAllPendingPayments();
-  } catch (err) {
-    console.error('[Server] Erro no polling de pagamentos:', err);
-  } finally {
-    paymentsRunning = false;
-  }
-}, 20000);
+
 
 setInterval(async () => {
   if (billingRunning) return;

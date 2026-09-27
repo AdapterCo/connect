@@ -69,6 +69,7 @@ async function login(req, res) {
       session_version: user.session_version || 0
     });
 
+    res.cookie('crm_media', token, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/uploads', maxAge: 86400000 });
     res.json({
       success: true,
       token,
@@ -87,6 +88,7 @@ async function login(req, res) {
 }
 
 async function logout(req, res) {
+  res.clearCookie('crm_media', { path: '/uploads' });
   try {
     const userId = req.user.id;
     const companyId = req.user.company_id;

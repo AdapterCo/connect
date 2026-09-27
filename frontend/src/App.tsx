@@ -9,17 +9,14 @@ import Chats from './pages/Chats';
 import Kanban from './pages/Kanban';
 import WhatsApp from './pages/WhatsApp';
 import SettingsAI from './pages/SettingsAI';
-import SettingsMP from './pages/SettingsMP';
 import Team from './pages/Team';
 import Reports from './pages/Reports';
+import StoreProducts from './pages/StoreProducts';
 import Logs from './pages/Logs';
 import SuperAdmin from './pages/SuperAdmin';
 import Billing from './pages/Billing';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
-import Catalog from './pages/Catalog';
-import Orders from './pages/Orders';
-import Cardapio from './pages/Cardapio';
 
 function ProtectedLanding() {
   const { isAuthenticated } = useAuthStore();
@@ -40,16 +37,15 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/cardapio/:slug" element={<Cardapio />} />
         <Route element={<Layout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/chats" element={<Chats />} />
           <Route path="/kanban" element={<Kanban />} />
-          <Route path="/catalog" element={<Catalog />} />
-          <Route path="/orders" element={<Orders />} />
+          <Route path="/catalog" element={<StoreProducts />} />
+          <Route path="/orders" element={<Navigate to="/catalog" replace />} />
           <Route path="/whatsapp" element={<WhatsApp />} />
           <Route path="/settings/ai" element={<SettingsAI />} />
-          <Route path="/settings/mp" element={<SettingsMP />} />
+          <Route path="/settings/mp" element={<Navigate to="/catalog" replace />} />
           <Route path="/team" element={<Team />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/logs" element={<Logs />} />

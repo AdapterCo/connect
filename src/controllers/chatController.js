@@ -9,7 +9,7 @@ const { emitToCompany } = require('../config/socket');
 async function getChats(req, res) {
   try {
     const chats = await Chat.findAll(req.user.company_id);
-    res.json(chats);
+    res.json(['admin', 'supervisor'].includes(req.user.role) ? chats : chats.filter(c => c.assigned_to === req.user.id));
   } catch (error) {
     res.status(500).json({ error: 'Erro ao listar conversas.' });
   }
@@ -48,6 +48,7 @@ async function createChat(req, res) {
     }
 
     const newChat = {
+      assigned_to: req.user.id,
       id: Chat.createChatId(req.user.company_id, instanceId, jid),
       remote_jid: jid,
       client_name: name,
@@ -153,6 +154,7 @@ async function updateStatus(req, res) {
 async function sendMessage(req, res) {
   try {
     const { text, isNote, mediaUrl, mediaType, fileName } = req.body;
+    if (mediaUrl) { try { if (!await require('../utils/media').canAccessMedia(req.user, mediaUrl)) return res.status(404).json({ error: 'Midia indisponivel.' }); } catch { return res.status(400).json({ error: 'Midia invalida.' }); } }
     if (!text && !mediaUrl) {
       return res.status(400).json({ error: 'Mensagem vazia.' });
     }
@@ -217,7 +219,7 @@ async function sendMessage(req, res) {
       try {
         const jid = Chat.getRemoteJid(chat);
         if (mediaUrl) {
-          const mediaPath = path.join(__dirname, '../../public', mediaUrl);
+          const mediaPath = require('../utils/media').mediaPath(mediaUrl);
           if (mediaType === 'image') {
             await whatsappService.sendMessage(activeInstanceId, jid, { image: { url: mediaPath }, caption: text || undefined });
           } else if (mediaType === 'video') {
@@ -257,6 +259,7 @@ async function sendMessage(req, res) {
 async function assignChat(req, res) {
   try {
     const { userId } = req.body;
+    if (!['admin', 'supervisor'].includes(req.user.role) && userId !== req.user.id) return res.status(403).json({ error: 'Sem permissao para transferir conversas.' });
 
     const chat = await Chat.findById(req.params.id, req.user.company_id);
     if (!chat) {

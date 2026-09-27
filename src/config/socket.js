@@ -15,20 +15,16 @@ function initSocket(server) {
   });
 
   io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
-    if (!token) {
-      return next(new Error('Acesso negado. Token não fornecido.'));
-    }
-    const decoded = verifyToken(token);
-    if (!decoded) {
-      return next(new Error('Token inválido ou expirado.'));
-    }
-    socket.user = decoded;
-    next();
+    const req = { headers: { authorization: 'Bearer ' + (socket.handshake.auth?.token || '') } };
+    const res = { status() { return this; }, json() { next(new Error('Sessao indisponivel.')); } };
+    require('../middleware/authMiddleware')(req, res, () => { socket.user = req.user; next(); });
   });
 
   io.on('connection', (socket) => {
     const companyId = socket.user.company_id;
+    const timer = setTimeout(() => socket.disconnect(true), Math.max(0, socket.user.exp * 1000 - Date.now()));
+    timer.unref();
+    socket.on('disconnect', () => clearTimeout(timer));
     socket.join(companyId);
 
     socket.on('join_company', (requestedCompanyId) => {
@@ -46,8 +42,15 @@ function getIO() {
 }
 
 function emitToCompany(companyId, event, data) {
-  if (io) {
-    io.to(companyId).emit(event, data);
+  if (!io || !companyId) return;
+  for (const socket of io.sockets.sockets.values()) {
+    if (socket.user.company_id !== companyId) continue;
+    const manager = ['admin', 'supervisor'].includes(socket.user.role);
+    if (['logs_updated', 'whatsapp_status_updated'].includes(event) && !manager) continue;
+    let payload = data;
+    if (event === 'chats_updated' && !manager) payload = data.filter(chat => chat.assigned_to === socket.user.id);
+    if (event === 'users_updated') payload = data.map(({ id, name, username, role, status, company_id }) => ({ id, name, username, role, status, company_id }));
+    socket.emit(event, payload);
   }
 }
 

@@ -4,6 +4,8 @@ const authenticateToken = require('../middleware/authMiddleware');
 const { checkCompanyActive } = require('../middleware/planMiddleware');
 
 const router = express.Router();
+const { requireRoles } = require('../middleware/rbacMiddleware');
+router.use(authenticateToken, requireRoles('admin', 'supervisor'));
 
 router.get('/reports/statistics', authenticateToken, checkCompanyActive, reportController.getStatistics);
 router.get('/logs', authenticateToken, checkCompanyActive, reportController.getLogs);

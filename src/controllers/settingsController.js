@@ -37,23 +37,23 @@ function safeGroqModel(model) {
 }
 
 function toClientSettings(settings, company) {
-  const groqKey = settings.grok_key ? decrypt(settings.grok_key) : '';
+  const groqKey = '';
   const groqModel = safeGroqModel(settings.grok_model);
 
   return {
     ...settings,
     ai_provider: normalizeProvider(settings.ai_provider),
-    gemini_key: settings.gemini_key ? decrypt(settings.gemini_key) : '',
+    gemini_key: '',
     gemini_model: safeGeminiModel(settings.gemini_model),
-    openai_key: settings.openai_key ? decrypt(settings.openai_key) : '',
+    openai_key: '',
     openai_model: safeOpenAIModel(settings.openai_model),
     grok_key: groqKey,
     grok_model: groqModel,
     groq_key: groqKey,
     groq_model: groqModel,
-    mp_enabled: company?.mp_enabled || false,
-    mp_access_token: company?.mp_access_token ? decrypt(company.mp_access_token) : '',
-    mp_public_key: company?.mp_public_key || ''
+    mp_enabled: false,
+    mp_access_token: '',
+    mp_public_key: ''
   };
 }
 
@@ -115,9 +115,9 @@ async function updateSettings(req, res) {
       system_prompt: data.system_prompt !== undefined ? data.system_prompt : undefined
     };
 
-    if (data.gemini_key !== undefined) updateData.gemini_key = encrypt(data.gemini_key);
-    if (data.openai_key !== undefined) updateData.openai_key = encrypt(data.openai_key);
-    if (groqKey !== undefined) updateData.grok_key = encrypt(groqKey);
+    if (data.gemini_key) updateData.gemini_key = encrypt(data.gemini_key);
+    if (data.openai_key) updateData.openai_key = encrypt(data.openai_key);
+    if (groqKey) updateData.grok_key = encrypt(groqKey);
 
     const settings = await prisma.settings.upsert({
       where: { company_id: companyId },
@@ -136,20 +136,7 @@ async function updateSettings(req, res) {
       }
     });
 
-    if (data.mp_enabled !== undefined || data.mp_access_token !== undefined || data.mp_public_key !== undefined) {
-      const companyUpdate = {};
-      if (data.mp_enabled !== undefined) companyUpdate.mp_enabled = data.mp_enabled;
-      // FIX SEGURANÇA: Encriptar mp_access_token antes de persistir no banco
-      if (data.mp_access_token !== undefined) {
-        companyUpdate.mp_access_token = data.mp_access_token ? encrypt(data.mp_access_token) : null;
-      }
-      if (data.mp_public_key !== undefined) companyUpdate.mp_public_key = data.mp_public_key || null;
 
-      await prisma.company.update({
-        where: { id: companyId },
-        data: companyUpdate
-      });
-    }
 
     await Log.add(`Configurações de sistema atualizadas por ${req.user.name}.`, companyId);
 

@@ -5,6 +5,7 @@ const Log = require('../models/Log');
 async function createSchedule(req, res) {
   try {
     const { text, scheduledTime, mediaUrl, mediaType, fileName } = req.body;
+    if (mediaUrl) { try { if (!await require('../utils/media').canAccessMedia(req.user, mediaUrl)) return res.status(404).json({ error: 'Midia indisponivel.' }); } catch { return res.status(400).json({ error: 'Midia invalida.' }); } }
     if (!scheduledTime) {
       return res.status(400).json({ error: 'Data e hora do agendamento são obrigatórias.' });
     }
@@ -63,6 +64,8 @@ async function deleteSchedule(req, res) {
       return res.status(404).json({ error: 'Agendamento não encontrado.' });
     }
 
+    const chat = await Chat.findById(sch.chatId, req.user.company_id);
+    if (!chat || (!['admin', 'supervisor'].includes(req.user.role) && chat.assigned_to !== req.user.id)) return res.status(404).json({ error: 'Agendamento indisponivel.' });
     await ScheduledMessage.remove(req.params.id, req.user.company_id);
     await Log.add(`Agendamento cancelado para ${sch.clientName} (era para ${new Date(sch.scheduledTime).toLocaleString()}) por ${req.user.name}.`, req.user.company_id);
 
