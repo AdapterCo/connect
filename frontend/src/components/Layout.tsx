@@ -22,7 +22,7 @@ export default function Layout() {
   return (
     <div className="flex h-screen bg-gray-900 text-white">
       <Sidebar />
-      <main className="flex-1 overflow-hidden">
+      <main className="min-w-0 flex-1 overflow-hidden">
         <Outlet />
       </main>
     </div>

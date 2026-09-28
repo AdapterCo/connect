@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { isAxiosError } from 'axios';
 import api from '../services/api';
@@ -24,6 +24,7 @@ const errorMessage = (error: unknown) => isAxiosError(error) ? error.response?.d
 const fieldClass = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white disabled:opacity-60';
 
 export default function StoreProducts() {
+  const pageRef = useRef<HTMLDivElement>(null);
   const user = useAuthStore(state => state.user);
   const manager = user?.role === 'admin' || user?.role === 'supervisor';
   const allowed = manager || user?.role === 'seller';
@@ -70,12 +71,12 @@ export default function StoreProducts() {
   }
   function edit(product: Product) {
     setDraft({ id: product.id, name: product.name, seller_id: product.seller_id || '', price: String(product.price), down_payment: String(product.down_payment), payment_method: product.payment_method || 'pix', serial: product.serial || '', color: product.color || '', memory: product.memory || '', condition: product.condition || 'new' });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    pageRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }
   if (!allowed) return <p className="p-6 text-gray-300">Acesso restrito à equipe de vendas.</p>;
   const count = metrics.reduce((sum, item) => sum + item.count, 0);
   const total = metrics.reduce((sum, item) => sum + item.total, 0);
-  return <div className="p-6 space-y-6 text-white">
+  return <div ref={pageRef} className="h-full overflow-y-auto p-6 space-y-6 text-white">
     <header><h1 className="text-2xl font-bold">Produtos e vendas</h1><p className="text-gray-400 mt-1">{manager ? 'Produtos e resultados de todos os vendedores da empresa.' : 'Seus produtos e resultados de vendas.'}</p></header>
     <section className="bg-gray-800 border border-gray-700 rounded-xl p-5">
       <h2 className="text-lg font-semibold mb-4">{draft.id ? 'Editar produto' : 'Cadastrar produto'}</h2>
