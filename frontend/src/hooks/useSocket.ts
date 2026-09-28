@@ -35,6 +35,8 @@ export function useSocket() {
       updateChat(chat);
     });
 
+    socket.on('chat_removed', ({ id }: { id: string }) => useAppStore.getState().removeChat(id));
+
     socket.on('users_updated', (users) => {
       setUsers(users);
     });

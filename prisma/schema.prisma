@@ -23,6 +23,7 @@ model Plan {
 }
 
 model Company {
+  sales_rotation_cursor String?
   id              String             @id @default(uuid())
   name            String
   slug            String             @unique
@@ -59,6 +60,7 @@ model Company {
 }
 
 model User {
+  kanban_columns KanbanColumn[]
   id              String               @id @default(uuid())
   name            String
   username        String               @unique
@@ -106,6 +108,8 @@ model Instance {
 }
 
 model Chat {
+  sales_reply_due_at DateTime?
+  kanban_cards KanbanCard[]
   id            String    @id
   remote_jid    String?
   client_name   String
@@ -134,6 +138,32 @@ model Chat {
   @@index([instance_id])
   @@index([remote_jid])
   @@unique([company_id, instance_id, remote_jid])
+  @@unique([id, company_id])
+  @@index([status, sales_reply_due_at])
+}
+
+model KanbanColumn {
+  id String @id @default(uuid())
+  company_id String
+  user_id String
+  name String
+  created_at DateTime @default(now())
+  owner User @relation(fields: [user_id, company_id], references: [id, company_id], onDelete: Cascade)
+  cards KanbanCard[]
+  @@unique([id, user_id, company_id])
+  @@unique([user_id, name])
+}
+
+model KanbanCard {
+  id String @id @default(uuid())
+  company_id String
+  user_id String
+  chat_id String
+  column_id String
+  column KanbanColumn @relation(fields: [column_id, user_id, company_id], references: [id, user_id, company_id], onDelete: Cascade)
+  chat Chat @relation(fields: [chat_id, company_id], references: [id, company_id], onDelete: Cascade)
+  @@unique([user_id, chat_id])
+  @@index([column_id])
 }
 
 model Message {

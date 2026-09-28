@@ -47,6 +47,7 @@ export interface Message {
 }
 
 export interface Chat {
+  sales_reply_due_at?: string | null;
   id: string;
   remote_jid?: string | null;
   client_name: string;

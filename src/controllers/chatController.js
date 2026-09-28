@@ -125,19 +125,7 @@ async function updateStatus(req, res) {
     const oldStatus = chat.status;
     const updates = { status };
 
-    if (status === 'finalizada' && chat.claimed_at) {
-      const durationSeconds = Math.round((new Date() - new Date(chat.claimed_at)) / 1000);
-      await Metrics.addAttendanceTime({
-        chatId: chat.id,
-        attendantId: chat.assigned_to,
-        durationSeconds,
-        timestamp: new Date(),
-        company_id: chat.company_id
-      }, req.user.company_id);
-      updates.claimed_at = null;
-    }
-
-    const updated = await Chat.update(req.params.id, updates, req.user.company_id);
+    const updated = await Chat.update(req.params.id, updates, req.user.company_id, req.user);
     await Log.add(`Status do cliente ${chat.client_name} alterado manualmente de '${oldStatus}' para '${status}'.`, req.user.company_id);
 
     // PERFORMANCE: Emitir apenas o chat atualizado, não a lista completa
@@ -162,19 +150,6 @@ async function sendMessage(req, res) {
     const chat = await Chat.findById(req.params.id, req.user.company_id);
     if (!chat) {
       return res.status(404).json({ error: 'Chat não encontrado.' });
-    }
-
-    if (!isNote && chat.waiting_since) {
-      const durationSeconds = Math.round((new Date() - new Date(chat.waiting_since)) / 1000);
-      await Metrics.addResponseTime({
-        chatId: chat.id,
-        attendantId: req.user.id,
-        isAi: false,
-        durationSeconds,
-        timestamp: new Date(),
-        company_id: chat.company_id
-      }, req.user.company_id);
-      await Chat.update(chat.id, { waiting_since: null }, req.user.company_id);
     }
 
     const newMessage = {
@@ -246,6 +221,18 @@ async function sendMessage(req, res) {
 
     const createdMsg = await Chat.addMessage(chat.id, newMessage);
 
+    if (!isNote && chat.waiting_since) {
+      const durationSeconds = Math.round((new Date() - new Date(chat.waiting_since)) / 1000);
+      await Metrics.addResponseTime({
+        chatId: chat.id,
+        attendantId: req.user.id,
+        isAi: false,
+        durationSeconds,
+        timestamp: new Date(),
+        company_id: chat.company_id
+      }, req.user.company_id);
+      await Chat.update(chat.id, { waiting_since: null }, req.user.company_id);
+    }
     // PERFORMANCE: Emitir apenas o chat afetado, não toda a lista
     const updatedChat = await Chat.findById(chat.id, req.user.company_id);
     emitToCompany(req.user.company_id, 'chat_updated', updatedChat);
@@ -276,7 +263,7 @@ async function assignChat(req, res) {
       claimed_at: userId ? new Date() : null
     };
 
-    const updated = await Chat.update(req.params.id, updates, req.user.company_id);
+    const updated = await Chat.update(req.params.id, updates, req.user.company_id, req.user);
 
     const assignedName = assignedUser ? assignedUser.name : 'Ninguém (Fila de Espera)';
     await Log.add(`Conversa de ${chat.client_name} atribuída a: ${assignedName} (por: ${req.user.name}).`, req.user.company_id);
@@ -441,7 +428,7 @@ async function toggleBlock(req, res) {
       updates.ai_active = false;
     }
 
-    const updated = await Chat.update(req.params.id, updates, req.user.company_id);
+    const updated = await Chat.update(req.params.id, updates, req.user.company_id, req.user);
     await Log.add(`Contato ${chat.client_name} foi ${updated.is_blocked ? 'BLOQUEADO' : 'DESBLOQUEADO'} por ${req.user.name}.`, req.user.company_id);
 
     // PERFORMANCE: Emitir apenas o chat atualizado

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useAuthStore } from './authStore';
 import api from '../services/api';
 import type { Chat, Instance, Log, Settings, User } from '../types';
 
@@ -21,6 +22,7 @@ interface AppState {
 
   // PERFORMANCE: Nova ação para atualização granular de um único chat (via evento socket 'chat_updated')
   updateChat: (chat: Chat) => void;
+  removeChat: (id: string) => void;
 
   fetchChats: () => Promise<void>;
   fetchInstances: () => Promise<void>;
@@ -66,7 +68,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   // PERFORMANCE: Atualiza apenas o chat específico no estado local sem re-fetch HTTP
+  removeChat: (id) => set(state => ({ chats: state.chats.filter(chat => chat.id !== id), selectedChatId: state.selectedChatId === id ? null : state.selectedChatId })),
   updateChat: (updatedChat) => set((state) => {
+    const user = useAuthStore.getState().user;
+    if (!user || (!['admin', 'supervisor'].includes(user.role) && updatedChat.assigned_to !== user.id)) return { chats: state.chats.filter(chat => chat.id !== updatedChat.id), selectedChatId: state.selectedChatId === updatedChat.id ? null : state.selectedChatId };
     const exists = state.chats.some((c) => c.id === updatedChat.id);
     if (exists) {
       return { chats: state.chats.map((c) => c.id === updatedChat.id ? updatedChat : c) };

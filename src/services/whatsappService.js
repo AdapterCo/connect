@@ -413,7 +413,7 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
         
         const updates = {};
         const oldStatus = chat.status;
-        if (aiResponse.status && ['iniciada', 'interesse em compra', 'finalizada'].includes(aiResponse.status)) {
+        if (oldStatus === 'iniciada' && aiResponse.status === 'interesse em compra') {
           updates.status = aiResponse.status;
           if (oldStatus !== aiResponse.status) {
             await Log.add(`Status do cliente ${chat.client_name} alterado automaticamente pela IA de '${oldStatus}' para '${aiResponse.status}'.`, companyId);
@@ -433,7 +433,7 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
         }
 
         if (Object.keys(updates).length > 0) {
-          await Chat.update(chat.id, updates, companyId);
+          await Chat.update(chat.id, updates, companyId, undefined, { source: 'ai' });
         }
 
         await Log.add(`IA respondeu para ${chat.client_name}: "${aiResponse.message.substring(0, 40)}..."`, companyId);

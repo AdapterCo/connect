@@ -13,6 +13,7 @@ const server = http.createServer(app);
 
 initSocket(server);
 
+let rotationRunning = false;
 let schedulerRunning = false;
 let billingRunning = false;
 let retentionRunning = false;
@@ -31,6 +32,14 @@ server.listen(PORT, () => {
     console.error('Failed to initialize database:', err);
   });
 });
+
+setInterval(async () => {
+  if (rotationRunning) return;
+  rotationRunning = true;
+  try { await require('./src/services/salesRotationService').checkSalesRotation(); }
+  catch (error) { console.error('Sales rotation worker:', error.code || error.name); }
+  finally { rotationRunning = false; }
+}, 5000);
 
 setInterval(async () => {
   if (schedulerRunning) return;

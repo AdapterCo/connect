@@ -86,7 +86,7 @@ async function create(chat, companyId) {
   });
 }
 
-async function update(id, updates, companyId) {
+async function update(id, updates, companyId, actor, options) {
   const data = {};
   if (updates.remote_jid !== undefined) data.remote_jid = updates.remote_jid;
   if (updates.client_name !== undefined) data.client_name = updates.client_name;
@@ -103,20 +103,7 @@ async function update(id, updates, companyId) {
   if (updates.waiting_since !== undefined) data.waiting_since = updates.waiting_since ? new Date(updates.waiting_since) : null;
   if (updates.claimed_at !== undefined) data.claimed_at = updates.claimed_at ? new Date(updates.claimed_at) : null;
 
-  const existing = await prisma.chat.findFirst({
-    where: { id, company_id: companyId }
-  });
-  if (!existing) return null;
-
-  return prisma.chat.update({
-    where: { id },
-    data,
-    include: {
-      messages: {
-        orderBy: { timestamp: 'asc' }
-      }
-    }
-  });
+  return require('../services/salesRotationService').updateChat(id, data, companyId, actor, undefined, options);
 }
 
 async function remove(id, companyId) {
@@ -131,8 +118,7 @@ async function remove(id, companyId) {
 }
 
 async function addMessage(chatId, msg) {
-  return prisma.message.create({
-    data: {
+  return require('../services/salesRotationService').recordMessage(chatId, {
       id: msg.id && !msg.id.startsWith('msg_') ? msg.id : undefined,
       chat_id: chatId,
       sender: msg.sender,
@@ -148,7 +134,6 @@ async function addMessage(chatId, msg) {
       payment_id: msg.payment_id || null,
       payment_url: msg.payment_url || null,
       payment_status: msg.payment_status || null
-    }
   });
 }
 

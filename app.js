@@ -196,6 +196,7 @@ app.use('/api/instances', apiLimiter, instanceRoutes);
 app.use('/api/settings', apiLimiter, settingsRoutes);
 app.use('/api/users', apiLimiter, userRoutes);
 app.use('/api/products', apiLimiter, productRoutes);
+app.use('/api/kanban', apiLimiter, require('./src/routes/kanbanRoutes'));
 app.use('/api', reportRoutes);
 app.use('/api/superadmin', superadminRoutes);
 app.use('/api/company', companyRoutes);

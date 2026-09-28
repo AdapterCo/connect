@@ -1,95 +1,119 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import type { DropResult } from '@hello-pangea/dnd';
+import { isAxiosError } from 'axios';
 import { useAppStore } from '../stores/appStore';
+import api from '../services/api';
 import type { Chat } from '../types';
 
+interface Column { id: string; name: string; fixed: boolean }
+interface Placement { chat_id: string; column_id: string }
+interface Board { columns: Column[]; placements: Placement[] }
+const colors: Record<string, string> = {
+  iniciada: 'bg-blue-500', 'interesse em compra': 'bg-amber-500', finalizada: 'bg-green-500'
+};
+const message = (error: unknown) => isAxiosError(error) ? error.response?.data?.error || 'Não foi possível atualizar o Kanban.' : 'Não foi possível atualizar o Kanban.';
+
 export default function Kanban() {
-  const { chats, fetchChats, updateChatStatus } = useAppStore();
-
+  const { chats, users, fetchChats, fetchUsers, updateChat } = useAppStore();
+  const [board, setBoard] = useState<Board>({ columns: [], placements: [] });
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const routingSignature = chats.map(chat => `${chat.id}:${chat.status}:${chat.assigned_to}`).join('|');
+  const loadBoard = useCallback(async () => {
+    const response = await api.get<Board>('/kanban');
+    setBoard(response.data);
+  }, []);
   useEffect(() => {
-    fetchChats();
-  }, [fetchChats]);
-
-  const columns: { id: Chat['status']; title: string; color: string }[] = [
-    { id: 'iniciada', title: 'Iniciada / Novo', color: 'bg-blue-500' },
-    { id: 'interesse em compra', title: 'Interesse em Compra', color: 'bg-amber-500' },
-    { id: 'finalizada', title: 'Finalizada / Pago', color: 'bg-green-500' },
-  ];
-
-  const handleDragEnd = (result: any) => {
-    if (!result.destination) return;
-    const chatId = result.draggableId;
-    const newStatus = result.destination.droppableId as Chat['status'];
-    updateChatStatus(chatId, newStatus);
-  };
-
-  return (
-    <div className="h-full overflow-hidden p-6">
-      <h2 className="text-2xl font-bold mb-6">Pipeline (Kanban)</h2>
-
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="grid grid-cols-3 gap-4 h-[calc(100%-4rem)]">
-          {columns.map(column => {
-            const columnChats = chats.filter(c => c.status === column.id);
-            return (
-              <div key={column.id} className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-col">
-                <div className="flex items-center justify-between mb-4 pb-3 border-b-2" style={{ borderColor: `var(--status-${column.id})` }}>
-                  <h3 className="font-bold text-white flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${column.color}`} />
-                    {column.title}
-                  </h3>
-                  <span className="bg-gray-700 text-gray-300 text-xs font-bold px-2 py-1 rounded-full">
-                    {columnChats.length}
-                  </span>
-                </div>
-
-                <Droppable droppableId={column.id}>
-                  {(provided) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      className="flex-1 overflow-y-auto space-y-3"
-                    >
-                      {columnChats.map((chat, index) => (
-                        <Draggable key={chat.id} draggableId={chat.id} index={index}>
-                          {(provided) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              className="bg-gray-700 border border-gray-600 rounded-lg p-3 cursor-move hover:border-indigo-500"
-                            >
-                              <div className="flex items-center gap-2 mb-2">
-                                <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-sm font-bold">
-                                  {chat.client_name.charAt(0)}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-medium text-white text-sm truncate">{chat.client_name}</p>
-                                  <p className="text-xs text-gray-400">+{chat.client_phone.slice(-4)}</p>
-                                </div>
-                              </div>
-                              {chat.tags.length > 0 && (
-                                <div className="flex flex-wrap gap-1">
-                                  {chat.tags.slice(0, 3).map(tag => (
-                                    <span key={tag} className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-xs">
-                                      {tag}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </Draggable>
-                      ))}
-                      {provided.placeholder}
-                    </div>
-                  )}
-                </Droppable>
+    Promise.all([fetchChats(), fetchUsers()]).catch(error => setError(message(error)));
+  }, [fetchChats, fetchUsers]);
+  useEffect(() => { loadBoard().catch(error => setError(message(error))); }, [loadBoard, routingSignature]);
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
+  async function createColumn(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError('');
+    try { await api.post('/kanban/columns', { name }); setName(''); await loadBoard(); }
+    catch (error) { setError(message(error)); }
+    finally { setBusy(false); }
+  }
+  async function renameColumn(column: Column) {
+    const name = window.prompt('Novo nome da sua coluna:', column.name);
+    if (name === null) return;
+    setBusy(true); setError('');
+    try { await api.patch(`/kanban/columns/${encodeURIComponent(column.id)}`, { name }); await loadBoard(); }
+    catch (error) { setError(message(error)); }
+    finally { setBusy(false); }
+  }
+  async function deleteColumn(column: Column) {
+    if (!window.confirm(`Excluir a sua coluna “${column.name}”? Os clientes voltarão às suas etapas principais; nenhuma conversa será excluída.`)) return;
+    setBusy(true); setError('');
+    try { await api.delete(`/kanban/columns/${encodeURIComponent(column.id)}`); await loadBoard(); }
+    catch (error) { setError(message(error)); }
+    finally { setBusy(false); }
+  }
+  async function handleDragEnd(result: DropResult) {
+    if (!result.destination || result.destination.droppableId === result.source.droppableId || busy) return;
+    setBusy(true); setError('');
+    try {
+      const response = await api.put<{ chat?: Chat }>(`/kanban/cards/${encodeURIComponent(result.draggableId)}`, { column_id: result.destination.droppableId });
+      if (response.data.chat) updateChat(response.data.chat);
+      await loadBoard();
+    } catch (error) { setError(message(error)); }
+    finally { setBusy(false); }
+  }
+  const placements = new Map(board.placements.map(placement => [placement.chat_id, placement.column_id]));
+  return <div className="h-full min-h-0 flex flex-col p-4 md:p-6 gap-4">
+    <header className="shrink-0 space-y-3">
+      <h1 className="text-2xl font-bold">Meu Kanban</h1>
+      <p className="text-sm text-gray-400">As três etapas fixas são protegidas. Suas colunas extras organizam somente a sua visão.</p>
+      <p className="text-sm text-amber-200">Em Interesse em Compra: rodízio entre vendedores online após 1 minuto sem resposta humana. Mover para uma coluna pessoal não pausa esse prazo.</p>
+      <form onSubmit={createColumn} className="flex flex-wrap gap-2">
+        <input aria-label="Nome da nova coluna" className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white max-w-full" placeholder="Ex.: Visita agendada" value={name} onChange={event => setName(event.target.value)} maxLength={60} required />
+        <button className="bg-indigo-600 rounded-lg px-4 py-2 disabled:opacity-50" disabled={busy}>Criar minha coluna</button>
+      </form>
+      {error && <p role="alert" className="text-red-300">{error}</p>}
+    </header>
+    <DragDropContext onDragEnd={handleDragEnd}>
+      <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto pb-3" aria-label="Colunas do Kanban">
+        {board.columns.map(column => {
+          const cards = chats.filter(chat => (placements.get(chat.id) || chat.status) === column.id);
+          return <section key={column.id} className="w-80 min-w-72 shrink-0 flex flex-col min-h-0 bg-gray-800 border border-gray-700 rounded-xl p-3">
+            <header className="shrink-0 pb-3 space-y-2">
+              <div className="flex gap-2 items-center">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${colors[column.id] || 'bg-violet-500'}`} />
+                <h2 className="font-bold flex-1 break-words">{column.name}</h2>
+                <span className="text-xs bg-gray-700 rounded-full px-2 py-1">{cards.length}</span>
               </div>
-            );
-          })}
-        </div>
-      </DragDropContext>
-    </div>
-  );
+              {column.fixed ? <p className="text-xs text-gray-400">Coluna fixa · protegida</p> : <div className="flex items-center gap-3 text-xs">
+                <span className="text-gray-400 mr-auto">Pessoal</span>
+                <button onClick={() => void renameColumn(column)} disabled={busy} className="text-indigo-300">Renomear</button>
+                <button onClick={() => void deleteColumn(column)} disabled={busy} className="text-red-300">Excluir</button>
+              </div>}
+            </header>
+            <Droppable droppableId={column.id}>
+              {provided => <div ref={provided.innerRef} {...provided.droppableProps} className="flex-1 min-h-24 overflow-y-auto space-y-3 pr-1">
+                {cards.map((chat, index) => {
+                  const seconds = chat.sales_reply_due_at ? Math.max(0, Math.ceil((Date.parse(chat.sales_reply_due_at) - now) / 1000)) : null;
+                  const seller = users.find(user => user.id === chat.assigned_to);
+                  return <Draggable key={chat.id} draggableId={chat.id} index={index} isDragDisabled={busy}>
+                    {provided => <article ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="bg-gray-700 border border-gray-600 rounded-lg p-3 hover:border-indigo-500">
+                      <p className="font-medium text-white text-sm truncate">{chat.client_name}</p>
+                      <p className="text-xs text-gray-400">+{chat.client_phone.slice(-4)}</p>
+                      <p className="text-xs text-gray-300 mt-2">Responsável: {seller?.name || 'Aguardando vendedor online'}</p>
+                      {seconds !== null && <p className="text-xs text-amber-300 mt-1">{seconds > 0 ? `Responder em ${seconds}s` : 'Verificando próximo vendedor…'}</p>}
+                      {!!chat.tags.length && <div className="flex flex-wrap gap-1 mt-2">{chat.tags.slice(0, 3).map(tag => <span key={tag} className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-xs">{tag}</span>)}</div>}
+                    </article>}
+                  </Draggable>;
+                })}
+                {provided.placeholder}
+              </div>}
+            </Droppable>
+          </section>;
+        })}
+        {!board.columns.length && <p className="text-gray-400">Carregando seu Kanban…</p>}
+      </div>
+    </DragDropContext>
+  </div>;
 }

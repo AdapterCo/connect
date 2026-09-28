@@ -17,9 +17,21 @@ Mantidos Helmet, validadores, limites de requisições, revogação de sessões,
 
 Anexos exigem autenticação e vínculo com o usuário/conversa; caminhos arbitrários são rejeitados. Fazer login novamente após a implantação para receber o cookie HttpOnly de mídia. Vendedores com produtos vinculados não podem ser excluídos. Valores e identificadores são validados no servidor; a migração acrescenta restrições de integridade e não recria tabelas existentes.
 
+## Kanban pessoal e rodízio de vendedores
+
+Cada usuário pode criar, renomear e excluir suas próprias colunas (até 50). As etapas **Iniciada / Novo**, **Interesse em Compra** e **Finalizada / Pago** são permanentes: nem admin ou supervisor podem alterá-las ou excluí-las. Excluir uma coluna pessoal preserva as conversas. Colunas pessoais organizam a visão do usuário; não mudam a etapa comercial compartilhada nem suspendem o rodízio.
+
+Ao entrar em Interesse em Compra, o cliente é atribuído pelo rodízio aos usuários com perfil vendedor e status online da mesma empresa. Online corresponde ao status de disponibilidade do sistema, alterado no login, logout ou controle de disponibilidade; não é uma verificação de presença física. Admin e supervisor acompanham todas as conversas da empresa, mas não participam do rodízio.
+
+O vendedor tem 60 segundos para responder. O serviço verifica vencimentos a cada 5 segundos e transfere ao próximo vendedor online, iniciando outro prazo. Apenas uma resposta enviada com sucesso pelo vendedor responsável interrompe a contagem; IA, notas, mensagens agendadas e respostas de gestores não contam. Novas mensagens do cliente reiniciam o prazo após uma resposta, mas não prorrogam um prazo já em curso. Uma resposta atrasada do responsável anterior não cancela o prazo do novo vendedor.
+
+Sem outro vendedor online, o responsável permanece e a verificação é repetida após um minuto. Se não houver nenhum vendedor na entrada, o cliente aguarda sem responsável. Sair de Interesse, arquivar ou bloquear cancela a contagem. Transferências são auditadas e serializadas por empresa no banco. Ao mudar o responsável ou a etapa principal, as posições pessoais daquele cartão são limpas. O vendedor anterior recebe somente a remoção do cartão; o conteúdo fica disponível ao novo responsável e à gestão.
+
+A integração WhatsApp continua usando Baileys, sem migração para a API oficial.
+
 ## Validação
 
-- 17 testes unitários/HTTP aprovados, incluindo isolamento, bloqueio de atribuição indevida, concorrência simulada na venda, validação de valores e proteção de mídia.
+- 34 testes unitários/HTTP aprovados, incluindo isolamento, colunas protegidas, rodízio, respostas humanas, concorrência simulada, métricas de atendimento, respostas atrasadas da IA e remoção de acesso via socket.
 - Verificação sintática de todos os JavaScripts e smoke test de segurança aprovados.
 - Prisma validado e cliente gerado.
 - Build React/TypeScript aprovado. O bundler ainda avisa sobre um pacote JavaScript maior que 500 kB.
@@ -30,5 +42,7 @@ Os testes HTTP usam um substituto em memória do banco. A migração e o fluxo c
 ## Implantação
 
 Fazer backup e executar o fluxo normal de implantação da master, incluindo `prisma migrate deploy` para `20260927000100_store_sales` e o build do frontend. Não aplicar a migração da branch antiga (`20260927000100_store_crm`): ela foi substituída pela migração compatível com o catálogo atual.
+
+O Kanban e o rodízio também exigem a migração `20260928000100_personal_kanban_rotation`, seguida da geração do cliente Prisma e reinicialização do backend. Conversas antigas não são transferidas pela migração: uma nova mensagem do cliente ou uma nova entrada em Interesse inicia o prazo. A migração ainda precisa ser aplicada e validada com PostgreSQL no ambiente de implantação.
 
 Melhorias futuras: paginação dos produtos/conversas, cancelamento ou devolução com trilha de auditoria, testes transacionais com PostgreSQL e divisão do bundle React. Revisar e revogar credenciais que tenham sido expostas em versões antigas; remover código não revoga chaves existentes.
