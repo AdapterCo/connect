@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import api from '../services/api';
+import { useCallback, useEffect, useState } from 'react';
+import api, { apiErrorMessage } from '../services/api';
 
 interface Company {
   id: string;
@@ -39,20 +39,21 @@ export default function SuperAdmin() {
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
 
-  useEffect(() => {
-    fetchCompanies();
-    fetchPlans();
-  }, []);
-
-  const fetchCompanies = async () => {
+  const fetchCompanies = useCallback(async () => {
     const res = await api.get('/superadmin/companies');
     setCompanies(res.data);
-  };
+  }, []);
 
-  const fetchPlans = async () => {
+  const fetchPlans = useCallback(async () => {
     const res = await api.get('/superadmin/plans');
     setPlans(res.data);
-  };
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca assincrona: o estado so muda depois do await
+    fetchCompanies();
+    fetchPlans();
+  }, [fetchCompanies, fetchPlans]);
 
   const handleDeleteCompany = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir esta empresa? Todos os dados serão perdidos.')) return;
@@ -70,8 +71,8 @@ export default function SuperAdmin() {
     try {
       await api.delete(`/superadmin/plans/${id}`);
       fetchPlans();
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Erro ao excluir plano.');
+    } catch (err) {
+      alert(apiErrorMessage(err, 'Erro ao excluir plano.'));
     }
   };
 
@@ -227,6 +228,7 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
     plan_id: '',
     admin_name: '',
     admin_username: '',
+    admin_email: '',
     admin_password: ''
   });
   const [error, setError] = useState('');
@@ -237,8 +239,8 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
       await api.post('/superadmin/companies', formData);
       onSave();
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao criar empresa.');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao criar empresa.'));
     }
   };
 
@@ -289,8 +291,18 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
         />
         <input
+          type="email"
+          placeholder="E-mail do Admin (recuperação de senha)"
+          maxLength={254}
+          value={formData.admin_email}
+          onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })}
+          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+        />
+        <input
           type="password"
-          placeholder="Senha do Admin"
+          placeholder="Senha do Admin (mín. 8 caracteres)"
+          minLength={8}
+          maxLength={128}
           value={formData.admin_password}
           onChange={(e) => setFormData({ ...formData, admin_password: e.target.value })}
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
@@ -306,7 +318,7 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
   );
 }
 
-function PlanForm({ plan, onClose: _onClose, onSave }: { plan: Plan | null; onClose: () => void; onSave: () => void }) {
+function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; onSave: () => void }) {
   const [formData, setFormData] = useState({
     name: plan?.name || '',
     max_instances: plan?.max_instances || 1,
@@ -326,8 +338,8 @@ function PlanForm({ plan, onClose: _onClose, onSave }: { plan: Plan | null; onCl
         await api.post('/superadmin/plans', formData);
       }
       onSave();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao salvar plano.');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao salvar plano.'));
     }
   };
 

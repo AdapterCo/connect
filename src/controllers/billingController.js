@@ -1,13 +1,21 @@
 const billingService = require('../services/billingService');
-const { MP_WEBHOOK_SECRET } = require('../config/index');
-const { verifyHmacSignature } = require('../utils/webhookSignature');
+
+// Apenas erros de regra de negocio (BillingError) expõem a mensagem; falhas
+// internas (banco, SDK do Mercado Pago, configuracao) ficam so no log.
+function sendError(res, error, status, fallback) {
+  if (error instanceof billingService.BillingError) {
+    return res.status(status).json({ error: error.message });
+  }
+  console.error('[Billing]', error);
+  return res.status(500).json({ error: fallback });
+}
 
 async function listPlans(req, res) {
   try {
     const plans = await billingService.listActivePlans();
     res.json(plans);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    sendError(res, error, 500, 'Erro ao listar planos.');
   }
 }
 
@@ -16,7 +24,7 @@ async function getCheckoutConfig(req, res) {
     const config = await billingService.getCheckoutConfig();
     res.json(config);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    sendError(res, error, 500, 'Erro ao carregar checkout.');
   }
 }
 
@@ -31,7 +39,7 @@ async function getCheckoutInvoice(req, res) {
       plan: invoice.subscription?.plan || null
     });
   } catch (error) {
-    res.status(404).json({ error: error.message });
+    sendError(res, error, 404, 'Erro ao carregar fatura.');
   }
 }
 
@@ -40,7 +48,7 @@ async function createCheckoutPayment(req, res) {
     const payment = await billingService.createCheckoutPayment(req.params.invoiceId, req.body);
     res.json({ success: true, payment });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    sendError(res, error, 400, 'Não foi possível processar o pagamento. Tente novamente.');
   }
 }
 
@@ -49,7 +57,7 @@ async function getCheckoutStatus(req, res) {
     const status = await billingService.getCheckoutStatus(req.params.invoiceId);
     res.json(status);
   } catch (error) {
-    res.status(404).json({ error: error.message });
+    sendError(res, error, 404, 'Erro ao consultar pagamento.');
   }
 }
 
@@ -58,7 +66,7 @@ async function createSubscription(req, res) {
     const { planId } = req.body;
     const companyId = req.user.company_id;
 
-    if (!planId) {
+    if (!planId || typeof planId !== 'string') {
       return res.status(400).json({ error: 'Plano é obrigatório' });
     }
 
@@ -71,7 +79,7 @@ async function createSubscription(req, res) {
       payment_url: result.mp_payment_url
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    sendError(res, error, 400, 'Erro ao criar assinatura.');
   }
 }
 
@@ -81,7 +89,7 @@ async function getInvoices(req, res) {
     const invoices = await billingService.getCompanyInvoices(companyId);
     res.json(invoices);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    sendError(res, error, 500, 'Erro ao listar faturas.');
   }
 }
 
@@ -91,31 +99,7 @@ async function cancelSubscription(req, res) {
     const subscription = await billingService.cancelSubscription(companyId);
     res.json({ success: true, subscription });
   } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-}
-
-async function handleBillingWebhook(req, res) {
-  try {
-    const signature = req.get('x-signature') || req.get('x-hub-signature-256');
-    const requestId = req.get('x-request-id');
-    if (!verifyHmacSignature({ rawBody: req.rawBody, payload: req.body, requestId, signature, secret: MP_WEBHOOK_SECRET })) {
-      return res.status(401).json({ error: 'Assinatura de webhook invalida.' });
-    }
-
-    const { type, data } = req.body;
-
-    if (type === 'payment') {
-      const paymentId = data.id;
-      const status = data.status;
-
-      await billingService.processPaymentWebhook(paymentId, status);
-    }
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Erro no webhook de billing:', error);
-    res.status(500).json({ error: error.message });
+    sendError(res, error, 400, 'Erro ao cancelar assinatura.');
   }
 }
 
@@ -127,6 +111,5 @@ module.exports = {
   getCheckoutStatus,
   createSubscription,
   getInvoices,
-  cancelSubscription,
-  handleBillingWebhook
+  cancelSubscription
 };

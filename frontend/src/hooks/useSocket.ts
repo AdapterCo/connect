@@ -1,12 +1,12 @@
-import { useEffect, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { useEffect } from 'react';
+import { io } from 'socket.io-client';
 import { useAuthStore } from '../stores/authStore';
 import { useAppStore } from '../stores/appStore';
 import type { Chat } from '../types';
 
 export function useSocket() {
-  const socketRef = useRef<Socket | null>(null);
-  const token = useAuthStore((state) => state.token);
+  // A conexao autentica pelo cookie HttpOnly de sessao; reconecta ao trocar de usuario.
+  const userId = useAuthStore((state) => state.user?.id);
   const setChats = useAppStore((state) => state.setChats);
   const setUsers = useAppStore((state) => state.setUsers);
   const setLogs = useAppStore((state) => state.setLogs);
@@ -16,13 +16,10 @@ export function useSocket() {
   const updateChat = useAppStore((state) => state.updateChat);
 
   useEffect(() => {
-    if (!token) return;
+    if (!userId) return;
 
-    const socket = io(window.location.origin, {
-      auth: { token }
-    });
+    const socket = io(window.location.origin, { withCredentials: true });
 
-    socketRef.current = socket;
 
     // Evento de lista completa — usado apenas para criação/remoção de chats
     socket.on('chats_updated', (chats) => {
@@ -52,7 +49,6 @@ export function useSocket() {
     return () => {
       socket.disconnect();
     };
-  }, [token, setChats, updateChat, setUsers, setLogs, setInstances, fetchInstances]);
+  }, [userId, setChats, updateChat, setUsers, setLogs, setInstances, fetchInstances]);
 
-  return socketRef.current;
 }

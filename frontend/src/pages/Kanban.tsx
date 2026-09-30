@@ -21,7 +21,7 @@ export default function Kanban() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const routingSignature = chats.map(chat => `${chat.id}:${chat.status}:${chat.assigned_to}`).join('|');
   const loadBoard = useCallback(async () => {
     const response = await api.get<Board>('/kanban');
@@ -30,6 +30,7 @@ export default function Kanban() {
   useEffect(() => {
     Promise.all([fetchChats(), fetchUsers()]).catch(error => setError(message(error)));
   }, [fetchChats, fetchUsers]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- busca assincrona: o estado so muda depois do await
   useEffect(() => { loadBoard().catch(error => setError(message(error))); }, [loadBoard, routingSignature]);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
   async function createColumn(event: FormEvent) {

@@ -36,6 +36,5 @@ module.exports = {
   JWT_SECRET,
   DATABASE_URL,
   UPLOAD_DIR: process.env.UPLOAD_DIR || path.join(__dirname, '../../public/uploads'),
-  ENCRYPTION_KEY,
-  MP_WEBHOOK_SECRET: process.env.MP_WEBHOOK_SECRET || ''
+  ENCRYPTION_KEY
 };

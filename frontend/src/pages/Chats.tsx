@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { useAuthStore } from '../stores/authStore';
-import type { Chat } from '../types';
+import type { Chat, Message, User } from '../types';
+import { apiErrorMessage } from '../services/api';
+import FlowAnswers from '../components/FlowAnswers';
 
 type FilterType = 'my' | 'queue' | 'favorite' | 'archive' | 'all';
 
@@ -47,8 +49,8 @@ export default function Chats() {
     try {
       await sendMessage(selectedChatId, messageText, isNote);
       setMessageText('');
-    } catch (error: any) {
-      setSendError(error.response?.data?.error || 'Nao foi possivel enviar a mensagem.');
+    } catch (error) {
+      setSendError(apiErrorMessage(error, 'Nao foi possivel enviar a mensagem.'));
     }
   };
 
@@ -130,6 +132,9 @@ export default function Chats() {
               onDeleteTag={deleteTag}
               currentUser={user!}
             />
+
+            {/* Atualiza a cada nova mensagem: o fluxo pode ter captado outra resposta. */}
+            <FlowAnswers chatId={selectedChat.id} refreshKey={selectedChat.messages.length} />
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {selectedChat.messages.map(msg => (
@@ -220,7 +225,24 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: Chat; isSelected: b
   );
 }
 
-function ChatHeader({ chat, users, onUpdateStatus, onAssign, onToggleAi, onUpdateSector, onToggleFavorite, onToggleArchive, onToggleBlock, onAddTag, onDeleteTag }: any) {
+type StoreActions = ReturnType<typeof useAppStore.getState>;
+
+interface ChatHeaderProps {
+  chat: Chat;
+  users: User[];
+  currentUser: User;
+  onUpdateStatus: StoreActions['updateChatStatus'];
+  onAssign: StoreActions['assignChat'];
+  onToggleAi: StoreActions['toggleAi'];
+  onUpdateSector: StoreActions['updateSector'];
+  onToggleFavorite: StoreActions['toggleFavorite'];
+  onToggleArchive: StoreActions['toggleArchive'];
+  onToggleBlock: StoreActions['toggleBlock'];
+  onAddTag: StoreActions['addTag'];
+  onDeleteTag: StoreActions['deleteTag'];
+}
+
+function ChatHeader({ chat, users, onUpdateStatus, onAssign, onToggleAi, onUpdateSector, onToggleFavorite, onToggleArchive, onToggleBlock, onAddTag, onDeleteTag }: ChatHeaderProps) {
   const [newTag, setNewTag] = useState('');
   const [showTagInput, setShowTagInput] = useState(false);
 
@@ -268,14 +290,14 @@ function ChatHeader({ chat, users, onUpdateStatus, onAssign, onToggleAi, onUpdat
           className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
         >
           <option value="">Fila de Espera</option>
-          {users.map((u: any) => (
+          {users.map((u) => (
             <option key={u.id} value={u.id}>{u.name}</option>
           ))}
         </select>
 
         <select
           value={chat.sector || ''}
-          onChange={(e) => onUpdateSector(chat.id, e.target.value || null)}
+          onChange={(e) => onUpdateSector(chat.id, (e.target.value || null) as Chat['sector'])}
           className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
         >
           <option value="">Sem Setor</option>
@@ -286,7 +308,7 @@ function ChatHeader({ chat, users, onUpdateStatus, onAssign, onToggleAi, onUpdat
 
         <select
           value={chat.status}
-          onChange={(e) => onUpdateStatus(chat.id, e.target.value)}
+          onChange={(e) => onUpdateStatus(chat.id, e.target.value as Chat['status'])}
           className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
         >
           <option value="iniciada">Iniciada</option>
@@ -346,7 +368,7 @@ function ChatHeader({ chat, users, onUpdateStatus, onAssign, onToggleAi, onUpdat
   );
 }
 
-function MessageBubble({ message }: { message: any }) {
+function MessageBubble({ message }: { message: Message }) {
   const isClient = message.sender === 'client';
   const isSystem = message.sender === 'system';
   const isNote = message.is_note;

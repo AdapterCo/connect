@@ -26,7 +26,6 @@ const billingRoutes = require('./src/routes/billingRoutes');
 const passwordResetRoutes = require('./src/routes/passwordResetRoutes');
 const auditRoutes = require('./src/routes/auditRoutes');
 const catalogRoutes = require('./src/routes/catalogRoutes');
-const printerRoutes = require('./src/routes/printerRoutes');
 const privacyRoutes = require('./src/routes/privacyRoutes');
 
 const app = express();
@@ -69,14 +68,7 @@ app.use(cors(corsOptions));
 app.use(requestId);
 app.use(noStoreApi);
 app.use(requireJsonContentType);
-app.use(express.json({
-  limit: '1mb',
-  verify: (req, res, buf) => {
-    if (req.originalUrl && req.originalUrl.includes('/webhook/')) {
-      req.rawBody = Buffer.from(buf);
-    }
-  }
-}));
+app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 
@@ -89,11 +81,7 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-app.use('/uploads', (req, res, next) => {
-  const cookie = (req.headers.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith('crm_media='));
-  if (!req.headers.authorization && cookie) req.headers.authorization = 'Bearer ' + cookie.slice('crm_media='.length);
-  next();
-}, authenticateToken, async (req, res, next) => {
+app.use('/uploads', authenticateToken, async (req, res, next) => {
   try {
     if (!await require('./src/utils/media').canAccessMedia(req.user, '/uploads' + req.path)) return res.status(404).end();
     next();
@@ -197,6 +185,7 @@ app.use('/api/settings', apiLimiter, settingsRoutes);
 app.use('/api/users', apiLimiter, userRoutes);
 app.use('/api/products', apiLimiter, productRoutes);
 app.use('/api/kanban', apiLimiter, require('./src/routes/kanbanRoutes'));
+app.use('/api/flows', apiLimiter, require('./src/routes/flowRoutes'));
 app.use('/api', reportRoutes);
 app.use('/api/superadmin', superadminRoutes);
 app.use('/api/company', companyRoutes);
@@ -204,15 +193,16 @@ app.use('/api/billing', apiLimiter, billingRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/orders', (req, res) => res.status(410).json({ error: 'Pedidos de delivery foram substituidos pelo registro de vendas.' }));
-app.use('/api/printers', apiLimiter, printerRoutes);
 app.use('/api/privacy', apiLimiter, privacyRoutes);
 
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString()
-  });
+// Healthcheck do container: so responde ok se o banco tambem responde.
+app.get('/health', async (req, res) => {
+  try {
+    await require('./src/config/database').prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ok', database: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ status: 'error', database: 'unavailable', timestamp: new Date().toISOString() });
+  }
 });
 
 app.use((err, req, res, next) => {

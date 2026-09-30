@@ -9,8 +9,6 @@ function read(relativePath) {
 const aiService = read('src/services/aiService.js');
 const settingsController = read('src/controllers/settingsController.js');
 const reactSettings = read('frontend/src/pages/SettingsAI.tsx');
-const legacyHtml = read('public/index.html');
-const legacyApp = read('public/js/app.js');
 const migration = read('prisma/migrations/20260619120000_rename_grok_provider_to_groq/migration.sql');
 
 assert(aiService.includes("const OpenAI = require('openai')"), 'OpenAI SDK deve estar carregado');
@@ -30,9 +28,6 @@ assert(reactSettings.includes('<option value="groq">Groq</option>'), 'Frontend R
 assert(!reactSettings.includes('<option value="grok">'), 'Frontend React nao deve oferecer provider legado');
 assert(!reactSettings.includes(['x' + 'AI', 'Gr' + 'ok'].join(' ')), 'Frontend React nao deve mencionar provider legado');
 
-assert(legacyHtml.includes('<option value="groq">Groq'), 'Tela estatica deve exibir Groq');
-assert(!legacyHtml.includes(['<option value="grok">', 'x' + 'AI'].join('')), 'Tela estatica nao deve oferecer provider legado');
-assert(legacyApp.includes("provider === 'groq'"), 'JS legado deve tratar provider Groq');
 
 assert(migration.includes("SET \"ai_provider\" = 'groq'"), 'Migracao deve converter provider para groq');
 assert(migration.includes("WHERE \"ai_provider\" = 'grok'"), 'Migracao deve localizar registros legados grok');

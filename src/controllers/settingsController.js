@@ -5,6 +5,8 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
 
 const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+// Limite das instrucoes enviadas a cada chamada de IA (custo e tamanho do prompt).
+const MAX_SYSTEM_PROMPT = 8000;
 const AI_PROVIDERS = new Set(['mock', 'gemini', 'openai', 'groq']);
 
 const VALID_OPENAI_MODELS = new Set(['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-mini', 'o1']);
@@ -104,6 +106,18 @@ async function updateSettings(req, res) {
 
     if (aiProvider !== undefined && !AI_PROVIDERS.has(aiProvider)) {
       return res.status(400).json({ error: 'Provedor de IA inválido.' });
+    }
+
+    if (data.ai_enabled !== undefined && typeof data.ai_enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Valor inválido para ativar a IA.' });
+    }
+    if (data.system_prompt !== undefined && (typeof data.system_prompt !== 'string' || data.system_prompt.length > MAX_SYSTEM_PROMPT)) {
+      return res.status(400).json({ error: `Instruções da IA devem ter no máximo ${MAX_SYSTEM_PROMPT} caracteres.` });
+    }
+    for (const field of ['gemini_key', 'openai_key', 'groq_key', 'grok_key']) {
+      if (data[field] !== undefined && data[field] !== null && (typeof data[field] !== 'string' || data[field].length > 500)) {
+        return res.status(400).json({ error: 'Chave de API inválida.' });
+      }
     }
 
     const updateData = {

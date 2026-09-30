@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../services/api';
+import api, { apiErrorMessage } from '../services/api';
 
 export default function ForgotPassword() {
   const [username, setUsername] = useState('');
@@ -17,8 +17,8 @@ export default function ForgotPassword() {
     try {
       await api.post('/password-reset/request', { username });
       setSuccess(true);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao processar solicitação.');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao processar solicitação.'));
     } finally {
       setLoading(false);
     }
@@ -33,7 +33,7 @@ export default function ForgotPassword() {
               <span className="text-3xl font-bold text-white">A</span>
             </div>
             <h2 className="text-2xl font-bold text-white">Recuperar Senha</h2>
-            <p className="text-gray-400 mt-2">Informe seu usuário para gerar um link de recuperação</p>
+            <p className="text-gray-400 mt-2">Informe seu usuário ou e-mail para receber um link de recuperação</p>
           </div>
 
           {error && (
@@ -47,7 +47,7 @@ export default function ForgotPassword() {
               <div className="text-4xl mb-4">📧</div>
               <h3 className="text-lg font-bold text-white mb-2">Solicitação Enviada!</h3>
               <p className="text-gray-400 text-sm mb-4">
-                Se o usuário existir, instruções de recuperação serão enviadas.
+                Se a conta existir e tiver e-mail cadastrado, enviamos um link válido por 1 hora. Sem e-mail cadastrado, peça ao administrador para cadastrar o seu e-mail na Gestão de Equipe.
               </p>
               <Link
                 to="/login"
@@ -61,13 +61,13 @@ export default function ForgotPassword() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Nome de Usuário
+                    Usuário ou e-mail
                   </label>
                   <input
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Ex: admin"
+                    placeholder="Ex: admin ou voce@empresa.com"
                     required
                     className="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                   />

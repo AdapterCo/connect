@@ -5,7 +5,7 @@ services:
     image: postgres:14-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD no .env}
       POSTGRES_DB: adapterconnect
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -23,12 +23,20 @@ services:
       - PORT=3009
       - NODE_ENV=production
       - JWT_SECRET=${JWT_SECRET}
-      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres}@db:5432/adapterconnect?schema=public
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:?Defina DB_PASSWORD no .env}@db:5432/adapterconnect?schema=public
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - SUPERADMIN_USERNAME=${SUPERADMIN_USERNAME:-superadmin}
+      - SUPERADMIN_PASSWORD=${SUPERADMIN_PASSWORD}
       - PLATFORM_MP_ACCESS_TOKEN=${PLATFORM_MP_ACCESS_TOKEN}
       - PLATFORM_MP_PUBLIC_KEY=${PLATFORM_MP_PUBLIC_KEY}
-      - MP_WEBHOOK_SECRET=${MP_WEBHOOK_SECRET}
       - DOMAIN=${DOMAIN:-connect.adapterco.com.br}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - APP_URL=${APP_URL:-}
       - RETENTION_ENABLED=${RETENTION_ENABLED:-false}
       - AUDIT_LOG_RETENTION_DAYS=${AUDIT_LOG_RETENTION_DAYS:-365}
       - SYSTEM_LOG_RETENTION_DAYS=${SYSTEM_LOG_RETENTION_DAYS:-180}

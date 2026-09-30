@@ -1,14 +1,17 @@
 import { useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
+import { useAuthStore } from '../stores/authStore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function Dashboard() {
   const { chats, logs, fetchChats, fetchLogs } = useAppStore();
+  const isManager = useAuthStore((state) => ['admin', 'supervisor'].includes(state.user?.role ?? ''));
 
   useEffect(() => {
     fetchChats();
-    fetchLogs();
-  }, [fetchChats, fetchLogs]);
+    // O log da empresa e restrito a gestores no backend.
+    if (isManager) fetchLogs();
+  }, [fetchChats, fetchLogs, isManager]);
 
   const totalChats = chats.length;
   const iniciadaCount = chats.filter(c => c.status === 'iniciada').length;

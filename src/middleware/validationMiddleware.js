@@ -1,3 +1,28 @@
+// Politica unica de senha para cadastro, redefinicao e bootstrap do superadmin.
+const PASSWORD_MIN = 8;
+const PASSWORD_MAX = 128;
+
+function passwordError(password, label = 'Senha') {
+  if (!password || typeof password !== 'string' || password.length < PASSWORD_MIN) {
+    return `${label} deve ter pelo menos ${PASSWORD_MIN} caracteres.`;
+  }
+  if (password.length > PASSWORD_MAX) {
+    return `${label} muito longa (máximo ${PASSWORD_MAX} caracteres).`;
+  }
+  return null;
+}
+
+const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+
+// E-mail opcional: vazio vira null; invalido gera erro. Sempre em minusculas.
+function normalizeEmail(value) {
+  if (value === undefined || value === null || value === '') return { email: null };
+  if (typeof value !== 'string' || !EMAIL_PATTERN.test(value.trim()) || value.trim().length > 254) {
+    return { error: 'E-mail inválido.' };
+  }
+  return { email: value.trim().toLowerCase() };
+}
+
 function validateLogin(req, res, next) {
   const { username, password } = req.body;
 
@@ -5,8 +30,9 @@ function validateLogin(req, res, next) {
     return res.status(400).json({ error: 'Usuário é obrigatório.' });
   }
 
-  if (!password || typeof password !== 'string' || password.length < 10) {
-    return res.status(400).json({ error: 'Senha deve ter pelo menos 10 caracteres.' });
+  // No login so se exige a senha: a politica de tamanho vale ao definir a senha.
+  if (!password || typeof password !== 'string' || password.length > PASSWORD_MAX) {
+    return res.status(400).json({ error: 'Usuário ou senha incorretos.' });
   }
 
   if (username.length > 50) {
@@ -32,12 +58,9 @@ function validateRegister(req, res, next) {
     return res.status(400).json({ error: 'Usuário deve conter apenas letras, números e underscore.' });
   }
 
-  if (!password || typeof password !== 'string' || password.length < 10) {
-    return res.status(400).json({ error: 'Senha deve ter pelo menos 10 caracteres.' });
-  }
-
-  if (password.length > 128) {
-    return res.status(400).json({ error: 'Senha muito longa.' });
+  const invalidPassword = passwordError(password);
+  if (invalidPassword) {
+    return res.status(400).json({ error: invalidPassword });
   }
 
   const validRoles = ['admin', 'supervisor', 'seller', 'support', 'other'];
@@ -53,8 +76,14 @@ function validateRegister(req, res, next) {
     return res.status(400).json({ error: 'Usuário muito longo.' });
   }
 
+  const { email, error: emailError } = normalizeEmail(req.body.email);
+  if (emailError) {
+    return res.status(400).json({ error: emailError });
+  }
+
   req.body.name = name.trim();
   req.body.username = username.trim().toLowerCase();
+  req.body.email = email;
   next();
 }
 
@@ -77,8 +106,9 @@ function validateRegisterTenant(req, res, next) {
     return res.status(400).json({ error: 'Username do admin deve conter apenas letras, números e underscore.' });
   }
 
-  if (!adminPassword || typeof adminPassword !== 'string' || adminPassword.length < 10) {
-    return res.status(400).json({ error: 'Senha do admin deve ter pelo menos 10 caracteres.' });
+  const invalidPassword = passwordError(adminPassword, 'Senha do admin');
+  if (invalidPassword) {
+    return res.status(400).json({ error: invalidPassword });
   }
 
   if (!planId || typeof planId !== 'string') {
@@ -93,6 +123,19 @@ function validateRegisterTenant(req, res, next) {
   next();
 }
 
+const MEDIA_TYPES = ['image', 'video', 'audio', 'document'];
+const MAX_TEXT = 5000;
+
+// Campos de mensagem compartilhados por envio imediato e agendamento.
+function messageFieldsError({ text, mediaUrl, mediaType, fileName }) {
+  if (text !== undefined && text !== null && typeof text !== 'string') return 'Mensagem inválida.';
+  if (typeof text === 'string' && text.length > MAX_TEXT) return `Mensagem muito longa (máximo ${MAX_TEXT} caracteres).`;
+  if (mediaUrl !== undefined && mediaUrl !== null && (typeof mediaUrl !== 'string' || !mediaUrl.startsWith('/uploads/'))) return 'URL de mídia inválida.';
+  if (mediaUrl && !MEDIA_TYPES.includes(mediaType)) return 'Tipo de mídia inválido.';
+  if (fileName !== undefined && fileName !== null && (typeof fileName !== 'string' || fileName.length > 200)) return 'Nome de arquivo inválido.';
+  return null;
+}
+
 function validateMessage(req, res, next) {
   const { text, mediaUrl } = req.body;
 
@@ -100,12 +143,9 @@ function validateMessage(req, res, next) {
     return res.status(400).json({ error: 'Mensagem ou mídia é obrigatória.' });
   }
 
-  if (text && typeof text === 'string' && text.length > 5000) {
-    return res.status(400).json({ error: 'Mensagem muito longa (máximo 5000 caracteres).' });
-  }
-
-  if (mediaUrl && typeof mediaUrl === 'string' && !mediaUrl.startsWith('/uploads/')) {
-    return res.status(400).json({ error: 'URL de mídia inválida.' });
+  const invalid = messageFieldsError(req.body);
+  if (invalid) {
+    return res.status(400).json({ error: invalid });
   }
 
   next();
@@ -146,10 +186,27 @@ function validateSchedule(req, res, next) {
     return res.status(400).json({ error: 'Data de agendamento inválida ou no passado.' });
   }
 
+  if (scheduleDate.getTime() > Date.now() + 365 * 24 * 60 * 60 * 1000) {
+    return res.status(400).json({ error: 'Agendamento limitado a um ano.' });
+  }
+
+  if (!req.body.text && !req.body.mediaUrl) {
+    return res.status(400).json({ error: 'Mensagem ou mídia é obrigatória.' });
+  }
+
+  const invalid = messageFieldsError(req.body);
+  if (invalid) {
+    return res.status(400).json({ error: invalid });
+  }
+
   next();
 }
 
 module.exports = {
+  PASSWORD_MIN,
+  PASSWORD_MAX,
+  passwordError,
+  normalizeEmail,
   validateLogin,
   validateRegister,
   validateRegisterTenant,

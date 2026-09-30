@@ -5,6 +5,8 @@ async function getInstances(req, res) {
   try {
     const companyInstances = await Instance.findAll(req.user.company_id);
     const activeConns = whatsappService.getActiveConnections();
+    // O QR code permite parear outro aparelho ao numero da empresa: so para gestores.
+    const canPair = ['admin', 'supervisor'].includes(req.user.role);
 
     const result = companyInstances.map(inst => {
       const conn = activeConns[inst.id] || {};
@@ -13,7 +15,7 @@ async function getInstances(req, res) {
         name: inst.name,
         phone: conn.connectedPhone || inst.phone || null,
         status: conn.connectionStatus || inst.status || 'disconnected',
-        qr: conn.qrCodeImage || null
+        qr: canPair ? conn.qrCodeImage || null : null
       };
     });
     res.json(result);
@@ -29,7 +31,7 @@ async function createInstance(req, res) {
       return res.status(400).json({ error: 'Nome da conexão é obrigatório.' });
     }
 
-    const newId = 'inst_' + Date.now();
+    const newId = 'inst_' + require('crypto').randomUUID();
     const newInst = {
       id: newId,
       name,

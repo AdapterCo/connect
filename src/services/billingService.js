@@ -3,6 +3,11 @@ const mercadopago = require('mercadopago');
 const Log = require('../models/Log');
 const { encrypt } = require('../utils/crypto');
 
+// Erro de regra de negocio cuja mensagem pode ser exibida ao usuario.
+class BillingError extends Error {}
+
+const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+
 function getPlatformAccessToken() {
   return process.env.PLATFORM_MP_ACCESS_TOKEN || '';
 }
@@ -38,7 +43,7 @@ async function createSubscription(companyId, planId) {
     });
 
     if (!company) {
-      throw new Error('Empresa não encontrada');
+      throw new BillingError('Empresa não encontrada');
     }
 
     const plan = await prisma.plan.findUnique({
@@ -46,7 +51,7 @@ async function createSubscription(companyId, planId) {
     });
 
     if (!plan || !plan.is_active || plan.price <= 0) {
-      throw new Error('Plano não encontrado');
+      throw new BillingError('Plano não encontrado');
     }
 
     const existingSubscription = await prisma.subscription.findFirst({
@@ -57,7 +62,7 @@ async function createSubscription(companyId, planId) {
     });
 
     if (existingSubscription) {
-      throw new Error('Empresa já possui uma assinatura ativa');
+      throw new BillingError('Empresa já possui uma assinatura ativa');
     }
 
     const now = new Date();
@@ -157,7 +162,7 @@ async function getInvoiceCheckout(invoiceId) {
       };
     }
 
-    throw new Error('Fatura nao encontrada.');
+    throw new BillingError('Fatura nao encontrada.');
   }
 
   return invoice;
@@ -216,17 +221,25 @@ async function activateSignupCheckout(checkoutId) {
     where: { slug: checkout.company_slug }
   });
   if (existingCompany) {
-    throw new Error('Este slug de empresa ja esta em uso.');
+    throw new BillingError('Este slug de empresa ja esta em uso.');
   }
 
   const existingUser = await prisma.user.findUnique({
     where: { username: checkout.admin_username }
   });
   if (existingUser) {
-    throw new Error('Este nome de usuario ja esta em uso.');
+    throw new BillingError('Este nome de usuario ja esta em uso.');
   }
 
-  const suffix = Math.random().toString(36).substring(2, 6);
+  // O e-mail do pagador vira o e-mail de recuperacao do admin, exceto o endereco
+  // ficticio gerado quando o cadastro nao informa e-mail ou um ja usado por outra conta.
+  const payerEmail = String(checkout.payer_email || '').trim().toLowerCase();
+  const generatedEmail = `${checkout.admin_username}@${checkout.company_slug}.com.br`;
+  const adminEmail = EMAIL_PATTERN.test(payerEmail) && payerEmail !== generatedEmail &&
+    !await prisma.user.findFirst({ where: { email: payerEmail }, select: { id: true } })
+    ? payerEmail : null;
+
+  const suffix = require('crypto').randomBytes(4).toString('hex');
   const nowMs = Date.now();
   const companyId = `comp_${nowMs}_${suffix}`;
   const userId = `usr_${nowMs}_${suffix}`;
@@ -235,7 +248,23 @@ async function activateSignupCheckout(checkoutId) {
   const periodEnd = new Date(now);
   periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-  await prisma.$transaction(async (tx) => {
+  const activated = await prisma.$transaction(async (tx) => {
+    // Reivindica o checkout primeiro: consultas de status simultaneas nao podem
+    // criar a empresa duas vezes.
+    const claimed = await tx.signupCheckout.updateMany({
+      where: { id: checkout.id, status: { not: 'paid' } },
+      data: {
+        status: 'paid',
+        paid_at: now,
+        company_id: companyId,
+        // [LGPD/Segurança] Apagar dados sensíveis após ativação — senha e e-mail não devem
+        // permanecer no registro após o tenant ser criado.
+        admin_password: '',
+        payer_email: ''
+      }
+    });
+    if (!claimed.count) return false;
+
     await tx.company.create({
       data: {
         id: companyId,
@@ -272,6 +301,7 @@ async function activateSignupCheckout(checkoutId) {
         id: userId,
         name: checkout.admin_name,
         username: checkout.admin_username,
+        email: adminEmail,
         password: checkout.admin_password,
         role: 'admin',
         status: 'offline',
@@ -311,21 +341,12 @@ async function activateSignupCheckout(checkoutId) {
       }
     });
 
-    await tx.signupCheckout.update({
-      where: { id: checkout.id },
-      data: {
-        status: 'paid',
-        paid_at: now,
-        company_id: companyId,
-        // [LGPD/Segurança] Apagar dados sensíveis após ativação — senha e e-mail não devem
-        // permanecer no registro após o tenant ser criado.
-        admin_password: '',
-        payer_email: ''
-      }
-    });
+    return true;
   });
 
-  await Log.add(`Empresa ${checkout.company_name} ativada apos pagamento aprovado.`, companyId);
+  if (activated) {
+    await Log.add(`Empresa ${checkout.company_name} ativada apos pagamento aprovado.`, companyId);
+  }
 
   return prisma.signupCheckout.findUnique({
     where: { id: checkout.id },
@@ -343,19 +364,17 @@ async function createCheckoutPayment(invoiceId, payload) {
     const method = payload.method;
     const payerEmail = String(payload.payer_email || signupCheckout.payer_email || '').trim().toLowerCase();
 
-    if (!payerEmail || !payerEmail.includes('@')) {
-      throw new Error('E-mail do pagador e obrigatorio.');
+    if (!EMAIL_PATTERN.test(payerEmail)) {
+      throw new BillingError('E-mail do pagador e obrigatorio.');
     }
 
     const client = createMercadoPagoClient();
     const payment = new mercadopago.Payment(client);
-    const notificationUrl = `https://${process.env.DOMAIN || 'localhost:3000'}/api/billing/webhook/billing`;
 
     const paymentData = {
       transaction_amount: Number(signupCheckout.amount),
       description: `Assinatura ${signupCheckout.plan?.name || 'Adapter Connect'} - ${signupCheckout.company_name}`,
       external_reference: signupCheckout.id,
-      notification_url: notificationUrl,
       payer: { email: payerEmail }
     };
 
@@ -363,7 +382,7 @@ async function createCheckoutPayment(invoiceId, payload) {
       paymentData.payment_method_id = 'pix';
     } else if (method === 'card') {
       if (!payload.token || !payload.payment_method_id) {
-        throw new Error('Dados do cartao incompletos.');
+        throw new BillingError('Dados do cartao incompletos.');
       }
 
       paymentData.token = payload.token;
@@ -377,7 +396,7 @@ async function createCheckoutPayment(invoiceId, payload) {
         };
       }
     } else {
-      throw new Error('Forma de pagamento invalida.');
+      throw new BillingError('Forma de pagamento invalida.');
     }
 
     const response = await payment.create({
@@ -401,7 +420,8 @@ async function createCheckoutPayment(invoiceId, payload) {
     });
 
     if (response.status === 'approved') {
-      updatedCheckout = await activateSignupCheckout(updatedCheckout.id);
+      await confirmPayment(response.id);
+      updatedCheckout = await getSignupCheckout(updatedCheckout.id);
     }
 
     return buildSignupPaymentPayload(updatedCheckout, response);
@@ -416,19 +436,17 @@ async function createCheckoutPayment(invoiceId, payload) {
   const method = payload.method;
   const payerEmail = String(payload.payer_email || '').trim().toLowerCase();
 
-  if (!payerEmail || !payerEmail.includes('@')) {
-    throw new Error('E-mail do pagador e obrigatorio.');
+  if (!EMAIL_PATTERN.test(payerEmail)) {
+    throw new BillingError('E-mail do pagador e obrigatorio.');
   }
 
   const client = createMercadoPagoClient();
   const payment = new mercadopago.Payment(client);
-  const notificationUrl = `https://${process.env.DOMAIN || 'localhost:3000'}/api/billing/webhook/billing`;
 
   const paymentData = {
     transaction_amount: Number(invoice.amount),
     description: `Assinatura ${invoice.subscription?.plan?.name || 'Adapter Connect'} - ${invoice.company.name}`,
     external_reference: invoice.id,
-    notification_url: notificationUrl,
     payer: { email: payerEmail }
   };
 
@@ -436,7 +454,7 @@ async function createCheckoutPayment(invoiceId, payload) {
     paymentData.payment_method_id = 'pix';
   } else if (method === 'card') {
     if (!payload.token || !payload.payment_method_id) {
-      throw new Error('Dados do cartao incompletos.');
+      throw new BillingError('Dados do cartao incompletos.');
     }
 
     paymentData.token = payload.token;
@@ -450,7 +468,7 @@ async function createCheckoutPayment(invoiceId, payload) {
       };
     }
   } else {
-    throw new Error('Forma de pagamento invalida.');
+    throw new BillingError('Forma de pagamento invalida.');
   }
 
   const response = await payment.create({
@@ -463,18 +481,19 @@ async function createCheckoutPayment(invoiceId, payload) {
   });
 
   const mpPaymentUrl = response.point_of_interaction?.transaction_data?.ticket_url || null;
-  const updatedInvoice = await prisma.invoice.update({
+  // A fatura so vira 'paid' em confirmPayment, apos consulta a API do MP.
+  let updatedInvoice = await prisma.invoice.update({
     where: { id: invoice.id },
     data: {
       mp_payment_id: String(response.id),
       mp_payment_url: mpPaymentUrl,
-      status: response.status === 'approved' ? 'paid' : 'pending',
-      paid_at: response.status === 'approved' ? new Date() : null
+      status: 'pending'
     }
   });
 
   if (response.status === 'approved') {
-    await processPaymentWebhook(response.id, response.status);
+    await confirmPayment(response.id);
+    updatedInvoice = await prisma.invoice.findUnique({ where: { id: invoice.id } });
   }
 
   return buildPaymentPayload(updatedInvoice, response);
@@ -484,7 +503,7 @@ async function getCheckoutStatus(invoiceId) {
   const signupCheckout = await getSignupCheckout(invoiceId);
   if (signupCheckout) {
     if (signupCheckout.mp_payment_id && signupCheckout.status !== 'paid') {
-      await processPaymentWebhook(signupCheckout.mp_payment_id);
+      await confirmPaymentSafely(signupCheckout.mp_payment_id);
     }
 
     const refreshed = await getSignupCheckout(invoiceId);
@@ -496,11 +515,11 @@ async function getCheckoutStatus(invoiceId) {
   });
 
   if (!invoice) {
-    throw new Error('Fatura nao encontrada.');
+    throw new BillingError('Fatura nao encontrada.');
   }
 
   if (invoice.mp_payment_id && invoice.status !== 'paid') {
-    await processPaymentWebhook(invoice.mp_payment_id);
+    await confirmPaymentSafely(invoice.mp_payment_id);
   }
 
   const refreshed = await prisma.invoice.findUnique({
@@ -553,113 +572,140 @@ async function checkExpiredSubscriptions() {
   }
 }
 
-async function processPaymentWebhook(paymentId, status) {
+// Consulta o pagamento diretamente na API do Mercado Pago. O status nunca vem
+// do cliente: esta e a unica fonte de verdade para liberar acesso.
+async function fetchPayment(paymentId) {
+  const accessToken = getPlatformAccessToken();
+  if (!accessToken) {
+    throw new Error('Mercado Pago da plataforma nao configurado. Defina PLATFORM_MP_ACCESS_TOKEN.');
+  }
+
+  const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!response.ok) {
+    throw new Error(`Falha ao consultar pagamento no Mercado Pago (HTTP ${response.status}).`);
+  }
+  return response.json();
+}
+
+// O pagamento precisa ter sido criado para esta cobranca e com o valor dela.
+function matchesCharge(payment, reference, amount) {
+  return String(payment.external_reference || '') === String(reference)
+    && Math.abs(Number(payment.transaction_amount) - Number(amount)) < 0.01;
+}
+
+// Usado pelo polling: uma falha temporaria na API do MP mantem o status atual.
+async function confirmPaymentSafely(paymentId) {
   try {
-    const normalizedPaymentId = String(paymentId);
+    await confirmPayment(paymentId);
+  } catch (error) {
+    console.error('Erro ao confirmar pagamento:', error.message);
+  }
+}
 
-    const accessToken = getPlatformAccessToken();
+async function confirmPayment(paymentId) {
+  const normalizedPaymentId = String(paymentId);
+  const payment = await fetchPayment(normalizedPaymentId);
+  const status = payment.status;
 
-    if (!status && accessToken) {
-      const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(normalizedPaymentId)}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
-      });
+  const signupCheckout = await prisma.signupCheckout.findFirst({
+    where: { mp_payment_id: normalizedPaymentId },
+    include: { plan: true }
+  });
 
-      if (response.ok) {
-        const payment = await response.json();
-        status = payment.status;
-      }
-    }
-
-    const signupCheckout = await prisma.signupCheckout.findFirst({
-      where: { mp_payment_id: normalizedPaymentId },
-      include: { plan: true }
-    });
-
-    if (signupCheckout) {
-      if (status === 'approved') {
-        await activateSignupCheckout(signupCheckout.id);
-      } else if (status === 'rejected') {
-        await prisma.signupCheckout.update({
-          where: { id: signupCheckout.id },
-          data: { status: 'failed' }
-        });
-      }
+  if (signupCheckout) {
+    if (!matchesCharge(payment, signupCheckout.id, signupCheckout.amount)) {
+      console.error(`Pagamento ${normalizedPaymentId} nao corresponde ao checkout ${signupCheckout.id}.`);
       return;
     }
-
-    const invoice = await prisma.invoice.findFirst({
-      where: { mp_payment_id: normalizedPaymentId }
-    });
-
-    if (!invoice) {
-      console.log(`Fatura não encontrada para pagamento ${paymentId}`);
-      return;
-    }
-
     if (status === 'approved') {
-      await prisma.invoice.update({
-        where: { id: invoice.id },
-        data: {
-          status: 'paid',
-          paid_at: new Date()
-        }
-      });
-
-      if (invoice.subscription_id) {
-        const subscription = await prisma.subscription.findUnique({
-          where: { id: invoice.subscription_id },
-          include: { plan: true }
-        });
-
-        if (subscription) {
-          const now = new Date();
-          const newPeriodEnd = new Date(now);
-          newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
-
-          await prisma.subscription.update({
-            where: { id: subscription.id },
-            data: {
-              status: 'active',
-              current_period_start: now,
-              current_period_end: newPeriodEnd
-            }
-          });
-
-          await prisma.company.update({
-            where: { id: subscription.company_id },
-            data: {
-              is_active: true,
-              plan_id: subscription.plan_id,
-              plan: subscription.plan.name,
-              max_instances: subscription.plan.max_instances,
-              max_users: subscription.plan.max_users,
-              max_products: subscription.plan.max_products,
-              expires_at: newPeriodEnd
-            }
-          });
-
-          await Log.add(
-            `Pagamento aprovado - Fatura renovada até ${newPeriodEnd.toLocaleDateString('pt-BR')}`,
-            subscription.company_id
-          );
-        }
-      }
+      await activateSignupCheckout(signupCheckout.id);
     } else if (status === 'rejected') {
-      await prisma.invoice.update({
-        where: { id: invoice.id },
+      await prisma.signupCheckout.updateMany({
+        where: { id: signupCheckout.id, status: { not: 'paid' } },
         data: { status: 'failed' }
       });
+    }
+    return;
+  }
 
+  const invoice = await prisma.invoice.findFirst({
+    where: { mp_payment_id: normalizedPaymentId }
+  });
+
+  if (!invoice) {
+    console.log(`Fatura não encontrada para pagamento ${normalizedPaymentId}`);
+    return;
+  }
+
+  if (!matchesCharge(payment, invoice.id, invoice.amount)) {
+    console.error(`Pagamento ${normalizedPaymentId} nao corresponde a fatura ${invoice.id}.`);
+    return;
+  }
+
+  if (status === 'approved') {
+    const newPeriodEnd = await prisma.$transaction(async (tx) => {
+      // Idempotente: so a primeira confirmacao marca a fatura e renova o periodo.
+      const claimed = await tx.invoice.updateMany({
+        where: { id: invoice.id, status: { not: 'paid' } },
+        data: { status: 'paid', paid_at: new Date() }
+      });
+      if (!claimed.count || !invoice.subscription_id) return null;
+
+      const subscription = await tx.subscription.findUnique({
+        where: { id: invoice.subscription_id },
+        include: { plan: true }
+      });
+      if (!subscription) return null;
+
+      const now = new Date();
+      const periodEnd = new Date(now);
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+      await tx.subscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: 'active',
+          current_period_start: now,
+          current_period_end: periodEnd
+        }
+      });
+
+      await tx.company.update({
+        where: { id: subscription.company_id },
+        data: {
+          is_active: true,
+          plan_id: subscription.plan_id,
+          plan: subscription.plan.name,
+          max_instances: subscription.plan.max_instances,
+          max_users: subscription.plan.max_users,
+          max_products: subscription.plan.max_products,
+          expires_at: periodEnd
+        }
+      });
+
+      return periodEnd;
+    });
+
+    if (newPeriodEnd) {
+      await Log.add(
+        `Pagamento aprovado - Fatura renovada até ${newPeriodEnd.toLocaleDateString('pt-BR')}`,
+        invoice.company_id
+      );
+    }
+  } else if (status === 'rejected') {
+    const rejected = await prisma.invoice.updateMany({
+      where: { id: invoice.id, status: { not: 'paid' } },
+      data: { status: 'failed' }
+    });
+
+    if (rejected.count) {
       await Log.add(
         `Pagamento rejeitado - Fatura ${invoice.id}`,
         invoice.company_id
       );
     }
-  } catch (error) {
-    console.error('Erro ao processar webhook de pagamento:', error);
-    throw error;
   }
 }
 
@@ -692,7 +738,7 @@ async function cancelSubscription(companyId) {
     });
 
     if (!subscription) {
-      throw new Error('Nenhuma assinatura ativa encontrada');
+      throw new BillingError('Nenhuma assinatura ativa encontrada');
     }
 
     await prisma.subscription.update({
@@ -710,6 +756,7 @@ async function cancelSubscription(companyId) {
 }
 
 module.exports = {
+  BillingError,
   listActivePlans,
   getCheckoutConfig,
   getInvoiceCheckout,
@@ -718,7 +765,7 @@ module.exports = {
   createSubscription,
   createInvoice,
   checkExpiredSubscriptions,
-  processPaymentWebhook,
+  confirmPayment,
   getCompanyInvoices,
   cancelSubscription
 };

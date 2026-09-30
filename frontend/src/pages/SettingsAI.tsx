@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
-import api from '../services/api';
+import api, { apiErrorMessage } from '../services/api';
 
 const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
 
@@ -42,9 +42,12 @@ export default function SettingsAI() {
     fetchSettings();
   }, [fetchSettings]);
 
-  useEffect(() => {
-    if (settings) {
-      setFormData({
+  // Preenche o formulario quando as configuracoes chegam do servidor (ajuste de
+  // estado durante a renderizacao, recomendado pelo React em vez de um efeito).
+  const [loadedSettings, setLoadedSettings] = useState<typeof settings>(null);
+  if (settings && settings !== loadedSettings) {
+    setLoadedSettings(settings);
+    setFormData({
         ai_enabled: settings.ai_enabled,
         ai_provider: settings.ai_provider === 'grok' ? 'groq' : settings.ai_provider,
         gemini_key: settings.gemini_key || '',
@@ -54,9 +57,8 @@ export default function SettingsAI() {
         openai_model: safeModel(settings.openai_model, VALID_OPENAI_MODELS, 'gpt-4o-mini'),
         groq_model: safeModel(settings.groq_model || settings.grok_model, VALID_GROQ_MODELS, DEFAULT_GROQ_MODEL),
         system_prompt: settings.system_prompt || ''
-      });
-    }
-  }, [settings]);
+    });
+  }
 
   const handleSave = async () => {
     setSaving(true);
@@ -71,10 +73,10 @@ export default function SettingsAI() {
       });
       await fetchSettings();
       setSaveStatus({ type: 'success', message: 'Configurações de IA salvas com sucesso.' });
-    } catch (err: any) {
+    } catch (err) {
       setSaveStatus({
         type: 'error',
-        message: err.response?.data?.error || 'Erro ao salvar configurações de IA.'
+        message: apiErrorMessage(err, 'Erro ao salvar configurações de IA.')
       });
     } finally {
       setSaving(false);
@@ -111,10 +113,10 @@ export default function SettingsAI() {
       } else {
         setTestResult({ ok: false, message: `❌ Erro da API: ${res.data.error}` });
       }
-    } catch (err: any) {
+    } catch (err) {
       setTestResult({
         ok: false,
-        message: `❌ ${err.response?.data?.error || err.message || 'Erro ao testar chave.'}`
+        message: `❌ ${apiErrorMessage(err, err instanceof Error ? err.message : 'Erro ao testar chave.')}`
       });
     } finally {
       setTestingKey(false);
@@ -251,6 +253,7 @@ export default function SettingsAI() {
             <label className="block text-sm font-medium text-gray-300 mb-2">Prompt de Sistema</label>
             <textarea
               value={formData.system_prompt}
+              maxLength={8000}
               onChange={(e) => updateFormData({ system_prompt: e.target.value })}
               rows={10}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white font-mono text-sm focus:outline-none focus:border-indigo-500"

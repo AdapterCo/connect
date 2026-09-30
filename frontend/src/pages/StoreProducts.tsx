@@ -35,11 +35,11 @@ export default function StoreProducts() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(allowed);
   const [feedback, setFeedback] = useState('');
-  const load = useCallback(async () => {
-    if (!allowed) { setLoading(false); return; }
-    setLoading(true);
+  // Busca sem alterar estado antes do primeiro await (pode rodar dentro do efeito).
+  const fetchData = useCallback(async () => {
+    if (!allowed) return;
     try {
       const [items, people, totals] = await Promise.all([
         api.get<Product[]>('/products'), api.get<Seller[]>('/products/sellers'),
@@ -49,7 +49,9 @@ export default function StoreProducts() {
     } catch (error) { setFeedback(errorMessage(error)); }
     finally { setLoading(false); }
   }, [allowed, from, to]);
-  useEffect(() => { void load(); }, [load]);
+  const load = useCallback(async () => { setLoading(true); await fetchData(); }, [fetchData]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- busca assincrona: o estado so muda depois do await
+  useEffect(() => { void fetchData(); }, [fetchData]);
   const change = (key: keyof Draft, value: string) => setDraft(previous => ({ ...previous, [key]: value }));
   const reset = () => setDraft({ ...empty });
   async function save(event: FormEvent) {

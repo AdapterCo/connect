@@ -8,8 +8,9 @@ const { emitToCompany } = require('../config/socket');
 
 async function getChats(req, res) {
   try {
-    const chats = await Chat.findAll(req.user.company_id);
-    res.json(['admin', 'supervisor'].includes(req.user.role) ? chats : chats.filter(c => c.assigned_to === req.user.id));
+    // Vendedores recebem apenas as conversas atribuidas a eles (filtro no banco).
+    const chats = await Chat.findForList(req.user.company_id, ['admin', 'supervisor'].includes(req.user.role) ? null : req.user.id);
+    res.json(chats);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao listar conversas.' });
   }
@@ -29,13 +30,18 @@ async function getChatById(req, res) {
 
 async function createChat(req, res) {
   try {
-    const { name, phone } = req.body;
-    if (!name || !phone) {
+    if (typeof req.body.name !== 'string' || typeof req.body.phone !== 'string') {
       return res.status(400).json({ error: 'Nome e telefone são obrigatórios.' });
     }
+    const name = req.body.name.trim().slice(0, 100);
+    // Apenas numeros de contato individuais (DDI + DDD + numero); nao aceita
+    // JIDs arbitrarios como grupos ou listas de transmissao.
+    const cleanPhone = req.body.phone.replace(/\D/g, '');
+    if (!name || !/^\d{10,15}$/.test(cleanPhone)) {
+      return res.status(400).json({ error: 'Informe o nome e o telefone com DDI e DDD (10 a 15 dígitos).' });
+    }
 
-    const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
-    const cleanPhone = phone.split('@')[0];
+    const jid = `${cleanPhone}@s.whatsapp.net`;
 
     const defaultInst = await prisma.instance.findFirst({
       where: { company_id: req.user.company_id }
@@ -75,7 +81,7 @@ async function createChat(req, res) {
     await Log.add(`Cliente ${name} (+${cleanPhone}) adicionado ao CRM.`, req.user.company_id);
 
     // PERFORMANCE: Para novo chat emitir lista completa (necessário para sidebar mostrar novo item)
-    const allChats = await Chat.findAll(req.user.company_id);
+    const allChats = await Chat.findForList(req.user.company_id);
     const allLogs = await Log.findAll(req.user.company_id);
     emitToCompany(req.user.company_id, 'chats_updated', allChats);
     emitToCompany(req.user.company_id, 'logs_updated', allLogs);
@@ -95,11 +101,12 @@ async function deleteChat(req, res) {
     }
 
     const clientName = chat.client_name;
+    await require('../utils/media').removeChatMedia(chat.id);
     await Chat.remove(req.params.id, req.user.company_id);
     await Log.add(`Cliente ${clientName} excluído do CRM.`, req.user.company_id);
 
     // PERFORMANCE: Para remoção de chat emitir lista completa (necessário para sidebar remover item)
-    const allChats = await Chat.findAll(req.user.company_id);
+    const allChats = await Chat.findForList(req.user.company_id);
     const allLogs = await Log.findAll(req.user.company_id);
     emitToCompany(req.user.company_id, 'chats_updated', allChats);
     emitToCompany(req.user.company_id, 'logs_updated', allLogs);
@@ -215,11 +222,14 @@ async function sendMessage(req, res) {
         }
       } catch (err) {
         console.error('Erro ao enviar mensagem via WhatsApp:', err);
-        return res.status(502).json({ error: `Erro ao enviar mensagem via WhatsApp: ${err.message}` });
+        return res.status(502).json({ error: 'Não foi possível enviar a mensagem pelo WhatsApp. Verifique a conexão e tente novamente.' });
       }
     }
 
     const createdMsg = await Chat.addMessage(chat.id, newMessage);
+
+    // Um atendente assumiu a conversa: o fluxo automatico nao responde mais.
+    if (!isNote) await require('../services/flowService').cancelForHuman(chat.id);
 
     if (!isNote && chat.waiting_since) {
       const durationSeconds = Math.round((new Date() - new Date(chat.waiting_since)) / 1000);
@@ -307,9 +317,9 @@ async function toggleAi(req, res) {
 
 async function addTag(req, res) {
   try {
-    const { tag } = req.body;
-    if (!tag) {
-      return res.status(400).json({ error: 'Tag é obrigatória.' });
+    const tag = typeof req.body.tag === 'string' ? req.body.tag.trim() : '';
+    if (!tag || tag.length > 40) {
+      return res.status(400).json({ error: 'Tag deve ter entre 1 e 40 caracteres.' });
     }
 
     const chat = await Chat.findById(req.params.id, req.user.company_id);
@@ -318,6 +328,9 @@ async function addTag(req, res) {
     }
 
     const currentTags = chat.tags || [];
+    if (!currentTags.includes(tag) && currentTags.length >= 30) {
+      return res.status(400).json({ error: 'Limite de 30 tags por conversa.' });
+    }
     if (!currentTags.includes(tag)) {
       currentTags.push(tag);
     }
@@ -469,7 +482,21 @@ async function updateSector(req, res) {
   }
 }
 
+// Respostas captadas pelo fluxo de atendimento nesta conversa.
+async function getFlowSession(req, res) {
+  try {
+    const session = await prisma.flowSession.findFirst({
+      where: { chat_id: req.params.id, company_id: req.user.company_id },
+      select: { flow_name: true, status: true, variables: true, started_at: true, finished_at: true }
+    });
+    res.json(session || null);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao carregar respostas do fluxo.' });
+  }
+}
+
 module.exports = {
+  getFlowSession,
   getChats,
   getChatById,
   createChat,

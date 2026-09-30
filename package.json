@@ -1,7 +1,7 @@
 {
   "name": "adapter-connect",
   "version": "1.0.0",
-  "description": "Adapter Connect - CRM WhatsApp com Atendente Virtual IA e integra\u00e7\u00e3o Mercado Pago",
+  "description": "Adapter Connect - CRM WhatsApp com Atendente Virtual IA e integração Mercado Pago",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -40,8 +40,9 @@
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
-    "mercadopago": "^2.0.10",
+    "mercadopago": "^3.6.1",
     "multer": "^2.1.1",
+    "nodemailer": "^10.0.13",
     "openai": "^4.51.0",
     "pino": "^9.6.0",
     "prisma": "^5.22.0",

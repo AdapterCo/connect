@@ -7,24 +7,23 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'smoke-test-jwt-secret-32-chars-ok';
 process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'smoke-test-enc-key-32-chars-00000';
 process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://test:test@localhost:5432/test';
-process.env.MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || 'smoke-test-webhook-secret';
 
 const { encrypt, decrypt } = require('../src/utils/crypto');
-const { verifyHmacSignature } = require('../src/utils/webhookSignature');
-
-const secret = 'test-webhook-secret';
-const payload = { type: 'payment', data: { id: '123' } };
-const rawBody = Buffer.from(JSON.stringify(payload));
-const signature = require('crypto').createHmac('sha256', secret).update(rawBody).digest('hex');
-const mpManifest = 'id:123;request-id:req-1;ts:1710000000;';
-const mpSignature = `ts=1710000000,v1=${require('crypto').createHmac('sha256', secret).update(mpManifest).digest('hex')}`;
 
 const encrypted = encrypt('APP_USR-test-token');
 assert.notStrictEqual(encrypted, 'APP_USR-test-token');
 assert.strictEqual(decrypt(encrypted), 'APP_USR-test-token');
-assert.strictEqual(verifyHmacSignature({ rawBody, signature, secret }), true);
-assert.strictEqual(verifyHmacSignature({ rawBody, payload, requestId: 'req-1', signature: mpSignature, secret }), true);
-assert.strictEqual(verifyHmacSignature({ rawBody, signature: '00', secret }), false);
+
+// Pagamentos sao confirmados somente por consulta a API do Mercado Pago:
+// nenhuma rota pode aceitar status de pagamento enviado de fora.
+const billingRoutes = fs.readFileSync(path.join(__dirname, '../src/routes/billingRoutes.js'), 'utf8');
+const billingService = fs.readFileSync(path.join(__dirname, '../src/services/billingService.js'), 'utf8');
+assert(!/router\.\w+\([^)]*webhook/i.test(billingRoutes), 'Billing nao deve expor rota de webhook');
+assert(!billingService.includes('notification_url'), 'Pagamentos nao devem registrar notification_url');
+
+// Seed nao pode criar contas com senha fixa no codigo.
+const database = fs.readFileSync(path.join(__dirname, '../src/config/database.js'), 'utf8');
+assert(!/bcrypt\.hash\(\s*'[^']+'/.test(database), 'Seed nao deve usar senha literal');
 
 const aiService = fs.readFileSync(path.join(__dirname, '../src/services/aiService.js'), 'utf8');
 assert(!aiService.includes('📱 Pix na entrega\\n'), 'Pix na entrega nao deve ser ofertado');

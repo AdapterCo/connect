@@ -4,6 +4,7 @@ const QRCode = require('qrcode');
 const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const { prisma } = require('../config/database');
 const { UPLOAD_DIR } = require('../config/index');
@@ -13,9 +14,53 @@ const Chat = require('../models/Chat');
 const Instance = require('../models/Instance');
 const Metrics = require('../models/Metrics');
 const aiService = require('./aiService');
+const flowService = require('./flowService');
 const { decrypt } = require('../utils/crypto');
 
 const activeConnections = {};
+
+// Midias recebidas: somente tipos que o painel sabe servir (ver utils/media.js),
+// com extensao definida pelo servidor e tamanho limitado (o download e em memoria).
+const INCOMING_MEDIA_EXTENSIONS = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+  'video/mp4': 'mp4', 'video/quicktime': 'mov',
+  'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/wav': 'wav',
+  'application/pdf': 'pdf', 'text/plain': 'txt',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx'
+};
+const MAX_INCOMING_MEDIA_BYTES = 25 * 1024 * 1024;
+
+// Cada mensagem recebida pode gerar uma chamada paga ao provedor de IA. Por
+// conversa: uma chamada por vez e no maximo AI_REPLIES_PER_MINUTE por minuto.
+const AI_REPLIES_PER_MINUTE = 6;
+const aiActivity = new Map();
+
+function reserveAiReply(chatId, now = Date.now()) {
+  const entry = aiActivity.get(chatId) || { busy: false, calls: [] };
+  entry.calls = entry.calls.filter(time => now - time < 60_000);
+  if (entry.busy || entry.calls.length >= AI_REPLIES_PER_MINUTE) {
+    aiActivity.set(chatId, entry);
+    return false;
+  }
+  entry.busy = true;
+  entry.calls.push(now);
+  aiActivity.set(chatId, entry);
+  return true;
+}
+
+function releaseAiReply(chatId) {
+  const entry = aiActivity.get(chatId);
+  if (!entry) return;
+  entry.busy = false;
+  if (!entry.calls.length) aiActivity.delete(chatId);
+}
+
+function incomingMediaExtension(mimetype) {
+  return INCOMING_MEDIA_EXTENSIONS[String(mimetype || '').split(';')[0].trim().toLowerCase()] || null;
+}
 
 function shouldRetryAsLid(jid) {
   if (!jid.endsWith('@s.whatsapp.net')) return false;
@@ -43,21 +88,40 @@ function getActiveConnections() {
 }
 
 async function startWhatsAppInstance(instanceId, companyId) {
-  if (activeConnections[instanceId] && activeConnections[instanceId].connectionStatus === 'open') {
+  const current = activeConnections[instanceId];
+  // Um socket ativo (aberto, conectando ou exibindo QR) ou uma inicializacao em
+  // andamento impedem outro socket para o mesmo numero: evita listeners
+  // duplicados e mensagens processadas duas vezes.
+  if (current?.starting || (current?.sock && ['open', 'connecting', 'qr'].includes(current.connectionStatus))) {
     return;
   }
 
-  if (activeConnections[instanceId]?.reconnectTimer) {
-    clearTimeout(activeConnections[instanceId].reconnectTimer);
-  }
-
-  const authFolder = path.join(__dirname, `../../auth_info_baileys/${instanceId}`);
-  const { state, saveCreds } = await useMultiFileAuthState(authFolder);
-  
   if (!activeConnections[instanceId]) {
     activeConnections[instanceId] = {};
   }
-  
+  const conn = activeConnections[instanceId];
+  conn.starting = true;
+
+  if (conn.reconnectTimer) {
+    clearTimeout(conn.reconnectTimer);
+    conn.reconnectTimer = null;
+  }
+
+  // Encerra um socket anterior que tenha ficado para tras antes de criar outro.
+  if (conn.sock) {
+    try { conn.sock.ev.removeAllListeners(); conn.sock.end(undefined); } catch (err) { console.error(err); }
+    conn.sock = null;
+  }
+
+  let state, saveCreds;
+  try {
+    const authFolder = path.join(__dirname, `../../auth_info_baileys/${instanceId}`);
+    ({ state, saveCreds } = await useMultiFileAuthState(authFolder));
+  } catch (err) {
+    conn.starting = false;
+    throw err;
+  }
+
   activeConnections[instanceId].connectionStatus = 'connecting';
   activeConnections[instanceId].qrCodeImage = null;
   activeConnections[instanceId].connectedPhone = null;
@@ -80,6 +144,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
     });
 
     activeConnections[instanceId].sock = sock;
+    activeConnections[instanceId].starting = false;
 
     sock.ev.on('creds.update', saveCreds);
 
@@ -193,43 +258,33 @@ async function startWhatsAppInstance(instanceId, companyId) {
           '';
         
         let mediaInfo = null;
-        if (imageMsg || videoMsg || audioMsg || docMsg) {
-          try {
+        let unsupportedMedia = null;
+        const mediaMsg = imageMsg || videoMsg || audioMsg || docMsg;
+        if (mediaMsg) {
+          const mediaType = imageMsg ? 'image' : videoMsg ? 'video' : audioMsg ? 'audio' : 'document';
+          const ext = incomingMediaExtension(mediaMsg.mimetype);
+          const size = Number(mediaMsg.fileLength || 0);
+          if (!ext) {
+            unsupportedMedia = `[Mídia não suportada: ${String(mediaMsg.mimetype || 'desconhecida').split(';')[0].slice(0, 80)}]`;
+          } else if (size > MAX_INCOMING_MEDIA_BYTES) {
+            unsupportedMedia = `[Mídia acima de ${MAX_INCOMING_MEDIA_BYTES / 1024 / 1024} MB não baixada]`;
+          }
+
+          if (!unsupportedMedia) try {
             const buffer = await downloadMediaMessage(
               msg,
               'buffer',
               {},
               { logger: pino({ level: 'silent' }) }
             );
+            if (buffer.length > MAX_INCOMING_MEDIA_BYTES) throw new Error('Midia excede o limite de tamanho.');
 
-            let ext = 'bin';
-            let mediaType = 'document';
-            let fileName = 'arquivo';
+            // O nome enviado pelo remetente so e exibido; nunca define o arquivo salvo.
+            const fileName = docMsg?.fileName
+              ? path.basename(String(docMsg.fileName)).slice(0, 200)
+              : `${mediaType}_${Date.now()}.${ext}`;
 
-            if (imageMsg) {
-              mediaType = 'image';
-              let rawExt = imageMsg.mimetype?.split('/')[1] || 'jpg';
-              ext = rawExt.split(';')[0].trim();
-              fileName = `image_${Date.now()}.${ext}`;
-            } else if (videoMsg) {
-              mediaType = 'video';
-              let rawExt = videoMsg.mimetype?.split('/')[1] || 'mp4';
-              ext = rawExt.split(';')[0].trim();
-              fileName = `video_${Date.now()}.${ext}`;
-            } else if (audioMsg) {
-              mediaType = 'audio';
-              let rawExt = audioMsg.mimetype?.split('/')[1] || 'mp3';
-              ext = rawExt.split(';')[0].trim();
-              fileName = `audio_${Date.now()}.${ext}`;
-            } else if (docMsg) {
-              mediaType = 'document';
-              fileName = docMsg.fileName || `doc_${Date.now()}`;
-              let rawExt = path.extname(fileName).slice(1) || docMsg.mimetype?.split('/')[1] || 'bin';
-              ext = rawExt.split(';')[0].trim();
-              if (!fileName.includes('.')) fileName = `${fileName}.${ext}`;
-            }
-
-            const fileSavedName = `${mediaType}_incoming_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`;
+            const fileSavedName = `${mediaType}_incoming_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
             const savePath = path.join(UPLOAD_DIR, fileSavedName);
             // PERFORMANCE: Substituído fs.writeFileSync (bloqueante) por operação assíncrona
             await fs.promises.writeFile(savePath, buffer);
@@ -244,11 +299,12 @@ async function startWhatsAppInstance(instanceId, companyId) {
           }
         }
 
-        if (!text && !mediaInfo) {
+        const messageText = [text, unsupportedMedia].filter(Boolean).join('\n');
+        if (!messageText && !mediaInfo) {
           console.warn(`[WhatsApp:${instanceId}] Mensagem ignorada sem texto/midia suportada de ${senderJid}`);
           continue;
         }
-        await handleIncomingWhatsAppMessage(senderJid, name, text, mediaInfo, instanceId, companyId);
+        await handleIncomingWhatsAppMessage(senderJid, name, messageText, mediaInfo, instanceId, companyId);
         } catch (msgErr) {
           console.error(`[WhatsApp:${instanceId}] Erro ao processar mensagem recebida:`, msgErr);
           try {
@@ -262,6 +318,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
 
   } catch (err) {
     console.error(err);
+    activeConnections[instanceId].starting = false;
     activeConnections[instanceId].connectionStatus = 'disconnected';
     emitToCompany(companyId, 'whatsapp_status_updated', {
       instanceId,
@@ -317,10 +374,45 @@ async function stopWhatsAppInstance(instanceId, clearSession = false) {
   });
 }
 
+// Envia uma mensagem automatica (fluxo) e registra na conversa.
+async function sendBotMessage(chat, instanceId, text) {
+  await Chat.addMessage(chat.id, { sender: 'attendant', text, timestamp: new Date(), is_ai: true });
+  const conn = activeConnections[instanceId];
+  if (conn && conn.connectionStatus === 'open' && conn.sock) {
+    await conn.sock.sendMessage(Chat.getRemoteJid(chat), { text });
+  }
+}
+
+async function runFlow(chat, message, isNewChat, instanceId, companyId) {
+  let transferred = false;
+  const handled = await flowService.handleIncoming({
+    chat,
+    message,
+    isNewChat,
+    actions: {
+      send: text => sendBotMessage(chat, instanceId, text),
+      transfer: async ({ toSales }) => {
+        transferred = true;
+        // Humano assume: IA desligada nesta conversa e cliente aguardando
+        // atendimento. "Interesse em Compra" coloca o lead no rodizio de vendedores.
+        await Chat.update(chat.id, { ai_active: false, waiting_since: new Date(), ...(toSales ? { status: 'interesse em compra' } : {}) }, companyId);
+        await Chat.addMessage(chat.id, { sender: 'system', text: 'Fluxo concluído: atendimento transferido para um atendente humano.', timestamp: new Date() });
+        await Log.add(`Fluxo transferiu ${chat.client_name} para atendimento humano.`, companyId);
+      }
+    }
+  });
+  // Durante o fluxo o cliente ja foi respondido pelo robo.
+  if (handled && !transferred && chat.waiting_since) {
+    await Chat.update(chat.id, { waiting_since: null }, companyId);
+  }
+  return handled;
+}
+
 async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageText, mediaInfo, instanceId, companyId) {
   try {
     const senderJid = rawSenderJid;
     let chat = await Chat.findByRemoteJid(senderJid, companyId, instanceId);
+    const isNewChat = !chat;
     const cleanPhone = senderJid.split('@')[0];
 
     if (!chat) {
@@ -368,6 +460,14 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
       return chat;
     }
 
+    // Fluxo de atendimento: conversas novas passam pelo fluxo ativo da empresa.
+    // Enquanto ele conduz a conversa a IA nao responde; ao terminar, a IA assume.
+    if (await runFlow(chat, messageText || '', isNewChat, instanceId, companyId)) {
+      const flowChat = await Chat.findById(chat.id, companyId);
+      emitToCompany(companyId, 'chat_updated', flowChat);
+      return flowChat;
+    }
+
     const company = await prisma.company.findUnique({
       where: { id: companyId }
     });
@@ -385,7 +485,11 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
         return chat;
       }
 
-      try {
+      if (!reserveAiReply(chat.id)) {
+        // Rajada de mensagens: a conversa fica para o atendente humano ou para
+        // a proxima mensagem, sem nova chamada paga ao provedor.
+        console.warn(`[IA] Limite de respostas atingido para a conversa ${chat.id}.`);
+      } else try {
         const freshChat = await Chat.findById(chat.id, companyId);
         const aiResponse = await aiService.runAiAttendant(freshChat, resolvedText, settings);
         
@@ -462,6 +566,8 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
             console.error(waErr);
           }
         }
+      } finally {
+        releaseAiReply(chat.id);
       }
     }
 

@@ -9,7 +9,6 @@ function read(relativePath) {
 const whatsappService = read('src/services/whatsappService.js');
 const chatModel = read('src/models/Chat.js');
 const chatController = read('src/controllers/chatController.js');
-const publicApp = read('public/js/app.js');
 const reactSocket = read('frontend/src/hooks/useSocket.ts');
 const schema = read('prisma/schema.prisma');
 
@@ -30,9 +29,6 @@ assert(chatModel.includes('function getRemoteJid'), 'Modelo Chat deve expor help
 assert(chatModel.includes('async function findByRemoteJid'), 'Modelo Chat deve buscar por remote_jid');
 assert(chatController.includes('Chat.findByRemoteJid(jid'), 'Criacao manual deve evitar duplicidade por remote_jid');
 
-assert(publicApp.includes("socket.on('chat_updated'"), 'Tela estatica deve escutar chat_updated');
-assert(publicApp.includes('state.chats.push(chat)'), 'Tela estatica deve adicionar chat novo vindo do socket');
-assert(publicApp.includes('renderActiveChat(chat)'), 'Tela estatica deve atualizar conversa aberta');
 
 assert(reactSocket.includes("socket.on('chat_updated'"), 'Frontend React deve escutar chat_updated');
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import api from '../services/api';
 
 interface AuditLog {
@@ -70,12 +70,7 @@ export default function Logs() {
   const [entityFilter, setEntityFilter] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchLogs();
-  }, [page, actionFilter, entityFilter]);
-
-  const fetchLogs = async () => {
-    setLoading(true);
+  const fetchLogs = useCallback(async () => {
     try {
       const params: Record<string, string> = { page: String(page), limit: '50' };
       if (actionFilter) params.action = actionFilter;
@@ -88,7 +83,12 @@ export default function Logs() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, actionFilter, entityFilter]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca assincrona: o estado so muda depois do await
+    fetchLogs();
+  }, [fetchLogs]);
 
   return (
     <div className="h-full flex flex-col p-6">

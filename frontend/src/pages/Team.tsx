@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
-import api from '../services/api';
+import { useAuthStore } from '../stores/authStore';
+import api, { apiErrorMessage } from '../services/api';
+import type { User } from '../types';
+
+const emptyForm = { name: '', username: '', email: '', password: '', role: 'seller' };
 
 export default function Team() {
   const { users, fetchUsers } = useAppStore();
+  const currentUser = useAuthStore((state) => state.user);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', username: '', password: '', role: 'seller' });
+  const [formData, setFormData] = useState(emptyForm);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -16,11 +21,11 @@ export default function Team() {
     setError('');
     try {
       await api.post('/auth/register', formData);
-      setFormData({ name: '', username: '', password: '', role: 'seller' });
+      setFormData(emptyForm);
       setShowForm(false);
       fetchUsers();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao cadastrar atendente.');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao cadastrar atendente.'));
     }
   };
 
@@ -28,6 +33,22 @@ export default function Team() {
     if (!confirm('Tem certeza que deseja excluir este atendente?')) return;
     await api.delete(`/users/${userId}`);
     fetchUsers();
+  };
+
+  // Admin edita qualquer e-mail; supervisor so de quem nao e gestor (mesma regra do backend).
+  const canEditEmail = (user: User) => currentUser?.role === 'admin' || user.id === currentUser?.id ||
+    (currentUser?.role === 'supervisor' && !['admin', 'supervisor'].includes(user.role));
+
+  const handleEmail = async (user: User) => {
+    const email = prompt(`E-mail de ${user.name} (usado para recuperar a senha). Deixe vazio para remover.`, user.email || '');
+    if (email === null) return;
+    setError('');
+    try {
+      await api.patch(`/users/${user.id}/email`, { email: email.trim() });
+      fetchUsers();
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao atualizar e-mail.'));
+    }
   };
 
   const roleLabels: Record<string, string> = {
@@ -50,10 +71,11 @@ export default function Team() {
         </button>
       </div>
 
+      {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+
       {showForm && (
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6 max-w-md">
           <h3 className="font-bold text-white mb-4">Cadastrar Novo Atendente</h3>
-          {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
           <div className="space-y-3">
             <input
               type="text"
@@ -70,8 +92,18 @@ export default function Team() {
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
             />
             <input
+              type="email"
+              placeholder="E-mail (para recuperar a senha)"
+              maxLength={254}
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+            />
+            <input
               type="password"
-              placeholder="Senha Provisória"
+              placeholder="Senha Provisória (mín. 8 caracteres)"
+              minLength={8}
+              maxLength={128}
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
@@ -103,6 +135,7 @@ export default function Team() {
             <tr>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Nome</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Usuário</th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">E-mail</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Função</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Status</th>
               <th className="text-right px-4 py-3 text-sm font-medium text-gray-400">Ações</th>
@@ -113,6 +146,9 @@ export default function Team() {
               <tr key={user.id} className="hover:bg-gray-700/30">
                 <td className="px-4 py-3 text-white">{user.name}</td>
                 <td className="px-4 py-3 text-gray-400">{user.username}</td>
+                <td className="px-4 py-3 text-gray-400">
+                  {user.email || <span className="text-amber-300/80 text-sm">sem e-mail</span>}
+                </td>
                 <td className="px-4 py-3">
                   <span className="px-2 py-1 bg-indigo-500/20 text-indigo-300 rounded text-xs">
                     {roleLabels[user.role] || user.role}
@@ -124,7 +160,12 @@ export default function Team() {
                     {user.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right space-x-3">
+                  {canEditEmail(user) && (
+                    <button onClick={() => handleEmail(user)} className="text-indigo-300 hover:text-indigo-200 text-sm">
+                      E-mail
+                    </button>
+                  )}
                   <button
                     onClick={() => handleDelete(user.id)}
                     className="text-red-400 hover:text-red-300 text-sm"

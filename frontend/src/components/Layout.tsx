@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSocket } from '../hooks/useSocket';
@@ -23,7 +24,10 @@ export default function Layout() {
     <div className="flex h-screen bg-gray-900 text-white">
       <Sidebar />
       <main className="min-w-0 flex-1 overflow-hidden">
-        <Outlet />
+        {/* O menu continua visivel enquanto a pagina (carregada sob demanda) chega. */}
+        <Suspense fallback={<div className="flex h-full items-center justify-center text-gray-400">Carregando...</div>}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

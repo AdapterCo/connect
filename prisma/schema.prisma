@@ -57,6 +57,7 @@ model Company {
   products        Product[]
   orders          Order[]
   printers        Printer[]
+  flows           Flow[]
 }
 
 model User {
@@ -64,6 +65,7 @@ model User {
   id              String               @id @default(uuid())
   name            String
   username        String               @unique
+  email           String?              @unique
   password        String
   role            String
   status          String               @default("offline")
@@ -132,6 +134,7 @@ model Chat {
   instance      Instance  @relation(fields: [instance_id], references: [id], onDelete: Cascade)
   messages      Message[]
   orders        Order[]
+  flow_session  FlowSession?
 
   @@index([company_id])
   @@index([company_id, status])
@@ -453,4 +456,40 @@ model Printer {
   updated_at DateTime   @updatedAt
   company    Company    @relation(fields: [company_id], references: [id], onDelete: Cascade)
   categories Category[]
+}
+
+// Fluxo de atendimento montado no editor visual. graph = { nodes, edges }.
+// Apenas um fluxo ativo por empresa: ele atende toda conversa nova.
+model Flow {
+  id         String        @id @default(uuid())
+  company_id String
+  name       String
+  is_active  Boolean       @default(false)
+  graph      Json
+  created_at DateTime      @default(now())
+  updated_at DateTime      @updatedAt
+  company    Company       @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  sessions   FlowSession[]
+
+  @@index([company_id, is_active])
+}
+
+// Execucao do fluxo em uma conversa: no atual e respostas captadas (variables).
+model FlowSession {
+  id              String    @id @default(uuid())
+  chat_id         String    @unique
+  company_id      String
+  flow_id         String?
+  flow_name       String
+  current_node_id String?
+  status          String    @default("active")
+  variables       Json      @default("{}")
+  retries         Int       @default(0)
+  started_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  finished_at     DateTime?
+  chat            Chat      @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+  flow            Flow?     @relation(fields: [flow_id], references: [id], onDelete: SetNull)
+
+  @@index([company_id, status])
 }

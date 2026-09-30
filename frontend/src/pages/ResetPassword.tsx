@@ -1,42 +1,32 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import api from '../services/api';
+import api, { apiErrorMessage } from '../services/api';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 
   const [step, setStep] = useState<'validate' | 'reset' | 'success'>('validate');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(token ? '' : 'Token não fornecido.');
   const [userName, setUserName] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(token));
 
   useEffect(() => {
-    if (token) {
-      validateToken();
-    } else {
-      setLoading(false);
-      setError('Token não fornecido.');
-    }
+    if (!token) return;
+    api.get(`/password-reset/validate/${token}`)
+      .then((res) => {
+        if (res.data.valid) {
+          setUserName(res.data.user.name);
+          setStep('reset');
+        } else {
+          setError(res.data.error);
+        }
+      })
+      .catch(() => setError('Erro ao validar token.'))
+      .finally(() => setLoading(false));
   }, [token]);
-
-  const validateToken = async () => {
-    try {
-      const res = await api.get(`/password-reset/validate/${token}`);
-      if (res.data.valid) {
-        setUserName(res.data.user.name);
-        setStep('reset');
-      } else {
-        setError(res.data.error);
-      }
-    } catch {
-      setError('Erro ao validar token.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleReset = async (e: FormEvent) => {
     e.preventDefault();
@@ -47,16 +37,16 @@ export default function ResetPassword() {
       return;
     }
 
-    if (newPassword.length < 6) {
-      setError('Senha deve ter pelo menos 6 caracteres.');
+    if (newPassword.length < 8) {
+      setError('Senha deve ter pelo menos 8 caracteres.');
       return;
     }
 
     try {
       await api.post('/password-reset/reset', { token, newPassword });
       setStep('success');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao alterar senha.');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao alterar senha.'));
     }
   };
 

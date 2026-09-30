@@ -5,7 +5,11 @@ import api from '../services/api';
 export default function WhatsApp() {
   const { instances, fetchInstances } = useAppStore();
   const [newInstanceName, setNewInstanceName] = useState('');
-  const [qrModal, setQrModal] = useState<{ instanceId: string; qr: string | null } | null>(null);
+  // O QR vem direto da lista de instancias (atualizada a cada 3s); o modal fecha
+  // sozinho quando a conexao abre.
+  const [qrInstanceId, setQrInstanceId] = useState<string | null>(null);
+  const qrInstance = instances.find(i => i.id === qrInstanceId);
+  const showQr = qrInstanceId !== null && qrInstance?.status !== 'open';
 
   useEffect(() => {
     fetchInstances();
@@ -22,31 +26,21 @@ export default function WhatsApp() {
 
   const handleConnect = async (instanceId: string) => {
     await api.post(`/instances/${instanceId}/connect`);
-    setQrModal({ instanceId, qr: null });
+    setQrInstanceId(instanceId);
   };
 
   const handleDisconnect = async (instanceId: string) => {
     await api.post(`/instances/${instanceId}/disconnect`);
+    setQrInstanceId(null);
     fetchInstances();
   };
 
   const handleDelete = async (instanceId: string) => {
     if (!confirm('Tem certeza que deseja excluir esta conexão?')) return;
     await api.delete(`/instances/${instanceId}`);
+    setQrInstanceId(null);
     fetchInstances();
   };
-
-  useEffect(() => {
-    if (qrModal) {
-      const instance = instances.find(i => i.id === qrModal.instanceId);
-      if (instance?.qr) {
-        setQrModal({ ...qrModal, qr: instance.qr });
-      }
-      if (instance?.status === 'open') {
-        setQrModal(null);
-      }
-    }
-  }, [instances, qrModal]);
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -116,21 +110,21 @@ export default function WhatsApp() {
         ))}
       </div>
 
-      {qrModal && (
+      {showQr && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-white">Conectar WhatsApp</h3>
-              <button onClick={() => setQrModal(null)} className="text-gray-400 hover:text-white text-2xl">×</button>
+              <button onClick={() => setQrInstanceId(null)} className="text-gray-400 hover:text-white text-2xl">×</button>
             </div>
 
-            {qrModal.qr ? (
+            {qrInstance?.qr ? (
               <div className="text-center">
                 <p className="text-sm text-gray-400 mb-4">
                   Abra o WhatsApp no celular → Aparelhos Conectados → Conectar Aparelho
                 </p>
                 <div className="bg-white p-4 rounded-lg inline-block mb-4">
-                  <img src={qrModal.qr} alt="QR Code" className="w-56 h-56" />
+                  <img src={qrInstance.qr} alt="QR Code" className="w-56 h-56" />
                 </div>
                 <p className="text-sm text-indigo-400 font-medium">Aguardando leitura...</p>
               </div>

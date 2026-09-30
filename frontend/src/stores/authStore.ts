@@ -3,51 +3,58 @@ import api from '../services/api';
 import type { User } from '../types';
 import { useAppStore } from './appStore';
 
+// A sessao fica num cookie HttpOnly definido pelo backend: o token nunca e
+// acessivel ao JavaScript. Aqui guardamos apenas os dados do usuario.
+const USER_KEY = 'crm_user';
+
 interface AuthState {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateStatus: (status: 'online' | 'offline') => Promise<void>;
-  initialize: () => void;
+  initialize: () => Promise<void>;
+}
+
+function storeUser(user: User | null) {
+  if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+  else localStorage.removeItem(USER_KEY);
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  token: null,
   isAuthenticated: false,
   isLoading: true,
 
-  initialize: () => {
-    const token = localStorage.getItem('crm_token');
-    const userStr = localStorage.getItem('crm_user');
-    
-    if (token && userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        set({ user, token, isAuthenticated: true, isLoading: false });
-      } catch {
-        set({ user: null, token: null, isAuthenticated: false, isLoading: false });
-      }
-    } else {
+  initialize: async () => {
+    // Remove o token salvo por versoes anteriores.
+    localStorage.removeItem('crm_token');
+
+    if (!localStorage.getItem(USER_KEY)) {
       set({ isLoading: false });
+      return;
+    }
+
+    try {
+      const response = await api.get('/auth/me');
+      storeUser(response.data.user);
+      set({ user: response.data.user, isAuthenticated: true, isLoading: false });
+    } catch {
+      storeUser(null);
+      set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
 
   login: async (username: string, password: string) => {
     useAppStore.getState().reset();
-    localStorage.removeItem('crm_token');
-    localStorage.removeItem('crm_user');
+    storeUser(null);
 
     const response = await api.post('/auth/login', { username, password });
-    const { token, user } = response.data;
-    
-    localStorage.setItem('crm_token', token);
-    localStorage.setItem('crm_user', JSON.stringify(user));
-    
-    set({ user, token, isAuthenticated: true });
+    const { user } = response.data;
+
+    storeUser(user);
+    set({ user, isAuthenticated: true });
   },
 
   logout: async () => {
@@ -56,11 +63,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch {
       // ignore
     }
-    
-    localStorage.removeItem('crm_token');
-    localStorage.removeItem('crm_user');
+
+    storeUser(null);
     useAppStore.getState().reset();
-    set({ user: null, token: null, isAuthenticated: false });
+    set({ user: null, isAuthenticated: false });
   },
 
   updateStatus: async (status: 'online' | 'offline') => {
@@ -68,7 +74,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const user = get().user;
     if (user) {
       const updatedUser = { ...user, status };
-      localStorage.setItem('crm_user', JSON.stringify(updatedUser));
+      storeUser(updatedUser);
       set({ user: updatedUser });
     }
   }

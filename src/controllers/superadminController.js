@@ -1,6 +1,7 @@
 const { prisma } = require('../config/database');
 const bcrypt = require('bcryptjs');
 const { encrypt } = require('../utils/crypto');
+const { passwordError, normalizeEmail } = require('../middleware/validationMiddleware');
 
 async function listCompanies(req, res) {
   try {
@@ -46,15 +47,37 @@ async function getCompany(req, res) {
 
 async function createCompany(req, res) {
   try {
-    const { name, slug, plan_id, admin_name, admin_username, admin_password } = req.body;
-    
-    if (!name || !slug || !plan_id || !admin_name || !admin_username || !admin_password) {
+    const { name, plan_id, admin_name, admin_password } = req.body;
+
+    if (!name || !req.body.slug || !plan_id || !admin_name || !req.body.admin_username || !admin_password) {
       return res.status(400).json({ error: 'Campos obrigatórios: name, slug, plan_id, admin_name, admin_username, admin_password' });
+    }
+
+    // Mesmas regras do cadastro publico; o login normaliza o usuario para minusculas.
+    const slug = String(req.body.slug).trim().toLowerCase();
+    const admin_username = String(req.body.admin_username).trim().toLowerCase();
+    if (!/^[a-z0-9-]+$/.test(slug)) {
+      return res.status(400).json({ error: 'Slug deve conter apenas letras minúsculas, números e hífens.' });
+    }
+    if (!/^[a-z0-9_]{3,50}$/.test(admin_username)) {
+      return res.status(400).json({ error: 'Username do admin deve ter 3 a 50 letras, números ou underscore.' });
+    }
+    const invalidPassword = passwordError(admin_password, 'Senha do admin');
+    if (invalidPassword) {
+      return res.status(400).json({ error: invalidPassword });
     }
 
     const existingSlug = await prisma.company.findUnique({ where: { slug } });
     if (existingSlug) {
       return res.status(400).json({ error: 'Slug já está em uso.' });
+    }
+
+    const { email: adminEmail, error: emailError } = normalizeEmail(req.body.admin_email);
+    if (emailError) {
+      return res.status(400).json({ error: emailError });
+    }
+    if (adminEmail && await prisma.user.findFirst({ where: { email: adminEmail }, select: { id: true } })) {
+      return res.status(400).json({ error: 'Este e-mail já está em uso.' });
     }
 
     const existingUser = await prisma.user.findUnique({ where: { username: admin_username } });
@@ -72,7 +95,7 @@ async function createCompany(req, res) {
 
     const hashedPassword = await bcrypt.hash(admin_password, 10);
 
-    const suffix = Math.random().toString(36).substring(2, 6);
+    const suffix = require('crypto').randomBytes(4).toString('hex');
     const companyId = 'comp_' + Date.now() + '_' + suffix;
     const userId = 'usr_' + Date.now() + '_' + suffix;
     const instanceId = 'inst_' + Date.now() + '_' + suffix;
@@ -112,6 +135,7 @@ async function createCompany(req, res) {
           id: userId,
           name: admin_name,
           username: admin_username,
+          email: adminEmail,
           password: hashedPassword,
           role: 'admin',
           status: 'offline',

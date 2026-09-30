@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import api from '../services/api';
 
 interface Invoice {
@@ -39,11 +39,7 @@ export default function Billing() {
   const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [invoicesRes, planRes] = await Promise.all([
         api.get('/billing/invoices'),
@@ -56,7 +52,12 @@ export default function Billing() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca assincrona: o estado so muda depois do await
+    loadData();
+  }, [loadData]);
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {

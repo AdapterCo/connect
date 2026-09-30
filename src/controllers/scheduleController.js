@@ -21,7 +21,7 @@ async function createSchedule(req, res) {
     }
 
     const newSchedule = {
-      id: 'sch_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      id: 'sch_' + require('crypto').randomUUID(),
       chatId: req.params.id,
       clientName: chat.client_name,
       text,

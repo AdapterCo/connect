@@ -1,20 +1,14 @@
-const { verifyToken } = require('../config/auth');
 const authenticateToken = require('./authMiddleware');
 
+// Reaproveita a autenticacao completa (sessao conferida no banco) e exige que o
+// perfil atual do usuario seja superadmin.
 function requireSuperAdmin(req, res, next) {
-  const token = authenticateToken.getBearerToken(req);
-
-  if (!token) {
-    return res.status(401).json({ error: 'Token nao fornecido.' });
-  }
-
-  const decoded = verifyToken(token);
-  if (!decoded || decoded.role !== 'superadmin') {
-    return res.status(403).json({ error: 'Acesso negado. Requer privilegios de Super Admin.' });
-  }
-
-  req.user = decoded;
-  next();
+  authenticateToken(req, res, () => {
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Acesso negado. Requer privilegios de Super Admin.' });
+    }
+    next();
+  });
 }
 
 module.exports = requireSuperAdmin;

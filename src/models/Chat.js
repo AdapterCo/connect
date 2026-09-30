@@ -25,6 +25,23 @@ async function findAll(companyId) {
   });
 }
 
+// Listagem (painel e eventos de lista): so as ultimas mensagens de cada conversa.
+// O historico completo e carregado ao abrir a conversa (GET /api/chats/:id).
+const LIST_MESSAGES = 50;
+
+async function findForList(companyId, assignedTo) {
+  const chats = await prisma.chat.findMany({
+    where: { company_id: companyId, ...(assignedTo ? { assigned_to: assignedTo } : {}) },
+    include: {
+      messages: {
+        orderBy: { timestamp: 'desc' },
+        take: LIST_MESSAGES
+      }
+    }
+  });
+  return chats.map(chat => ({ ...chat, messages: [...chat.messages].reverse() }));
+}
+
 async function findById(id, companyId) {
   return prisma.chat.findFirst({
     where: { id, company_id: companyId },
@@ -148,6 +165,7 @@ module.exports = {
   createChatId,
   getRemoteJid,
   findAll,
+  findForList,
   findById,
   findByRemoteJid,
   create,

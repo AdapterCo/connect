@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { prisma } = require('../config/database');
 const auditService = require('./auditService');
+const { removeChatMedia } = require('../utils/media');
 
 function anonymizedLabel(chatId) {
   return `anon-${crypto.createHash('sha256').update(chatId).digest('hex').slice(0, 12)}`;
@@ -11,6 +12,7 @@ async function getChatForPrivacy(companyId, chatId) {
     where: { id: chatId, company_id: companyId },
     include: {
       messages: { orderBy: { timestamp: 'asc' } },
+      flow_session: true,
       orders: {
         include: {
           items: {
@@ -50,6 +52,7 @@ async function anonymizeClientData({ companyId, chatId, actor }) {
   if (!chat) return null;
 
   const label = anonymizedLabel(chatId);
+  const removedMedia = await removeChatMedia(chatId);
 
   await prisma.$transaction(async (tx) => {
     await tx.message.updateMany({
@@ -62,6 +65,12 @@ async function anonymizeClientData({ companyId, chatId, actor }) {
         file_name: null,
         payment_url: null
       }
+    });
+
+    // Respostas captadas pelo fluxo (nome, e-mail, telefone...) sao dados pessoais.
+    await tx.flowSession.updateMany({
+      where: { chat_id: chatId, company_id: companyId },
+      data: { variables: {}, status: 'cancelled', current_node_id: null }
     });
 
     await tx.order.updateMany({
@@ -94,7 +103,7 @@ async function anonymizeClientData({ companyId, chatId, actor }) {
     action: 'anonymize_client_data',
     entity: 'privacy',
     entity_id: chatId,
-    details: JSON.stringify({ chat_id: chatId, anonymized_label: label })
+    details: JSON.stringify({ chat_id: chatId, anonymized_label: label, removed_media: removedMedia })
   });
 
   return getChatForPrivacy(companyId, chatId);
@@ -107,6 +116,7 @@ async function deleteClientData({ companyId, chatId, actor }) {
   });
   if (!chat) return false;
 
+  const removedMedia = await removeChatMedia(chatId);
   await prisma.chat.deleteMany({
     where: { id: chatId, company_id: companyId }
   });
@@ -118,7 +128,7 @@ async function deleteClientData({ companyId, chatId, actor }) {
     action: 'delete_client_data',
     entity: 'privacy',
     entity_id: chatId,
-    details: JSON.stringify({ chat_id: chatId, client_name: chat.client_name })
+    details: JSON.stringify({ chat_id: chatId, client_name: chat.client_name, removed_media: removedMedia })
   });
 
   return true;

@@ -27,11 +27,12 @@ const navItems = [
   { to: '/kanban', icon: '📋', label: 'Pipeline (Kanban)' },
   { to: '/catalog', icon: 'P', label: 'Produtos e vendas', roles: ['admin', 'supervisor', 'seller'] },
   { to: '/whatsapp', icon: '📱', label: 'Conexões WhatsApp', roles: ['admin', 'supervisor'] },
-  { to: '/settings/ai', icon: '🤖', label: 'Configurações IA', roles: ['admin', 'supervisor'] },
+  { to: '/fluxos', icon: '🔀', label: 'Fluxos', roles: ['admin', 'supervisor'] },
+  { to: '/settings/ai', icon: '🤖', label: 'Configurações IA', roles: ['admin'] },
   { to: '/team', icon: '👥', label: 'Gestão de Equipe', roles: ['admin', 'supervisor'] },
   { to: '/reports', icon: '📈', label: 'Relatórios', roles: ['admin', 'supervisor'] },
-  { to: '/billing', icon: '💰', label: 'Faturamento', roles: ['admin', 'supervisor'] },
-  { to: '/logs', icon: '📝', label: 'Terminal de Logs' },
+  { to: '/billing', icon: '💰', label: 'Faturamento', roles: ['admin'] },
+  { to: '/logs', icon: '📝', label: 'Terminal de Logs', roles: ['admin'] },
   { to: '/superadmin', icon: '🔧', label: 'Super Admin', roles: ['superadmin'] },
 ];
 

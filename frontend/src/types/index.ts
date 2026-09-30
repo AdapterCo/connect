@@ -5,6 +5,7 @@ export interface User {
   role: 'superadmin' | 'admin' | 'supervisor' | 'seller' | 'support' | 'other';
   status: 'online' | 'offline';
   company_id: string;
+  email?: string | null;
 }
 
 export interface Company {
@@ -153,4 +154,60 @@ export interface ScheduledMessage {
   mediaType: string | null;
   fileName: string | null;
   created_by: string;
+}
+
+// Fluxos de atendimento (mesmo formato salvo pelo backend em Flow.graph).
+export type FlowNodeType = 'start' | 'message' | 'menu' | 'question' | 'condition' | 'transfer' | 'end';
+export type FlowInputType = 'text' | 'number' | 'email' | 'phone';
+export type FlowOperator = 'equals' | 'not_equals' | 'contains' | 'is_empty' | 'not_empty' | 'greater' | 'less';
+
+export interface FlowMenuOption {
+  id: string;
+  label: string;
+}
+
+export interface FlowNodeData {
+  text?: string;
+  options?: FlowMenuOption[];
+  variable?: string | null;
+  invalid_text?: string;
+  input?: FlowInputType;
+  operator?: FlowOperator;
+  value?: string;
+  to_sales?: boolean;
+  [key: string]: unknown;
+}
+
+export interface FlowGraphNode {
+  id: string;
+  type: FlowNodeType;
+  position: { x: number; y: number };
+  data: FlowNodeData;
+}
+
+export interface FlowGraphEdge {
+  id: string;
+  source: string;
+  sourceHandle: string | null;
+  target: string;
+}
+
+export interface FlowSummary {
+  id: string;
+  name: string;
+  is_active: boolean;
+  node_count: number;
+  updated_at: string;
+}
+
+export interface FlowDetail extends FlowSummary {
+  graph: { nodes: FlowGraphNode[]; edges: FlowGraphEdge[] };
+}
+
+export interface FlowSessionInfo {
+  flow_name: string;
+  status: 'active' | 'finished' | 'transferred' | 'cancelled' | 'expired' | 'error';
+  variables: Record<string, string>;
+  started_at: string;
+  finished_at: string | null;
 }

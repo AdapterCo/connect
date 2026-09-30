@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { isAxiosError } from 'axios';
 import { useAuthStore } from '../stores/authStore';
+import { apiErrorMessage } from '../services/api';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -25,11 +27,12 @@ export default function Login() {
     try {
       await login(username, password);
       navigate('/dashboard');
-    } catch (err: any) {
-      if (err.response?.status === 402 && err.response?.data?.payment_url) {
-        setPaymentUrl(err.response.data.payment_url);
+    } catch (err) {
+      const data = isAxiosError(err) ? err.response?.data as { payment_url?: string } | undefined : undefined;
+      if (isAxiosError(err) && err.response?.status === 402 && data?.payment_url) {
+        setPaymentUrl(data.payment_url);
       }
-      setError(err.response?.data?.error || 'Falha de conexão com o servidor.');
+      setError(apiErrorMessage(err, 'Falha de conexão com o servidor.'));
     } finally {
       setIsLoading(false);
     }

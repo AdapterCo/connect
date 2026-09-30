@@ -2,25 +2,59 @@ const http = require('http');
 const app = require('./app');
 const { PORT } = require('./src/config/index');
 const { initializeDatabase, prisma } = require('./src/config/database');
-const { initSocket } = require('./src/config/socket');
+const { initSocket, getIO, sweepPresence, PRESENCE_GRACE_MS } = require('./src/config/socket');
 const whatsappService = require('./src/services/whatsappService');
 const schedulerService = require('./src/services/schedulerService');
 const billingService = require('./src/services/billingService');
 const retentionService = require('./src/services/retentionService');
+const salesRotationService = require('./src/services/salesRotationService');
 const Log = require('./src/models/Log');
 
 const server = http.createServer(app);
 
 initSocket(server);
 
-let rotationRunning = false;
-let schedulerRunning = false;
-let billingRunning = false;
-let retentionRunning = false;
+// Os workers usam intervalos em memoria: rode apenas UMA instancia do app
+// (replicas: 1 no stack.yml), senao rodizio e cobrancas executam em duplicidade.
+const intervals = [];
+
+function every(ms, name, task) {
+  let running = false;
+  intervals.push(setInterval(async () => {
+    if (running) return;
+    running = true;
+    try {
+      await task();
+    } catch (err) {
+      console.error(`[${name}]`, err.code || err.name, err.message);
+    } finally {
+      running = false;
+    }
+  }, ms));
+}
+
+function startWorkers() {
+  every(5000, 'Sales rotation', () => salesRotationService.checkSalesRotation());
+  every(10000, 'Scheduler', () => schedulerService.checkScheduledMessages());
+  every(3600000, 'Billing', () => billingService.checkExpiredSubscriptions());
+  every(24 * 60 * 60 * 1000, 'Retention', async () => {
+    const result = await retentionService.applyRetentionPolicy();
+    if (!result.skipped) {
+      await Log.add(`Politica de retencao executada: ${JSON.stringify(result)}.`);
+    }
+  });
+
+  const presenceSweep = setTimeout(() => {
+    sweepPresence().catch(err => console.error('[Presence]', err.code || err.name, err.message));
+  }, PRESENCE_GRACE_MS);
+  presenceSweep.unref();
+}
 
 server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   initializeDatabase().then(async () => {
+    // Workers e WhatsApp so comecam com o banco pronto.
+    startWorkers();
     await Log.add(`Adapter Connect iniciado na porta ${PORT}.`);
     const instances = await prisma.instance.findMany();
     instances.forEach(inst => {
@@ -33,60 +67,30 @@ server.listen(PORT, () => {
   });
 });
 
-setInterval(async () => {
-  if (rotationRunning) return;
-  rotationRunning = true;
-  try { await require('./src/services/salesRotationService').checkSalesRotation(); }
-  catch (error) { console.error('Sales rotation worker:', error.code || error.name); }
-  finally { rotationRunning = false; }
-}, 5000);
-
-setInterval(async () => {
-  if (schedulerRunning) return;
-  schedulerRunning = true;
-  try {
-    await schedulerService.checkScheduledMessages();
-  } catch (err) {
-    console.error(err);
-  } finally {
-    schedulerRunning = false;
-  }
-}, 10000);
-
-
-
-setInterval(async () => {
-  if (billingRunning) return;
-  billingRunning = true;
-  try {
-    await billingService.checkExpiredSubscriptions();
-  } catch (err) {
-    console.error(err);
-  } finally {
-    billingRunning = false;
-  }
-}, 3600000);
-
-setInterval(async () => {
-  if (retentionRunning) return;
-  retentionRunning = true;
-  try {
-    const result = await retentionService.applyRetentionPolicy();
-    if (!result.skipped) {
-      await Log.add(`Politica de retencao executada: ${JSON.stringify(result)}.`);
-    }
-  } catch (err) {
-    console.error('[Retention] Erro ao executar politica de retencao:', err);
-  } finally {
-    retentionRunning = false;
-  }
-}, 24 * 60 * 60 * 1000);
+let shuttingDown = false;
 
 function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.log(`\n[${signal}] Shutting down gracefully...`);
+
+  intervals.forEach(clearInterval);
+
+  const forced = setTimeout(() => {
+    console.error('Forced shutdown after timeout.');
+    process.exit(1);
+  }, 10000);
+  forced.unref();
+
+  // Conexoes abertas (socket.io e keep-alive) impediriam o close de terminar.
+  getIO()?.disconnectSockets(true);
+  server.closeIdleConnections();
 
   server.close(async () => {
     console.log('HTTP server closed.');
+    // Fecha os sockets do WhatsApp sem apagar as sessoes pareadas.
+    const connections = Object.keys(whatsappService.getActiveConnections());
+    await Promise.allSettled(connections.map(id => whatsappService.stopWhatsAppInstance(id, false)));
     try {
       await prisma.$disconnect();
       console.log('Prisma disconnected.');
@@ -95,11 +99,6 @@ function gracefulShutdown(signal) {
     }
     process.exit(0);
   });
-
-  setTimeout(() => {
-    console.error('Forced shutdown after timeout.');
-    process.exit(1);
-  }, 10000);
 }
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

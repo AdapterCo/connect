@@ -4,6 +4,19 @@ const User = require('../models/User');
 const Log = require('../models/Log');
 const { emitToCompany } = require('../config/socket');
 const { prisma } = require('../config/database');
+const { SESSION_COOKIE } = require('../middleware/authMiddleware');
+
+const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  sameSite: 'strict',
+  secure: process.env.NODE_ENV === 'production',
+  path: '/',
+  maxAge: 24 * 60 * 60 * 1000
+};
+
+// Hash descartavel para comparar quando o usuario nao existe: o tempo de
+// resposta nao revela quais usernames sao validos.
+const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', 10);
 
 async function login(req, res) {
   try {
@@ -16,6 +29,7 @@ async function login(req, res) {
     // [A5 - Anti-Enumeration] Mensagem idêntica para usuário inexistente e senha incorreta
     // para não revelar se um username é válido (OWASP A07).
     if (!user) {
+      await bcrypt.compare(password, DUMMY_HASH);
       return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
     }
 
@@ -69,10 +83,11 @@ async function login(req, res) {
       session_version: user.session_version || 0
     });
 
-    res.cookie('crm_media', token, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/uploads', maxAge: 86400000 });
+    // O token so trafega no cookie HttpOnly: scripts da pagina (e um eventual XSS)
+    // nao conseguem le-lo. SameSite=Strict impede o envio a partir de outros sites.
+    res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
     res.json({
       success: true,
-      token,
       user: {
         id: user.id,
         name: user.name,
@@ -87,8 +102,28 @@ async function login(req, res) {
   }
 }
 
-async function logout(req, res) {
+// Limpa o cookie antes da autenticacao: mesmo com a sessao ja expirada o
+// navegador deixa de reenviar o token.
+function clearSession(req, res, next) {
+  res.clearCookie(SESSION_COOKIE, { path: '/' });
   res.clearCookie('crm_media', { path: '/uploads' });
+  next();
+}
+
+async function me(req, res) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, name: true, username: true, role: true, status: true, company_id: true }
+    });
+    if (!user) return res.status(401).json({ error: 'Sessao expirada. Faça login novamente.' });
+    res.json({ user });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao carregar sessao.' });
+  }
+}
+
+async function logout(req, res) {
   try {
     const userId = req.user.id;
     const companyId = req.user.company_id;
@@ -156,12 +191,19 @@ async function register(req, res) {
       return res.status(400).json({ error: 'Este nome de usuário já está em uso.' });
     }
 
+    // E-mail (opcional, ja normalizado pelo validateRegister) permite recuperar a senha.
+    const { email } = req.body;
+    if (email && await prisma.user.findFirst({ where: { email }, select: { id: true } })) {
+      return res.status(400).json({ error: 'Este e-mail já está em uso.' });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = {
-      id: 'usr_' + Date.now(),
+      id: 'usr_' + require('crypto').randomUUID(),
       name,
       username,
+      email,
       password: hashedPassword,
       role,
       status: 'offline',
@@ -174,7 +216,7 @@ async function register(req, res) {
     const updatedUsers = await User.findAll(req.user.company_id);
     emitToCompany(req.user.company_id, 'users_updated', updatedUsers);
 
-    res.json({ success: true, user: { id: newUser.id, name, username, role, company_id: newUser.company_id } });
+    res.json({ success: true, user: { id: newUser.id, name, username, email, role, company_id: newUser.company_id } });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao cadastrar atendente.' });
   }
@@ -185,6 +227,11 @@ async function registerTenant(req, res) {
     const { companyName, companySlug, adminName, adminUsername, adminPassword, planId, payerEmail } = req.body;
     if (!companyName || !companySlug || !adminName || !adminUsername || !adminPassword || !planId) {
       return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
+    }
+
+    if (payerEmail !== undefined && payerEmail !== '' &&
+        (typeof payerEmail !== 'string' || !/^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/.test(payerEmail.trim()))) {
+      return res.status(400).json({ error: 'E-mail do pagador inválido.' });
     }
 
     const plan = await prisma.plan.findUnique({
@@ -280,6 +327,8 @@ async function registerTenant(req, res) {
 module.exports = {
   login,
   logout,
+  clearSession,
+  me,
   updateStatus,
   register,
   registerTenant

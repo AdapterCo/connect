@@ -56,7 +56,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   setUsers: (users) => set({ users }),
   setLogs: (logs) => set({ logs }),
   setSettings: (settings) => set({ settings }),
-  selectChat: (chatId) => set({ selectedChatId: chatId }),
+  selectChat: (chatId) => {
+    set({ selectedChatId: chatId });
+    // A lista traz so as ultimas mensagens; ao abrir, carrega o historico completo.
+    if (chatId) {
+      api.get<Chat>(`/chats/${chatId}`).then((response) => get().updateChat(response.data)).catch(() => {});
+    }
+  },
   reset: () => set({
     chats: [],
     instances: [],

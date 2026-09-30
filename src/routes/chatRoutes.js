@@ -6,12 +6,14 @@ const { validateMessage } = require('../middleware/validationMiddleware');
 const audit = require('../middleware/auditMiddleware');
 
 const router = express.Router();
-const { ownChat } = require('../middleware/accessMiddleware');
+const { ownChat, managersOnly } = require('../middleware/accessMiddleware');
 
 router.get('/', authenticateToken, checkCompanyActive, ownChat, chatController.getChats);
 router.post('/', authenticateToken, checkCompanyActive, ownChat, audit('chat', 'create'), chatController.createChat);
 router.get('/:id', authenticateToken, checkCompanyActive, ownChat, chatController.getChatById);
-router.delete('/:id', authenticateToken, checkCompanyActive, ownChat, audit('chat', 'delete'), chatController.deleteChat);
+router.get('/:id/flow', authenticateToken, checkCompanyActive, ownChat, chatController.getFlowSession);
+// Excluir apaga o historico do cliente de forma definitiva: somente gestores.
+router.delete('/:id', authenticateToken, checkCompanyActive, managersOnly, audit('chat', 'delete'), chatController.deleteChat);
 router.post('/:id/status', authenticateToken, checkCompanyActive, ownChat, audit('chat', 'update_status'), chatController.updateStatus);
 router.post('/:id/message', authenticateToken, checkCompanyActive, ownChat, validateMessage, audit('chat', 'send_message'), chatController.sendMessage);
 router.post('/:id/assign', authenticateToken, checkCompanyActive, ownChat, audit('chat', 'assign'), chatController.assignChat);

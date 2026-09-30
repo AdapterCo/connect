@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
-import api from '../services/api';
+import api, { apiErrorMessage } from '../services/api';
 
 interface Plan {
   id: string;
@@ -58,8 +58,9 @@ function formatCurrency(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function getMercadoPagoClientErrorMessage(err: any) {
-  const message = typeof err?.message === 'string' ? err.message : '';
+function getMercadoPagoClientErrorMessage(err: unknown) {
+  const candidate = (err ?? {}) as { message?: unknown };
+  const message = typeof candidate.message === 'string' ? candidate.message : '';
   const serialized = (() => {
     try {
       return JSON.stringify(err);
@@ -84,13 +85,22 @@ function getMercadoPagoClientErrorMessage(err: any) {
   return message || 'Erro ao carregar checkout de cartao.';
 }
 
-function getCardPaymentFailureMessage(payment: any) {
+function getCardPaymentFailureMessage(payment: { payment_status_detail?: string } | null | undefined) {
   const detail = payment?.payment_status_detail;
   if (detail) {
     return `Nao foi possivel realizar a cobranca (${detail}). Verifique os dados do cartao ou tente outro metodo de pagamento.`;
   }
 
   return 'Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.';
+}
+
+// Dados entregues pelo formulario de cartao do Mercado Pago (Card Payment Brick).
+interface CardFormData {
+  token?: string;
+  issuer_id?: string;
+  payment_method_id?: string;
+  installments?: number;
+  payer?: { email?: string; identification?: { type?: string; number?: string } };
 }
 
 export default function Landing() {
@@ -128,16 +138,15 @@ export default function Landing() {
         setPlans(plansResponse.data);
         setSelectedPlanId(plansResponse.data[0]?.id || '');
         setCheckoutConfig(configResponse.data);
+        // Inicializa o SDK de cartao assim que a chave publica chega.
+        if (configResponse.data?.public_key) {
+          initMercadoPago(configResponse.data.public_key, { locale: 'pt-BR' });
+          setCardSdkReady(true);
+        }
       })
       .catch(() => setError('Nao foi possivel carregar os planos e configuracoes de pagamento.'))
       .finally(() => setLoadingPlans(false));
   }, []);
-
-  useEffect(() => {
-    if (!checkoutConfig?.public_key) return;
-    initMercadoPago(checkoutConfig.public_key, { locale: 'pt-BR' });
-    setCardSdkReady(true);
-  }, [checkoutConfig?.public_key]);
 
   useEffect(() => {
     if (!checkoutInvoice || paymentApproved) return;
@@ -188,8 +197,8 @@ export default function Landing() {
         plan: selectedPlan
       });
       setPayerEmail(payerEmail || `${adminUsername}@${companySlug}.com.br`);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao criar conta.');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao criar conta.'));
     } finally {
       setSubmitting(false);
     }
@@ -212,21 +221,23 @@ export default function Landing() {
         ticket_url: response.data.payment.ticket_url,
         status: response.data.payment.payment_status || 'pending'
       });
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao gerar Pix.');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao gerar Pix.'));
     } finally {
       setCreatingPayment(false);
     }
   };
 
+  // So recria a configuracao (e reinicia o formulario de cartao) quando o valor ou o e-mail mudam.
+  const invoiceAmount = checkoutInvoice?.amount;
   const cardPaymentInitialization = useMemo(() => {
-    if (!checkoutInvoice) return null;
+    if (invoiceAmount === undefined) return null;
 
     return {
-      amount: checkoutInvoice.amount,
+      amount: invoiceAmount,
       payer: { email: payerEmail }
     };
-  }, [checkoutInvoice?.id, checkoutInvoice?.amount, payerEmail]);
+  }, [invoiceAmount, payerEmail]);
 
   const cardPaymentCustomization = useMemo(() => ({
     paymentMethods: {
@@ -243,7 +254,7 @@ export default function Landing() {
     setCardReady(true);
   }, []);
 
-  const handleCardPaymentSubmit = useCallback(async (cardData: any) => {
+  const handleCardPaymentSubmit = useCallback(async (cardData: CardFormData) => {
     if (!checkoutInvoice) return;
 
     setCreatingPayment(true);
@@ -282,19 +293,19 @@ export default function Landing() {
         setCardBrickKey((current) => current + 1);
         throw new Error(message);
       }
-    } catch (err: any) {
-      const message = err.response?.data?.error || getMercadoPagoClientErrorMessage(err) || 'Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.';
+    } catch (err) {
+      const message = apiErrorMessage(err, getMercadoPagoClientErrorMessage(err) || 'Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.');
       setCardNotice('');
       setCardError(message);
       setCardReady(false);
       setCardBrickKey((current) => current + 1);
-      throw new Error(message);
+      throw new Error(message, { cause: err });
     } finally {
       setCreatingPayment(false);
     }
   }, [checkoutInvoice, payerEmail]);
 
-  const handleCardPaymentError = useCallback((err: any) => {
+  const handleCardPaymentError = useCallback((err: unknown) => {
     setCreatingPayment(false);
     setCardNotice('');
     setCardError(getMercadoPagoClientErrorMessage(err));
@@ -408,7 +419,7 @@ export default function Landing() {
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-300">Senha</label>
-                    <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} minLength={6} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                    <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} minLength={8} maxLength={128} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
                   </div>
 
                   <button type="submit" disabled={submitting || !selectedPlanId} className="rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
