@@ -53,8 +53,6 @@ function ensureValidSessionFolder(authFolder) {
 }
 
 
-// Midias recebidas: somente tipos que o painel sabe servir (ver utils/media.js),
-// com extensao definida pelo servidor e tamanho limitado (o download e em memoria).
 const INCOMING_MEDIA_EXTENSIONS = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
   'video/mp4': 'mp4', 'video/quicktime': 'mov',
@@ -67,8 +65,6 @@ const INCOMING_MEDIA_EXTENSIONS = {
 };
 const MAX_INCOMING_MEDIA_BYTES = 25 * 1024 * 1024;
 
-// Cada mensagem recebida pode gerar uma chamada paga ao provedor de IA. Por
-// conversa: uma chamada por vez e no maximo AI_REPLIES_PER_MINUTE por minuto.
 const AI_REPLIES_PER_MINUTE = 6;
 const aiActivity = new Map();
 
@@ -102,14 +98,41 @@ function shouldRetryAsLid(jid) {
   return /^\d+$/.test(id) && id.length > 15;
 }
 
+const sentKeyIds = new Map();
+
+function trackSentKey(instanceId, key) {
+  const keyId = key?.id;
+  if (!keyId) return;
+  let ids = sentKeyIds.get(instanceId);
+  if (!ids) {
+    ids = new Set();
+    sentKeyIds.set(instanceId, ids);
+  }
+  ids.add(keyId);
+  if (ids.size > 1000) {
+    for (const id of ids) {
+      ids.delete(id);
+      if (ids.size <= 1000) break;
+    }
+  }
+}
+
+function isOwnSentKey(instanceId, keyId) {
+  return !!keyId && (sentKeyIds.get(instanceId)?.has(keyId) || false);
+}
+
 async function sendMessage(instanceId, jid, content) {
   const conn = activeConnections[instanceId];
   if (conn && conn.connectionStatus === 'open' && conn.sock) {
     try {
-      return await conn.sock.sendMessage(jid, content);
+      const sent = await conn.sock.sendMessage(jid, content);
+      trackSentKey(instanceId, sent?.key);
+      return sent;
     } catch (err) {
       if (shouldRetryAsLid(jid)) {
-        return await conn.sock.sendMessage(jid.replace('@s.whatsapp.net', '@lid'), content);
+        const sent = await conn.sock.sendMessage(jid.replace('@s.whatsapp.net', '@lid'), content);
+        trackSentKey(instanceId, sent?.key);
+        return sent;
       }
       throw err;
     }
@@ -121,11 +144,81 @@ function getActiveConnections() {
   return activeConnections;
 }
 
+async function extractMessagePayload(msg) {
+  const { content, isEmptyProtocolStub } = inspectIncomingMessage(msg);
+  if (!content) {
+    return { ignoreReason: isEmptyProtocolStub ? 'stub' : 'empty' };
+  }
+
+  const imageMsg = content.imageMessage;
+  const videoMsg = content.videoMessage;
+  const audioMsg = content.audioMessage;
+  const docMsg = content.documentMessage;
+  const text = content.conversation ||
+    content.extendedTextMessage?.text ||
+    content.buttonsResponseMessage?.selectedDisplayText ||
+    content.buttonsResponseMessage?.selectedButtonId ||
+    content.listResponseMessage?.title ||
+    content.listResponseMessage?.singleSelectReply?.selectedRowId ||
+    content.templateButtonReplyMessage?.selectedDisplayText ||
+    content.templateButtonReplyMessage?.selectedId ||
+    imageMsg?.caption ||
+    videoMsg?.caption ||
+    '';
+
+  let mediaInfo = null;
+  let unsupportedMedia = null;
+  const mediaMsg = imageMsg || videoMsg || audioMsg || docMsg;
+  if (mediaMsg) {
+    const mediaType = imageMsg ? 'image' : videoMsg ? 'video' : audioMsg ? 'audio' : 'document';
+    const ext = incomingMediaExtension(mediaMsg.mimetype);
+    const size = Number(mediaMsg.fileLength || 0);
+    if (!ext) {
+      unsupportedMedia = `[Mídia não suportada: ${String(mediaMsg.mimetype || 'desconhecida').split(';')[0].slice(0, 80)}]`;
+    } else if (size > MAX_INCOMING_MEDIA_BYTES) {
+      unsupportedMedia = `[Mídia acima de ${MAX_INCOMING_MEDIA_BYTES / 1024 / 1024} MB não baixada]`;
+    }
+
+    if (!unsupportedMedia) try {
+      const buffer = await downloadMediaMessage(
+        msg,
+        'buffer',
+        {},
+        { logger: pino({ level: 'silent' }) }
+      );
+      if (buffer.length > MAX_INCOMING_MEDIA_BYTES) throw new Error('Midia excede o limite de tamanho.');
+
+      const fileName = docMsg?.fileName
+        ? path.basename(String(docMsg.fileName)).slice(0, 200)
+        : `${mediaType}_${Date.now()}.${ext}`;
+
+      const fileSavedName = `${mediaType}_incoming_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
+      const savePath = path.join(UPLOAD_DIR, fileSavedName);
+      await fs.promises.writeFile(savePath, buffer);
+
+      mediaInfo = {
+        mediaUrl: `/uploads/${fileSavedName}`,
+        mediaType,
+        fileName
+      };
+    } catch (dlErr) {
+      console.error(dlErr);
+    }
+  }
+
+  const messageText = [text, unsupportedMedia].filter(Boolean).join('\n');
+  if (!messageText && !mediaInfo) {
+    return { ignoreReason: 'unsupported' };
+  }
+
+  const timestamp = Number(msg.messageTimestamp) > 0
+    ? new Date(Number(msg.messageTimestamp) * 1000)
+    : new Date();
+  return { text: messageText, mediaInfo, timestamp };
+}
+
 async function startWhatsAppInstance(instanceId, companyId) {
   const current = activeConnections[instanceId];
-  // Um socket ativo (aberto, conectando ou exibindo QR) ou uma inicializacao em
-  // andamento impedem outro socket para o mesmo numero: evita listeners
-  // duplicados e mensagens processadas duas vezes.
   if (current?.starting || (current?.sock && ['open', 'connecting', 'qr'].includes(current.connectionStatus))) {
     return;
   }
@@ -281,101 +374,45 @@ async function startWhatsAppInstance(instanceId, companyId) {
       for (const msg of m.messages) {
         if (!msg) continue;
         try {
-          if (msg.key.fromMe || m.type !== 'notify') continue;
+          if (m.type !== 'notify') continue;
 
           const senderJid = msg.key.remoteJid;
           if (!senderJid) continue;
           if (senderJid.endsWith('@g.us') || senderJid === 'status@broadcast') continue;
-        
-        const phone = senderJid.split('@')[0];
-        const name = msg.pushName || `Cliente (+${phone.slice(-4)})`;
-        
-        const { content, isEmptyProtocolStub } = inspectIncomingMessage(msg);
-        if (!content) {
-          if (isEmptyProtocolStub) {
-            const reason = msg.messageStubParameters?.[0] ? ` (${String(msg.messageStubParameters[0]).slice(0, 60)})` : '';
-            console.info(`[WhatsApp:${instanceId}] Stub de protocolo ${msg.messageStubType}${reason} sem conteudo de ${senderJid}; ignorado.`);
-          } else {
-            console.warn(`[WhatsApp:${instanceId}] Mensagem sem conteudo processavel de ${senderJid}`);
-          }
-          continue;
-        }
 
-        const imageMsg = content.imageMessage;
-        const videoMsg = content.videoMessage;
-        const audioMsg = content.audioMessage;
-        const docMsg = content.documentMessage;
-        const text = content.conversation ||
-          content.extendedTextMessage?.text ||
-          content.buttonsResponseMessage?.selectedDisplayText ||
-          content.buttonsResponseMessage?.selectedButtonId ||
-          content.listResponseMessage?.title ||
-          content.listResponseMessage?.singleSelectReply?.selectedRowId ||
-          content.templateButtonReplyMessage?.selectedDisplayText ||
-          content.templateButtonReplyMessage?.selectedId ||
-          imageMsg?.caption ||
-          videoMsg?.caption ||
-          '';
-        
-        let mediaInfo = null;
-        let unsupportedMedia = null;
-        const mediaMsg = imageMsg || videoMsg || audioMsg || docMsg;
-        if (mediaMsg) {
-          const mediaType = imageMsg ? 'image' : videoMsg ? 'video' : audioMsg ? 'audio' : 'document';
-          const ext = incomingMediaExtension(mediaMsg.mimetype);
-          const size = Number(mediaMsg.fileLength || 0);
-          if (!ext) {
-            unsupportedMedia = `[Mídia não suportada: ${String(mediaMsg.mimetype || 'desconhecida').split(';')[0].slice(0, 80)}]`;
-          } else if (size > MAX_INCOMING_MEDIA_BYTES) {
-            unsupportedMedia = `[Mídia acima de ${MAX_INCOMING_MEDIA_BYTES / 1024 / 1024} MB não baixada]`;
+          const payload = await extractMessagePayload(msg);
+          if (payload.ignoreReason) {
+            if (payload.ignoreReason === 'stub') {
+              const reason = msg.messageStubParameters?.[0] ? ` (${String(msg.messageStubParameters[0]).slice(0, 60)})` : '';
+              console.info(`[WhatsApp:${instanceId}] Stub de protocolo ${msg.messageStubType}${reason} sem conteudo de ${senderJid}; ignorado.`);
+            } else if (payload.ignoreReason === 'empty') {
+              console.warn(`[WhatsApp:${instanceId}] Mensagem sem conteudo processavel de ${senderJid}`);
+            } else {
+              console.warn(`[WhatsApp:${instanceId}] Mensagem ignorada sem texto/midia suportada de ${senderJid}`);
+            }
+            continue;
           }
 
-          if (!unsupportedMedia) try {
-            const buffer = await downloadMediaMessage(
-              msg,
-              'buffer',
-              {},
-              { logger: pino({ level: 'silent' }) }
-            );
-            if (buffer.length > MAX_INCOMING_MEDIA_BYTES) throw new Error('Midia excede o limite de tamanho.');
-
-            // O nome enviado pelo remetente so e exibido; nunca define o arquivo salvo.
-            const fileName = docMsg?.fileName
-              ? path.basename(String(docMsg.fileName)).slice(0, 200)
-              : `${mediaType}_${Date.now()}.${ext}`;
-
-            const fileSavedName = `${mediaType}_incoming_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
-            const savePath = path.join(UPLOAD_DIR, fileSavedName);
-            // PERFORMANCE: Substituído fs.writeFileSync (bloqueante) por operação assíncrona
-            await fs.promises.writeFile(savePath, buffer);
-
-            mediaInfo = {
-              mediaUrl: `/uploads/${fileSavedName}`,
-              mediaType,
-              fileName
-            };
-          } catch (dlErr) {
-            console.error(dlErr);
+          if (msg.key.fromMe) {
+            if (isOwnSentKey(instanceId, msg.key.id)) continue;
+            await recordAttendantMessage(senderJid, payload, instanceId, companyId);
+            continue;
           }
-        }
 
-        const messageText = [text, unsupportedMedia].filter(Boolean).join('\n');
-        if (!messageText && !mediaInfo) {
-          console.warn(`[WhatsApp:${instanceId}] Mensagem ignorada sem texto/midia suportada de ${senderJid}`);
-          continue;
-        }
-        await handleIncomingWhatsAppMessage(senderJid, name, messageText, mediaInfo, instanceId, companyId);
+          const phone = senderJid.split('@')[0];
+          const name = msg.pushName || `Cliente (+${phone.slice(-4)})`;
+
+          await handleIncomingWhatsAppMessage(senderJid, name, payload.text, payload.mediaInfo, instanceId, companyId);
         } catch (msgErr) {
-          console.error(`[WhatsApp:${instanceId}] Erro ao processar mensagem recebida:`, msgErr);
+          console.error(`[WhatsApp:${instanceId}] Erro ao processar mensagem do WhatsApp:`, msgErr);
           try {
-            await Log.add(`Erro ao processar mensagem recebida no WhatsApp (${instanceId}): ${msgErr.message}`, companyId);
+            await Log.add(`Erro ao processar mensagem no WhatsApp (${instanceId}): ${msgErr.message}`, companyId);
           } catch (logErr) {
             console.error(logErr);
           }
         }
       }
     });
-
   } catch (err) {
     console.error(err);
     activeConnections[instanceId].starting = false;
@@ -435,12 +472,12 @@ async function stopWhatsAppInstance(instanceId, clearSession = false) {
   }
 }
 
-// Envia uma mensagem automatica (fluxo) e registra na conversa.
 async function sendBotMessage(chat, instanceId, text) {
   await Chat.addMessage(chat.id, { sender: 'attendant', text, timestamp: new Date(), is_ai: true });
   const conn = activeConnections[instanceId];
   if (conn && conn.connectionStatus === 'open' && conn.sock) {
-    await conn.sock.sendMessage(Chat.getRemoteJid(chat), { text });
+    const sent = await conn.sock.sendMessage(Chat.getRemoteJid(chat), { text });
+    trackSentKey(instanceId, sent?.key);
   }
 }
 
@@ -454,19 +491,43 @@ async function runFlow(chat, message, isNewChat, instanceId, companyId) {
       send: text => sendBotMessage(chat, instanceId, text),
       transfer: async ({ toSales }) => {
         transferred = true;
-        // Humano assume: IA desligada nesta conversa e cliente aguardando
-        // atendimento. "Interesse em Compra" coloca o lead no rodizio de vendedores.
         await Chat.update(chat.id, { ai_active: false, waiting_since: new Date(), ...(toSales ? { status: 'interesse em compra' } : {}) }, companyId);
         await Chat.addMessage(chat.id, { sender: 'system', text: 'Fluxo concluído: atendimento transferido para um atendente humano.', timestamp: new Date() });
         await Log.add(`Fluxo transferiu ${chat.client_name} para atendimento humano.`, companyId);
       }
     }
   });
-  // Durante o fluxo o cliente ja foi respondido pelo robo.
   if (handled && !transferred && chat.waiting_since) {
     await Chat.update(chat.id, { waiting_since: null }, companyId);
   }
   return handled;
+}
+
+async function recordAttendantMessage(senderJid, payload, instanceId, companyId) {
+  try {
+    const chat = await Chat.findByRemoteJid(senderJid, companyId, instanceId);
+    if (!chat) return;
+
+    await Chat.addMessage(chat.id, {
+      sender: 'attendant',
+      text: payload.text,
+      timestamp: payload.timestamp,
+      is_ai: false,
+      media_url: payload.mediaInfo?.mediaUrl,
+      media_type: payload.mediaInfo?.mediaType,
+      file_name: payload.mediaInfo?.fileName
+    });
+
+    if (chat.waiting_since) {
+      await Chat.update(chat.id, { waiting_since: null }, companyId);
+    }
+
+    const updated = await Chat.findById(chat.id, companyId);
+    emitToCompany(companyId, 'chat_updated', updated);
+    emitToCompany(companyId, 'logs_updated', await Log.findAll(companyId));
+  } catch (err) {
+    console.error(`[WhatsApp:${instanceId}] Erro ao registrar mensagem do atendente:`, err);
+  }
 }
 
 async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageText, mediaInfo, instanceId, companyId) {
@@ -512,7 +573,6 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
     };
     await Chat.addMessage(chat.id, clientMsg);
 
-    // PERFORMANCE: Emitir apenas o chat afetado, não toda a lista de chats do banco
     const chatAfterClientMsg = await Chat.findById(chat.id, companyId);
     emitToCompany(companyId, 'chat_updated', chatAfterClientMsg);
     emitToCompany(companyId, 'logs_updated', await Log.findAll(companyId));
@@ -521,8 +581,6 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
       return chat;
     }
 
-    // Fluxo de atendimento: conversas novas passam pelo fluxo ativo da empresa.
-    // Enquanto ele conduz a conversa a IA nao responde; ao terminar, a IA assume.
     if (await runFlow(chat, messageText || '', isNewChat, instanceId, companyId)) {
       const flowChat = await Chat.findById(chat.id, companyId);
       emitToCompany(companyId, 'chat_updated', flowChat);
@@ -536,7 +594,6 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
     const settings = await prisma.settings.findUnique({
       where: { company_id: companyId }
     });
-    // Se não houver settings para esta empresa, IA permanece desabilitada (sem fallback)
     if (!settings) {
       return chat;
     }
@@ -547,8 +604,6 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
       }
 
       if (!reserveAiReply(chat.id)) {
-        // Rajada de mensagens: a conversa fica para o atendente humano ou para
-        // a proxima mensagem, sem nova chamada paga ao provedor.
         console.warn(`[IA] Limite de respostas atingido para a conversa ${chat.id}.`);
       } else try {
         const freshChat = await Chat.findById(chat.id, companyId);
@@ -605,7 +660,8 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
 
         const conn = activeConnections[instanceId];
         if (conn && conn.connectionStatus === 'open' && conn.sock) {
-          await conn.sock.sendMessage(Chat.getRemoteJid(chat), { text: aiResponse.message });
+          const sent = await conn.sock.sendMessage(Chat.getRemoteJid(chat), { text: aiResponse.message });
+          trackSentKey(instanceId, sent?.key);
         }
 
       } catch (err) {
@@ -632,7 +688,6 @@ async function handleIncomingWhatsAppMessage(rawSenderJid, clientName, messageTe
       }
     }
 
-    // PERFORMANCE: Emitir apenas o chat final atualizado, não toda a lista do banco
     const finalChat = await Chat.findById(chat.id, companyId);
     emitToCompany(companyId, 'chat_updated', finalChat);
     emitToCompany(companyId, 'logs_updated', await Log.findAll(companyId));
