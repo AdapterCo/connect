@@ -194,7 +194,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
       auth: state,
       printQRInTerminal: false,
       browser: ['AdapterConnect', 'Chrome', '1.0.0'],
-      logger: pino({ level: 'error', redact: ['node.content'] })
+      logger: pino({ level: 'silent' })
     });
 
     activeConnections[instanceId].sock = sock;
@@ -395,24 +395,36 @@ async function startWhatsAppInstance(instanceId, companyId) {
 
 async function stopWhatsAppInstance(instanceId, clearSession = false) {
   const conn = activeConnections[instanceId];
-  if (!conn) return;
 
-  if (conn.reconnectTimer) {
-    clearTimeout(conn.reconnectTimer);
-    conn.reconnectTimer = null;
-  }
-
-  if (conn.sock) {
-    try {
-      if (clearSession) {
-        await conn.sock.logout();
-      } else {
-        await conn.sock.end();
-      }
-    } catch (err) {
-      console.error(err);
+  if (conn) {
+    if (conn.reconnectTimer) {
+      clearTimeout(conn.reconnectTimer);
+      conn.reconnectTimer = null;
     }
-    conn.sock = null;
+
+    if (conn.sock) {
+      try {
+        if (clearSession) {
+          await conn.sock.logout();
+        } else {
+          await conn.sock.end();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+      conn.sock = null;
+    }
+
+    conn.connectionStatus = 'disconnected';
+    conn.qrCodeImage = null;
+    conn.connectedPhone = null;
+
+    emitToCompany(conn.companyId || 'comp_default', 'whatsapp_status_updated', {
+      instanceId,
+      status: 'disconnected',
+      qr: null,
+      phone: null
+    });
   }
 
   if (clearSession) {
@@ -421,17 +433,6 @@ async function stopWhatsAppInstance(instanceId, clearSession = false) {
       fs.rmSync(authFolder, { recursive: true, force: true });
     }
   }
-
-  conn.connectionStatus = 'disconnected';
-  conn.qrCodeImage = null;
-  conn.connectedPhone = null;
-
-  emitToCompany(conn.companyId || 'comp_default', 'whatsapp_status_updated', {
-    instanceId,
-    status: 'disconnected',
-    qr: null,
-    phone: null
-  });
 }
 
 // Envia uma mensagem automatica (fluxo) e registra na conversa.
