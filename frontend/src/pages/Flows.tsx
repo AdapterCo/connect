@@ -8,6 +8,7 @@ export default function Flows() {
   const [flows, setFlows] = useState<FlowSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -28,12 +29,17 @@ export default function Flows() {
 
   const create = async (event: FormEvent) => {
     event.preventDefault();
+    // Duplo clique/Enter duplicado nao pode criar dois fluxos.
+    if (creating) return;
+    setCreating(true);
     setError('');
     try {
       const response = await api.post<FlowSummary>('/flows', { name: name.trim() || 'Novo fluxo' });
       navigate(`/fluxos/${response.data.id}`);
     } catch (err) {
       setError(apiErrorMessage(err, 'Não foi possível criar o fluxo.'));
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -73,7 +79,9 @@ export default function Flows() {
           placeholder="Nome do novo fluxo (ex.: Captação de leads)"
           className="flex-1 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
         />
-        <button type="submit" className="rounded-lg bg-emerald-600 px-5 font-medium text-white hover:bg-emerald-700">+ Novo fluxo</button>
+        <button type="submit" disabled={creating} className="rounded-lg bg-emerald-600 px-5 font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+          {creating ? 'Criando...' : '+ Novo fluxo'}
+        </button>
       </form>
 
       {error && <p className="mb-4 text-sm text-rose-400">{error}</p>}
