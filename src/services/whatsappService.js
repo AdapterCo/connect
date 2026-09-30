@@ -21,6 +21,7 @@ const Chat = require('../models/Chat');
 const Instance = require('../models/Instance');
 const Metrics = require('../models/Metrics');
 const aiService = require('./aiService');
+const flowService = require('./flowService');
 const { decrypt } = require('../utils/crypto');
 
 const activeConnections = {};
@@ -1032,10 +1033,36 @@ async function stopWhatsAppInstance(
   }
 }
 
+async function sendBotMessage(chat, instanceId, text) {
+  await Chat.addMessage(chat.id, { sender: 'attendant', text, timestamp: new Date(), is_ai: true });
+  const conn = activeConnections[instanceId];
+  if (conn && conn.connectionStatus === 'open' && conn.sock) {
+    await conn.sock.sendMessage(Chat.getRemoteJid(chat), { text });
+  }
+}
 
-/**
- * Processa mensagens recebidas.
- */
+async function runFlow(chat, message, isNewChat, instanceId, companyId) {
+  let transferred = false;
+  const handled = await flowService.handleIncoming({
+    chat,
+    message,
+    isNewChat,
+    actions: {
+      send: text => sendBotMessage(chat, instanceId, text),
+      transfer: async ({ toSales }) => {
+        transferred = true;
+        await Chat.update(chat.id, { ai_active: false, waiting_since: new Date(), ...(toSales ? { status: 'interesse em compra' } : {}) }, companyId);
+        await Chat.addMessage(chat.id, { sender: 'system', text: 'Fluxo concluído: atendimento transferido para um atendente humano.', timestamp: new Date() });
+        await Log.add(`Fluxo transferiu ${chat.client_name} para atendimento humano.`, companyId);
+      }
+    }
+  });
+  if (handled && !transferred && chat.waiting_since) {
+    await Chat.update(chat.id, { waiting_since: null }, companyId);
+  }
+  return handled;
+}
+
 async function handleIncomingWhatsAppMessage(
   rawSenderJid,
   clientName,
@@ -1045,21 +1072,13 @@ async function handleIncomingWhatsAppMessage(
   companyId
 ) {
   try {
-    /*
-     * Preserva exatamente o JID recebido.
-     *
-     * Não converte PN para LID.
-     * Não converte LID para PN.
-     */
     const senderJid =
       rawSenderJid;
 
-
-    /*
-     * Busca conversa pelo remote_jid real.
-     */
     let chat =
       await Chat.findByRemoteJid(senderJid, companyId, instanceId);
+
+    const isNewChat = !chat;
 
 
     const cleanPhone =
@@ -1220,6 +1239,12 @@ async function handleIncomingWhatsAppMessage(
      */
     if (chat.is_blocked) {
       return chat;
+    }
+
+    if (await runFlow(chat, resolvedText || messageText || '', isNewChat, instanceId, companyId)) {
+      const flowChat = await Chat.findById(chat.id, companyId);
+      emitToCompany(companyId, 'chat_updated', flowChat);
+      return flowChat;
     }
 
 
