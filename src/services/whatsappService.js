@@ -141,7 +141,15 @@ async function startWhatsAppInstance(instanceId, companyId) {
       version,
       auth: state,
       printQRInTerminal: false,
-      logger: pino({ level: 'error', redact: ['node.content'] })
+      logger: pino({ level: 'error', redact: ['node.content'] }),
+      // Evita sincronizar historico antigo que pode trazer sessoes expiradas
+      // e aumentar a chance de erros de descriptografia (Bad MAC).
+      syncFullHistory: false,
+      // Reduz a chance de deteccao como bot e economiza recursos.
+      markOnlineOnConnect: false,
+      generateHighQualityLinkPreview: false,
+      // Necessario para o Baileys reenviar mensagens nao entregues.
+      getMessage: async () => undefined
     });
 
     activeConnections[instanceId].sock = sock;
