@@ -582,9 +582,9 @@ async function startWhatsAppInstance(instanceId, companyId) {
               );
 
             if (!content) {
-              const stubInfo = msg.messageStubType !== undefined
-                ? ` (stub: ${msg.messageStubType}${msg.messageStubParameters ? `, params: ${JSON.stringify(msg.messageStubParameters)}` : ''})`
-                : '';
+              if (msg.messageStubType !== undefined) {
+                continue;
+              }
 
               console.warn(
                 `[WhatsApp:${instanceId}] Mensagem sem conteudo processavel de ${senderJid}` +
@@ -592,8 +592,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
                   senderJidAlt
                     ? ` (alternativo: ${senderJidAlt})`
                     : ''
-                ) +
-                stubInfo
+                )
               );
 
               continue;
