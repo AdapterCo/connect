@@ -1,8 +1,23 @@
+diff --git a/node_modules/@whiskeysockets/baileys/lib/Socket/messages-recv.js b/node_modules/@whiskeysockets/baileys/lib/Socket/messages-recv.js
+index c46b096..82db455 100644
+--- a/node_modules/@whiskeysockets/baileys/lib/Socket/messages-recv.js
++++ b/node_modules/@whiskeysockets/baileys/lib/Socket/messages-recv.js
+@@ -652,6 +652,10 @@ export const makeMessagesRecvSocket = (config) => {
+                         if (msg?.messageStubParameters?.[0] === MISSING_KEYS_ERROR_TEXT) {
+                             return sendMessageAck(node, NACK_REASONS.ParsingError);
+                         }
++                        if (msg.key.fromMe) {
++                            logger.debug({ key: msg.key }, 'skipping retry request for failed self message');
++                            return sendMessageAck(node, NACK_REASONS.ParsingError);
++                        }
+                         retryMutex.mutex(async () => {
+                             if (ws.isOpen) {
+                                 if (getBinaryNodeChild(node, 'unavailable')) {
 diff --git a/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js b/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js
-index a3ccfe6..10e9bcc 100644
+index a3ccfe6..93e5433 100644
 --- a/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js
 +++ b/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js
-@@ -146,14 +146,51 @@ export const decryptMessageNode = (stanza, meId, meLid, repository, logger) => {
+@@ -146,14 +146,52 @@ export const decryptMessageNode = (stanza, meId, meLid, repository, logger) => {
                                  });
                                  break;
                              case 'pkmsg':
@@ -32,9 +47,10 @@ index a3ccfe6..10e9bcc 100644
 +                                    // stored session and the sender's current session
 +                                    // were established under different identity forms
 +                                    // of the same device.
-+                                    const altUser = isLidUser(user)
++                                    const altUser = (isLidUser(user)
 +                                        ? stanza.attrs.participant_pn || stanza.attrs.sender_pn
-+                                        : stanza.attrs.participant_lid || stanza.attrs.sender_lid;
++                                        : stanza.attrs.participant_lid || stanza.attrs.sender_lid)
++                                        || (fullMessage.key.fromMe ? (isLidUser(user) ? meId : meLid) : undefined);
 +                                    if (!altUser || altUser === user) {
 +                                        throw err;
 +                                    }
@@ -60,3 +76,17 @@ index a3ccfe6..10e9bcc 100644
                              case 'plaintext':
                                  msgBuffer = content;
                                  break;
+@@ -182,7 +220,12 @@ export const decryptMessageNode = (stanza, meId, meLid, repository, logger) => {
+                         }
+                     }
+                     catch (err) {
+-                        logger.error({ key: fullMessage.key, err }, 'failed to decrypt message');
++                        if (fullMessage.key.fromMe) {
++                            logger.debug({ key: fullMessage.key, err }, 'failed to decrypt self message');
++                        }
++                        else {
++                            logger.error({ key: fullMessage.key, err }, 'failed to decrypt message');
++                        }
+                         fullMessage.messageStubType = proto.WebMessageInfo.StubType.CIPHERTEXT;
+                         fullMessage.messageStubParameters = [err.message];
+                     }
