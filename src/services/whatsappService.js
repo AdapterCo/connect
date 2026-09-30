@@ -161,7 +161,20 @@ async function startWhatsAppInstance(instanceId, companyId) {
       printQRInTerminal: false,
       logger: pino({
         level: 'silent'
-      })
+      }),
+      getMessage: async (key) => {
+        if (!key?.id) return undefined;
+        try {
+          const stored = await prisma.message.findFirst({
+            where: { id: key.id }
+          });
+          if (stored?.text) {
+            return { conversation: stored.text };
+          }
+        } catch {
+        }
+        return undefined;
+      }
     });
 
 
@@ -423,9 +436,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
     /*
      * RECEBIMENTO DE MENSAGENS
      */
-    sock.ev.on(
-      'messages.upsert',
-      async (m) => {
+    sock.ev.on('messages.upsert', async (m) => {
         /*
          * Ignora eventos provenientes de socket antigo.
          */
@@ -525,13 +536,11 @@ async function startWhatsAppInstance(instanceId, companyId) {
                 return null;
               }
 
-
               if (message.ephemeralMessage) {
                 return getMessageContent(
                   message.ephemeralMessage.message
                 );
               }
-
 
               if (message.viewOnceMessage) {
                 return getMessageContent(
@@ -539,13 +548,11 @@ async function startWhatsAppInstance(instanceId, companyId) {
                 );
               }
 
-
               if (message.viewOnceMessageV2) {
                 return getMessageContent(
                   message.viewOnceMessageV2.message
                 );
               }
-
 
               if (message.viewOnceMessageV2Extension) {
                 return getMessageContent(
@@ -553,25 +560,40 @@ async function startWhatsAppInstance(instanceId, companyId) {
                 );
               }
 
+              if (message.documentWithCaptionMessage) {
+                return getMessageContent(
+                  message.documentWithCaptionMessage.message
+                );
+              }
+
+              if (message.editedMessage) {
+                return getMessageContent(
+                  message.editedMessage.message?.protocolMessage?.editedMessage ||
+                  message.editedMessage.message
+                );
+              }
 
               return message;
             };
-
 
             const content =
               getMessageContent(
                 msg.message
               );
 
-
             if (!content) {
+              const stubInfo = msg.messageStubType !== undefined
+                ? ` (stub: ${msg.messageStubType}${msg.messageStubParameters ? `, params: ${JSON.stringify(msg.messageStubParameters)}` : ''})`
+                : '';
+
               console.warn(
                 `[WhatsApp:${instanceId}] Mensagem sem conteudo processavel de ${senderJid}` +
                 (
                   senderJidAlt
                     ? ` (alternativo: ${senderJidAlt})`
                     : ''
-                )
+                ) +
+                stubInfo
               );
 
               continue;
@@ -805,8 +827,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
             /*
              * Processa a mensagem mantendo o JID original.
              */
-            await handleIncomingWhatsAppMessage(
-              senderJid,
+            await handleIncomingWhatsAppMessage(senderJid,
               name,
               text,
               mediaInfo,
@@ -1039,11 +1060,7 @@ async function handleIncomingWhatsAppMessage(
      * Busca conversa pelo remote_jid real.
      */
     let chat =
-      await Chat.findByRemoteJid(
-        senderJid,
-        companyId,
-        instanceId
-      );
+      await Chat.findByRemoteJid(senderJid, companyId, instanceId);
 
 
     const cleanPhone =
@@ -1055,12 +1072,7 @@ async function handleIncomingWhatsAppMessage(
      */
     if (!chat) {
       const newChatData = {
-        id:
-          Chat.createChatId(
-            companyId,
-            instanceId,
-            senderJid
-          ),
+        id: Chat.createChatId(companyId, instanceId, senderJid),
 
         remote_jid:
           senderJid,
@@ -1194,11 +1206,7 @@ async function handleIncomingWhatsAppMessage(
       );
 
 
-    emitToCompany(
-      companyId,
-      'chat_updated',
-      chatAfterClientMsg
-    );
+    emitToCompany(companyId, 'chat_updated', chatAfterClientMsg);
 
 
     emitToCompany(
