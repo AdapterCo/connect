@@ -16,6 +16,7 @@ const Metrics = require('../models/Metrics');
 const aiService = require('./aiService');
 const flowService = require('./flowService');
 const { decrypt } = require('../utils/crypto');
+const { inspectIncomingMessage } = require('../utils/incomingWhatsAppMessage');
 
 const activeConnections = {};
 
@@ -227,27 +228,14 @@ async function startWhatsAppInstance(instanceId, companyId) {
         const phone = senderJid.split('@')[0];
         const name = msg.pushName || `Cliente (+${phone.slice(-4)})`;
         
-        const getMessageContent = (message) => {
-          if (!message) return null;
-          if (message.ephemeralMessage) return getMessageContent(message.ephemeralMessage.message);
-          if (message.viewOnceMessage) return getMessageContent(message.viewOnceMessage.message);
-          if (message.viewOnceMessageV2) return getMessageContent(message.viewOnceMessageV2.message);
-          return message;
-        };
-
-        // Stubs de protocolo (ex.: CIPHERTEXT por falha de descriptografia)
-        // chegam sem conteudo: a propria lib pede reenvio/retry ao telefone e o
-        // conteudo real chega em um upsert seguinte. Aqui so se ignora o
-        // placeholder - nao e mensagem do cliente nem erro do app.
-        if (msg.messageStubType !== undefined) {
-          const reason = msg.messageStubParameters?.[0] ? ` (${String(msg.messageStubParameters[0]).slice(0, 60)})` : '';
-          console.info(`[WhatsApp:${instanceId}] Stub de protocolo ${msg.messageStubType}${reason} de ${senderJid} ignorado; conteudo real chega pelo reenvio.`);
-          continue;
-        }
-
-        const content = getMessageContent(msg.message);
+        const { content, isEmptyProtocolStub } = inspectIncomingMessage(msg);
         if (!content) {
-          console.warn(`[WhatsApp:${instanceId}] Mensagem sem conteudo processavel de ${senderJid}`);
+          if (isEmptyProtocolStub) {
+            const reason = msg.messageStubParameters?.[0] ? ` (${String(msg.messageStubParameters[0]).slice(0, 60)})` : '';
+            console.info(`[WhatsApp:${instanceId}] Stub de protocolo ${msg.messageStubType}${reason} sem conteudo de ${senderJid}; ignorado.`);
+          } else {
+            console.warn(`[WhatsApp:${instanceId}] Mensagem sem conteudo processavel de ${senderJid}`);
+          }
           continue;
         }
 
