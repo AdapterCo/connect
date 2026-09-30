@@ -141,7 +141,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
       version,
       auth: state,
       printQRInTerminal: false,
-      logger: pino({ level: 'silent' })
+      logger: pino({ level: 'error', redact: ['node.content'] })
     });
 
     activeConnections[instanceId].sock = sock;
