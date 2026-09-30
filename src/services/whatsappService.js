@@ -235,6 +235,16 @@ async function startWhatsAppInstance(instanceId, companyId) {
           return message;
         };
 
+        // Stubs de protocolo (ex.: CIPHERTEXT por falha de descriptografia)
+        // chegam sem conteudo: a propria lib pede reenvio/retry ao telefone e o
+        // conteudo real chega em um upsert seguinte. Aqui so se ignora o
+        // placeholder - nao e mensagem do cliente nem erro do app.
+        if (msg.messageStubType !== undefined) {
+          const reason = msg.messageStubParameters?.[0] ? ` (${String(msg.messageStubParameters[0]).slice(0, 60)})` : '';
+          console.info(`[WhatsApp:${instanceId}] Stub de protocolo ${msg.messageStubType}${reason} de ${senderJid} ignorado; conteudo real chega pelo reenvio.`);
+          continue;
+        }
+
         const content = getMessageContent(msg.message);
         if (!content) {
           console.warn(`[WhatsApp:${instanceId}] Mensagem sem conteudo processavel de ${senderJid}`);
