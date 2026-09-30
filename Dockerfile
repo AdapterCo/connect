@@ -11,10 +11,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-COPY patches ./patches
-# Com devDependencies: o postinstall roda o patch-package para aplicar a
-# correcao do Baileys (Bad MAC) ainda no build da imagem.
-RUN npm ci --include=dev
+RUN npm ci
 
 COPY --chown=node:node . .
 COPY --chown=node:node --from=frontend-build /app/frontend/dist ./public

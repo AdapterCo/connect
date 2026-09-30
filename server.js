@@ -56,7 +56,9 @@ server.listen(PORT, () => {
     // Workers e WhatsApp so comecam com o banco pronto.
     startWorkers();
     await Log.add(`Adapter Connect iniciado na porta ${PORT}.`);
-    const instances = await prisma.instance.findMany();
+    const instances = await prisma.instance.findMany({
+      where: { status: 'connected' }
+    });
     instances.forEach(inst => {
       whatsappService.startWhatsAppInstance(inst.id, inst.company_id).catch(err => {
         console.error(`Failed to automatically start instance ${inst.id}:`, err);

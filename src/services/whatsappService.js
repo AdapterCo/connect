@@ -1,5 +1,5 @@
 const makeWASocket = require('@whiskeysockets/baileys').default;
-const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys');
+const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const QRCode = require('qrcode');
 const pino = require('pino');
 const path = require('path');
@@ -19,6 +19,39 @@ const { decrypt } = require('../utils/crypto');
 const { inspectIncomingMessage } = require('../utils/incomingWhatsAppMessage');
 
 const activeConnections = {};
+
+function ensureValidSessionFolder(authFolder) {
+  if (!fs.existsSync(authFolder)) {
+    fs.mkdirSync(authFolder, { recursive: true });
+    return;
+  }
+  let invalidFiles = [];
+  try {
+    const files = fs.readdirSync(authFolder, { withFileTypes: true });
+    for (const file of files) {
+      if (!file.isFile() || !file.name.endsWith('.json')) continue;
+      const filePath = path.join(authFolder, file.name);
+      try {
+        const raw = fs.readFileSync(filePath, 'utf8').trim();
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        if (parsed === null || typeof parsed !== 'object') {
+          invalidFiles.push(file.name);
+        }
+      } catch (err) {
+        invalidFiles.push(file.name);
+      }
+    }
+  } catch (err) {
+    invalidFiles.push('read_error');
+  }
+
+  if (invalidFiles.length > 0) {
+    fs.rmSync(authFolder, { recursive: true, force: true });
+    fs.mkdirSync(authFolder, { recursive: true });
+  }
+}
+
 
 // Midias recebidas: somente tipos que o painel sabe servir (ver utils/media.js),
 // com extensao definida pelo servidor e tamanho limitado (o download e em memoria).
@@ -114,12 +147,25 @@ async function startWhatsAppInstance(instanceId, companyId) {
   }
 
   const authFolder = path.join(__dirname, `../../auth_info_baileys/${instanceId}`);
+  ensureValidSessionFolder(authFolder);
+  if (!fs.existsSync(authFolder)) {
+    fs.mkdirSync(authFolder, { recursive: true });
+  }
+
   let state, saveCreds;
   try {
     ({ state, saveCreds } = await useMultiFileAuthState(authFolder));
   } catch (err) {
-    conn.starting = false;
-    throw err;
+    if (fs.existsSync(authFolder)) {
+      fs.rmSync(authFolder, { recursive: true, force: true });
+      fs.mkdirSync(authFolder, { recursive: true });
+    }
+    try {
+      ({ state, saveCreds } = await useMultiFileAuthState(authFolder));
+    } catch (retryErr) {
+      conn.starting = false;
+      throw retryErr;
+    }
   }
 
   activeConnections[instanceId].connectionStatus = 'connecting';
@@ -135,34 +181,20 @@ async function startWhatsAppInstance(instanceId, companyId) {
   });
 
   try {
-    const { version } = await fetchLatestBaileysVersion();
+    let version;
+    try {
+      const latest = await fetchLatestBaileysVersion();
+      version = latest.version;
+    } catch (verErr) {
+      console.warn('Falha ao obter versao mais recente do Baileys:', verErr);
+    }
+
     const sock = makeWASocket({
-      version,
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'error', redact: ['node.content'] }))
-      },
+      ...(version ? { version } : {}),
+      auth: state,
       printQRInTerminal: false,
-      logger: pino({ level: 'error', redact: ['node.content'] }),
-      syncFullHistory: false,
-      markOnlineOnConnect: false,
-      generateHighQualityLinkPreview: false,
-      fireInitQueries: false,
-      connectTimeoutMs: 60000,
-      defaultQueryTimeoutMs: 60000,
-      getMessage: async (key) => {
-        if (key && key.id) {
-          const msg = await prisma.message.findFirst({
-            where: { id: key.id }
-          });
-          if (msg && msg.text) {
-            return {
-              conversation: msg.text
-            };
-          }
-        }
-        return undefined;
-      }
+      browser: ['AdapterConnect', 'Chrome', '1.0.0'],
+      logger: pino({ level: 'error', redact: ['node.content'] })
     });
 
     activeConnections[instanceId].sock = sock;
