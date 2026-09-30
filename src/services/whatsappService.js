@@ -1,5 +1,5 @@
 const makeWASocket = require('@whiskeysockets/baileys').default;
-const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys');
 const QRCode = require('qrcode');
 const pino = require('pino');
 const path = require('path');
@@ -139,7 +139,10 @@ async function startWhatsAppInstance(instanceId, companyId) {
     const { version } = await fetchLatestBaileysVersion();
     const sock = makeWASocket({
       version,
-      auth: state,
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'error', redact: ['node.content'] }))
+      },
       printQRInTerminal: false,
       logger: pino({ level: 'error', redact: ['node.content'] }),
       // Evita sincronizar historico antigo que pode trazer sessoes expiradas
@@ -149,7 +152,22 @@ async function startWhatsAppInstance(instanceId, companyId) {
       markOnlineOnConnect: false,
       generateHighQualityLinkPreview: false,
       // Necessario para o Baileys reenviar mensagens nao entregues.
-      getMessage: async () => undefined
+      fireInitQueries: false,
+      connectTimeoutMs: 60000,
+      defaultQueryTimeoutMs: 60000,
+      getMessage: async (key) => {
+        if (key && key.id) {
+          const msg = await prisma.message.findFirst({
+            where: { id: key.id }
+          });
+          if (msg && msg.text) {
+            return {
+              conversation: msg.text
+            };
+          }
+        }
+        return undefined;
+      }
     });
 
     activeConnections[instanceId].sock = sock;
