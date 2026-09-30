@@ -5,6 +5,7 @@ const { once } = require('node:events');
 const { db, reset, install } = require('./helpers/memory-prisma');
 install();
 delete process.env.SUPERADMIN_PASSWORD;
+for (const name of ['ESSENCIAL', 'PROFISSIONAL', 'EMPRESARIAL']) delete process.env[`PLAN_${name}_PRICE`];
 process.env.PLATFORM_MP_ACCESS_TOKEN = 'TEST-token';
 
 let activeConnections = {};
@@ -136,6 +137,25 @@ test('seed creates no hardcoded accounts and never overwrites plans', async () =
   await initializeDatabase();
   assert.equal(db.plan[0].price, 149);
   assert.equal(db.plan[0].is_active, true);
+});
+
+test('seed activates virgin plans from PLAN_*_PRICE env without superadmin', async () => {
+  reset();
+  process.env.PLAN_ESSENCIAL_PRICE = '49.90';
+  try {
+    await initializeDatabase();
+    const essencial = db.plan.find(p => p.name === 'Essencial');
+    assert.equal(essencial.price, 49.9);
+    assert.equal(essencial.is_active, true);
+    assert.ok(db.plan.filter(p => p.name !== 'Essencial').every(p => p.is_active === false && p.price === 0));
+
+    // Preco configurado manualmente (ou por env em boot anterior) nunca e sobrescrito.
+    essencial.price = 149;
+    essencial.is_active = false;
+    await initializeDatabase();
+    assert.equal(essencial.price, 149);
+    assert.equal(essencial.is_active, false);
+  } finally { delete process.env.PLAN_ESSENCIAL_PRICE; }
 });
 
 test('seed creates superadmin from env and locks legacy default passwords', async () => {

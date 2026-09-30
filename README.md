@@ -31,7 +31,7 @@ npm run dev
 
 O frontend roda em `http://localhost:5173` com proxy para o backend em `http://localhost:3000` (use `BACKEND_URL` para outra porta).
 
-Na primeira inicializacao, defina `SUPERADMIN_PASSWORD` para criar o superadmin. Nenhuma conta com senha padrao e criada, e os planos nascem inativos com preco 0: o superadmin define precos e limites no painel.
+Na primeira inicializacao, defina `SUPERADMIN_PASSWORD` para criar o superadmin (opcional: sem ela, nenhuma conta e criada). Nenhuma conta com senha padrao e criada. Os planos nascem inativos com preco 0; ative-os de duas formas: definindo `PLAN_*_PRICE` no `.env` (o plano nasce ativo e vendavel no primeiro boot, sem nenhum login) ou pelo painel do superadmin.
 
 ## Testes e validacao
 
@@ -90,6 +90,7 @@ Documentos historicos de auditoria: `SECURITY_AUDIT_REPORT.md`, `AUDIT_IMPLEMENT
 | `ENCRYPTION_KEY` | Chave de criptografia com 32+ caracteres aleatorios |
 | `SUPERADMIN_USERNAME` | Usuario do superadmin criado na inicializacao (padrao `superadmin`) |
 | `SUPERADMIN_PASSWORD` | Senha (8+ caracteres) do superadmin; necessaria so para cria-lo |
+| `PLAN_ESSENCIAL_PRICE`, `PLAN_PROFISSIONAL_PRICE`, `PLAN_EMPRESARIAL_PRICE` | Preco mensal de cada plano; definido, o plano nasce ativo no primeiro boot (self-service sem superadmin) |
 | `PLATFORM_MP_ACCESS_TOKEN` | Access token do Mercado Pago da plataforma (cobranca e confirmacao das assinaturas) |
 | `PLATFORM_MP_PUBLIC_KEY` | Public key do Mercado Pago da plataforma (checkout de cartao) |
 | `DOMAIN` | Dominio publico de producao |

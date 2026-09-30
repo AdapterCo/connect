@@ -10,6 +10,9 @@ const PLATFORM_COMPANY_ID = 'comp_default';
 
 // Planos criados apenas quando ainda nao existem. Nascem inativos: preco e
 // limites sao definidos pelo superadmin e nunca sobrescritos na inicializacao.
+// Excecao: um plano ainda virgem (preco 0, inativo) pode ser ativado direto
+// pela variavel de ambiente PLAN_<NOME>_PRICE, permitindo self-service desde o
+// primeiro boot sem nenhum login de administrador.
 const DEFAULT_PLANS = [
   { name: 'Essencial', max_instances: 1, max_users: 2, max_products: 30 },
   { name: 'Profissional', max_instances: 3, max_users: 10, max_products: 50 },
@@ -24,13 +27,38 @@ const LEGACY_DEFAULT_PASSWORDS = {
 };
 
 
+function planPriceFromEnv(name) {
+  const raw = process.env[`PLAN_${name.toUpperCase()}_PRICE`];
+  if (raw === undefined || raw === '') return null;
+  const price = Number(String(raw).replace(',', '.'));
+  if (!Number.isFinite(price) || price <= 0) {
+    console.error(`[Seed] PLAN_${name.toUpperCase()}_PRICE ignorada: valor deve ser um numero maior que zero.`);
+    return null;
+  }
+  return price;
+}
+
 async function ensurePlans() {
   for (const plan of DEFAULT_PLANS) {
-    await prisma.plan.upsert({
-      where: { name: plan.name },
-      update: {},
-      create: { ...plan, price: 0, is_active: false }
-    });
+    const envPrice = planPriceFromEnv(plan.name);
+    const existing = await prisma.plan.findUnique({ where: { name: plan.name } });
+
+    if (!existing) {
+      await prisma.plan.create({
+        data: envPrice === null ? { ...plan, price: 0, is_active: false } : { ...plan, price: envPrice, is_active: true }
+      });
+      continue;
+    }
+
+    // Plano ja configurado (painel ou env em boot anterior) nunca e sobrescrito.
+    // Um plano ainda virgem (preco 0 e inativo) pode ser ativado pelo env.
+    const virgin = existing.price === 0 && existing.is_active === false;
+    if (envPrice !== null && virgin) {
+      await prisma.plan.update({
+        where: { name: plan.name },
+        data: { price: envPrice, is_active: true }
+      });
+    }
   }
 }
 
