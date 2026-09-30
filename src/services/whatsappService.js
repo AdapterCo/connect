@@ -108,15 +108,14 @@ async function startWhatsAppInstance(instanceId, companyId) {
     conn.reconnectTimer = null;
   }
 
-  // Encerra um socket anterior que tenha ficado para tras antes de criar outro.
   if (conn.sock) {
     try { conn.sock.ev.removeAllListeners(); conn.sock.end(undefined); } catch (err) { console.error(err); }
     conn.sock = null;
   }
 
+  const authFolder = path.join(__dirname, `../../auth_info_baileys/${instanceId}`);
   let state, saveCreds;
   try {
-    const authFolder = path.join(__dirname, `../../auth_info_baileys/${instanceId}`);
     ({ state, saveCreds } = await useMultiFileAuthState(authFolder));
   } catch (err) {
     conn.starting = false;
@@ -145,13 +144,9 @@ async function startWhatsAppInstance(instanceId, companyId) {
       },
       printQRInTerminal: false,
       logger: pino({ level: 'error', redact: ['node.content'] }),
-      // Evita sincronizar historico antigo que pode trazer sessoes expiradas
-      // e aumentar a chance de erros de descriptografia (Bad MAC).
       syncFullHistory: false,
-      // Reduz a chance de deteccao como bot e economiza recursos.
       markOnlineOnConnect: false,
       generateHighQualityLinkPreview: false,
-      // Necessario para o Baileys reenviar mensagens nao entregues.
       fireInitQueries: false,
       connectTimeoutMs: 60000,
       defaultQueryTimeoutMs: 60000,
@@ -196,7 +191,8 @@ async function startWhatsAppInstance(instanceId, companyId) {
       
       if (connection === 'close') {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+        const shouldReconnect = !isLoggedOut;
         
         activeConnections[instanceId].connectionStatus = 'disconnected';
         activeConnections[instanceId].qrCodeImage = null;
@@ -211,7 +207,15 @@ async function startWhatsAppInstance(instanceId, companyId) {
 
         await Instance.updateStatus(instanceId, 'disconnected', null, companyId);
         
-        if (shouldReconnect) {
+        if (isLoggedOut) {
+          try {
+            if (fs.existsSync(authFolder)) {
+              fs.rmSync(authFolder, { recursive: true, force: true });
+            }
+          } catch (err) {
+            console.error(err);
+          }
+        } else if (shouldReconnect) {
           activeConnections[instanceId].reconnectTimer = setTimeout(() => {
             startWhatsAppInstance(instanceId, companyId).catch(err => console.error(err));
           }, 5000);
