@@ -19,6 +19,7 @@ async function create(instance, companyId) {
       name: instance.name,
       phone: instance.phone || null,
       status: instance.status || 'disconnected',
+      user_id: instance.user_id || null,
       company_id: companyId
     }
   });
@@ -50,10 +51,25 @@ async function updateStatus(id, status, phone, companyId) {
   });
 }
 
+async function updateUser(id, userId, companyId) {
+  const existing = await prisma.instance.findFirst({
+    where: { id, company_id: companyId }
+  });
+  if (!existing) return null;
+
+  return prisma.instance.update({
+    where: { id },
+    data: {
+      user_id: userId || null
+    }
+  });
+}
+
 module.exports = {
   findAll,
   findById,
   create,
   remove,
-  updateStatus
+  updateStatus,
+  updateUser
 };

@@ -12,6 +12,7 @@ router.get('/', authenticateToken, checkCompanyActive, instanceController.getIns
 router.post('/', authenticateToken, checkCompanyActive, managers, checkInstanceLimit, audit('instance', 'create'), instanceController.createInstance);
 router.post('/:id/connect', authenticateToken, checkCompanyActive, managers, audit('instance', 'connect'), instanceController.connectInstance);
 router.post('/:id/disconnect', authenticateToken, checkCompanyActive, managers, audit('instance', 'disconnect'), instanceController.disconnectInstance);
+router.patch('/:id/assign', authenticateToken, checkCompanyActive, managers, audit('instance', 'assign_user'), instanceController.assignInstance);
 router.delete('/:id', authenticateToken, checkCompanyActive, requireRoles('admin'), audit('instance', 'delete'), instanceController.deleteInstance);
 
 module.exports = router;

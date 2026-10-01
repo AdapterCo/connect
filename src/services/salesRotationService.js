@@ -46,15 +46,14 @@ async function assignNext(tx, chat, now, initial = false) {
 }
 
 async function updateChat(id, data, companyId, actor, now = new Date(), options = {}) {
-  return withCompanyLock(companyId, async tx => {
+  let assignedSellerId = null;
+  const result = await withCompanyLock(companyId, async tx => {
     const chat = await tx.chat.findFirst({ where: { id, company_id: companyId } });
     if (!chat) return null;
     if (actor && !isManager(actor) && chat.assigned_to !== actor.id) {
       throw Object.assign(new Error('Conversa transferida para outro vendedor.'), { status: 403 });
     }
     const updates = { ...data };
-    // An asynchronous AI result can advance a new lead, but cannot undo a
-    // seller's stage or cancel an active reply deadline by changing it back.
     if (options.source === 'ai' && (chat.status !== 'iniciada' || updates.status !== INTEREST)) delete updates.status;
     const status = updates.status ?? chat.status;
     const inactive = (data.is_archived ?? chat.is_archived) || (data.is_blocked ?? chat.is_blocked);
@@ -75,11 +74,22 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
     } else if (reassigned || (chat.is_archived && data.is_archived === false) || (chat.is_blocked && data.is_blocked === false)) {
       updates.sales_reply_due_at = new Date(now.getTime() + REPLY_WINDOW_MS);
     }
+    if (updates.assigned_to && updates.assigned_to !== chat.assigned_to) {
+      assignedSellerId = updates.assigned_to;
+    }
     if (status !== chat.status || (updates.assigned_to !== undefined && updates.assigned_to !== chat.assigned_to)) {
       await tx.kanbanCard.deleteMany({ where: { chat_id: id, company_id: companyId } });
     }
     return tx.chat.update({ where: { id }, data: updates, include: messages });
   });
+
+  if (assignedSellerId) {
+    try {
+      const { notifySeller } = require('./leadNotificationService');
+      notifySeller(result, assignedSellerId).catch(() => {});
+    } catch (e) {}
+  }
+  return result;
 }
 
 async function recordMessage(chatId, data, now = new Date()) {
@@ -106,17 +116,28 @@ async function recordMessage(chatId, data, now = new Date()) {
 }
 
 async function rotateExpiredChat(id, companyId, now = new Date()) {
-  return withCompanyLock(companyId, async tx => {
+  let assignedSellerId = null;
+  const result = await withCompanyLock(companyId, async tx => {
     const chat = await tx.chat.findFirst({ where: { id, company_id: companyId } });
     if (!chat || chat.status !== INTEREST || chat.is_archived || chat.is_blocked ||
         !chat.sales_reply_due_at || new Date(chat.sales_reply_due_at) > now) return null;
     const assignment = await assignNext(tx, chat, now, !chat.assigned_to);
-    if (assignment) await tx.kanbanCard.deleteMany({ where: { chat_id: id, company_id: companyId } });
-    // No other online seller: retain the owner and check again in one minute.
+    if (assignment) {
+      assignedSellerId = assignment.assigned_to;
+      await tx.kanbanCard.deleteMany({ where: { chat_id: id, company_id: companyId } });
+    }
     return tx.chat.update({ where: { id }, data: {
       ...(assignment || {}), sales_reply_due_at: new Date(now.getTime() + REPLY_WINDOW_MS)
     }, include: messages });
   });
+
+  if (assignedSellerId) {
+    try {
+      const { notifySeller } = require('./leadNotificationService');
+      notifySeller(result, assignedSellerId).catch(() => {});
+    } catch (e) {}
+  }
+  return result;
 }
 
 async function checkSalesRotation(now = new Date()) {

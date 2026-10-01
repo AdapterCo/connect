@@ -209,6 +209,17 @@ test('email updates respect roles and uniqueness', async () => {
   assert.equal(sellerView.body.find(u => u.id === 'a1').email, undefined, 'vendedor nao ve e-mail dos outros');
 });
 
+test('phone and status updates respect roles and normalize numbers', async () => {
+  seed();
+  assert.equal((await call('s1', '/api/users/s1/phone', 'PATCH', { phone: '21 98508-0634' })).status, 200);
+  assert.equal(db.user.find(u => u.id === 's1').phone, '5521985080634');
+  assert.equal((await call('s1', '/api/users/a1/phone', 'PATCH', { phone: '21999999999' })).status, 403);
+  assert.equal((await call('a1', '/api/users/s1/phone', 'PATCH', { phone: '123' })).status, 400);
+  assert.equal((await call('a1', '/api/users/s1/status', 'PATCH', { status: 'online' })).status, 200);
+  assert.equal(db.user.find(u => u.id === 's1').status, 'online');
+  assert.equal((await call('s1', '/api/users/a1/status', 'PATCH', { status: 'offline' })).status, 403);
+});
+
 test('conversation shows the answers captured by the flow', async () => {
   seed();
   db.chat.push({ id: 'chat9', company_id: 'c1', assigned_to: 's1' });

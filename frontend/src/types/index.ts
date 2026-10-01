@@ -6,6 +6,7 @@ export interface User {
   status: 'online' | 'offline';
   company_id: string;
   email?: string | null;
+  phone?: string | null;
 }
 
 export interface Company {
@@ -27,6 +28,7 @@ export interface Instance {
   phone: string | null;
   status: 'connected' | 'disconnected' | 'qr' | 'connecting' | 'open';
   qr: string | null;
+  user_id?: string | null;
 }
 
 export interface Message {

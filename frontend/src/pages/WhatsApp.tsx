@@ -1,26 +1,30 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
+import { useAuthStore } from '../stores/authStore';
 import api from '../services/api';
 
 export default function WhatsApp() {
-  const { instances, fetchInstances } = useAppStore();
+  const { instances, fetchInstances, users, fetchUsers } = useAppStore();
+  const currentUser = useAuthStore((state) => state.user);
   const [newInstanceName, setNewInstanceName] = useState('');
-  // O QR vem direto da lista de instancias (atualizada a cada 3s); o modal fecha
-  // sozinho quando a conexao abre.
+  const [selectedUserId, setSelectedUserId] = useState('');
   const [qrInstanceId, setQrInstanceId] = useState<string | null>(null);
   const qrInstance = instances.find(i => i.id === qrInstanceId);
   const showQr = qrInstanceId !== null && qrInstance?.status !== 'open';
+  const isManager = currentUser?.role === 'admin' || currentUser?.role === 'supervisor';
 
   useEffect(() => {
     fetchInstances();
+    fetchUsers();
     const interval = setInterval(fetchInstances, 3000);
     return () => clearInterval(interval);
-  }, [fetchInstances]);
+  }, [fetchInstances, fetchUsers]);
 
   const handleCreate = async () => {
     if (!newInstanceName.trim()) return;
-    await api.post('/instances', { name: newInstanceName });
+    await api.post('/instances', { name: newInstanceName, user_id: selectedUserId || null });
     setNewInstanceName('');
+    setSelectedUserId('');
     fetchInstances();
   };
 
@@ -42,28 +46,45 @@ export default function WhatsApp() {
     fetchInstances();
   };
 
+  const handleAssignUser = async (instanceId: string, userId: string) => {
+    await api.patch(`/instances/${instanceId}/assign`, { user_id: userId || null });
+    fetchInstances();
+  };
+
   return (
     <div className="h-full overflow-y-auto p-6">
       <h2 className="text-2xl font-bold mb-2">Conexões WhatsApp</h2>
       <p className="text-gray-400 mb-6">Cadastre e gerencie múltiplos chips de WhatsApp integrados ao CRM.</p>
 
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-6">
-        <div className="flex gap-3">
-          <input
-            type="text"
-            value={newInstanceName}
-            onChange={(e) => setNewInstanceName(e.target.value)}
-            placeholder="Ex: WhatsApp Vendas, Suporte RJ..."
-            className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
-          />
-          <button
-            onClick={handleCreate}
-            className="px-6 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700"
-          >
-            ➕ Adicionar Conexão
-          </button>
+      {isManager && (
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-6">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="text"
+              value={newInstanceName}
+              onChange={(e) => setNewInstanceName(e.target.value)}
+              placeholder="Ex: WhatsApp Vendas, Suporte RJ..."
+              className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+            />
+            <select
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              className="bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">🏢 Geral da Empresa (Triagem)</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>👤 {u.name} ({u.role})</option>
+              ))}
+            </select>
+            <button
+              onClick={handleCreate}
+              className="px-6 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 whitespace-nowrap"
+            >
+              ➕ Adicionar Conexão
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {instances.map(instance => (
@@ -80,8 +101,30 @@ export default function WhatsApp() {
             </div>
 
             {instance.phone && (
-              <p className="text-sm text-gray-400 mb-3">📱 +{instance.phone}</p>
+              <p className="text-sm text-gray-400 mb-2">📱 +{instance.phone}</p>
             )}
+
+            <div className="mb-3">
+              {isManager ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 whitespace-nowrap">Vendedor:</span>
+                  <select
+                    value={instance.user_id || ''}
+                    onChange={(e) => handleAssignUser(instance.id, e.target.value)}
+                    className="w-full bg-gray-700/80 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="">🏢 Geral da Empresa</option>
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>👤 {u.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">
+                  👤 Atendente: {users.find(u => u.id === instance.user_id)?.name || 'Geral da Empresa'}
+                </p>
+              )}
+            </div>
 
             <div className="flex gap-2">
               {instance.status !== 'open' ? (

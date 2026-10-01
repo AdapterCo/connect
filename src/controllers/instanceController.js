@@ -5,16 +5,17 @@ async function getInstances(req, res) {
   try {
     const companyInstances = await Instance.findAll(req.user.company_id);
     const activeConns = whatsappService.getActiveConnections();
-    // O QR code permite parear outro aparelho ao numero da empresa: so para gestores.
-    const canPair = ['admin', 'supervisor'].includes(req.user.role);
+    const isManager = ['admin', 'supervisor'].includes(req.user.role);
 
     const result = companyInstances.map(inst => {
       const conn = activeConns[inst.id] || {};
+      const canPair = isManager || (inst.user_id && inst.user_id === req.user.id);
       return {
         id: inst.id,
         name: inst.name,
         phone: conn.connectedPhone || inst.phone || null,
         status: conn.connectionStatus || inst.status || 'disconnected',
+        user_id: inst.user_id || null,
         qr: canPair ? conn.qrCodeImage || null : null
       };
     });
@@ -26,7 +27,7 @@ async function getInstances(req, res) {
 
 async function createInstance(req, res) {
   try {
-    const { name } = req.body;
+    const { name, user_id } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'Nome da conexão é obrigatório.' });
     }
@@ -37,6 +38,7 @@ async function createInstance(req, res) {
       name,
       phone: null,
       status: 'disconnected',
+      user_id: user_id || null,
       company_id: req.user.company_id
     };
 
@@ -96,10 +98,25 @@ async function deleteInstance(req, res) {
   }
 }
 
+async function assignInstance(req, res) {
+  try {
+    const { user_id } = req.body;
+    const inst = await Instance.findById(req.params.id, req.user.company_id);
+    if (!inst) {
+      return res.status(404).json({ error: 'Conexão não encontrada.' });
+    }
+    const updated = await Instance.updateUser(req.params.id, user_id, req.user.company_id);
+    res.json({ success: true, instance: updated });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao vincular conexão ao atendente.' });
+  }
+}
+
 module.exports = {
   getInstances,
   createInstance,
   connectInstance,
   disconnectInstance,
-  deleteInstance
+  deleteInstance,
+  assignInstance
 };

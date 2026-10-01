@@ -191,10 +191,15 @@ async function register(req, res) {
       return res.status(400).json({ error: 'Este nome de usuário já está em uso.' });
     }
 
-    // E-mail (opcional, ja normalizado pelo validateRegister) permite recuperar a senha.
-    const { email } = req.body;
+    const { email, phone } = req.body;
     if (email && await prisma.user.findFirst({ where: { email }, select: { id: true } })) {
       return res.status(400).json({ error: 'Este e-mail já está em uso.' });
+    }
+
+    let cleanPhone = null;
+    if (phone) {
+      const { normalizeDigits } = require('../services/leadNotificationService');
+      cleanPhone = normalizeDigits(phone);
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -204,6 +209,7 @@ async function register(req, res) {
       name,
       username,
       email,
+      phone: cleanPhone,
       password: hashedPassword,
       role,
       status: 'offline',
@@ -216,7 +222,7 @@ async function register(req, res) {
     const updatedUsers = await User.findAll(req.user.company_id);
     emitToCompany(req.user.company_id, 'users_updated', updatedUsers);
 
-    res.json({ success: true, user: { id: newUser.id, name, username, email, role, company_id: newUser.company_id } });
+    res.json({ success: true, user: { id: newUser.id, name, username, email, phone: cleanPhone, role, company_id: newUser.company_id } });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao cadastrar atendente.' });
   }

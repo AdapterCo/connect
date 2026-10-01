@@ -8,7 +8,6 @@ const { normalizeEmail } = require('../middleware/validationMiddleware');
 async function listUsers(req, res) {
   try {
     const users = await User.findAll(req.user.company_id);
-    // E-mail so aparece para gestores (e para o proprio usuario).
     const manager = ['admin', 'supervisor'].includes(req.user.role);
     const safeUsers = users.map(u => ({
       id: u.id,
@@ -17,7 +16,7 @@ async function listUsers(req, res) {
       role: u.role,
       status: u.status,
       company_id: u.company_id,
-      ...(manager || u.id === req.user.id ? { email: u.email || null } : {})
+      ...(manager || u.id === req.user.id ? { email: u.email || null, phone: u.phone || null } : {})
     }));
     res.json(safeUsers);
   } catch (error) {
@@ -131,9 +130,67 @@ async function revokeSessions(req, res) {
   }
 }
 
+async function updatePhone(req, res) {
+  try {
+    const { normalizeDigits } = require('../services/leadNotificationService');
+    const rawPhone = req.body.phone;
+    let cleanPhone = null;
+    if (rawPhone) {
+      cleanPhone = normalizeDigits(rawPhone);
+      if (!cleanPhone || cleanPhone.length < 10 || cleanPhone.length > 15) {
+        return res.status(400).json({ error: 'Telefone inválido (deve conter DDD e 10 a 15 dígitos).' });
+      }
+    }
+
+    const target = await User.findById(req.params.id, req.user.company_id);
+    if (!target) return res.status(404).json({ error: 'Atendente não encontrado.' });
+
+    const self = target.id === req.user.id;
+    const allowed = self || req.user.role === 'admin' ||
+      (req.user.role === 'supervisor' && !['admin', 'supervisor'].includes(target.role));
+    if (!allowed) return res.status(403).json({ error: 'Sem permissão para alterar o telefone deste usuário.' });
+
+    await prisma.user.updateMany({ where: { id: target.id, company_id: req.user.company_id }, data: { phone: cleanPhone } });
+    await Log.add(`Telefone/WhatsApp de ${target.name} ${cleanPhone ? 'atualizado para +' + cleanPhone : 'removido'} por ${req.user.name}.`, req.user.company_id);
+
+    const allUsers = await User.findAll(req.user.company_id);
+    emitToCompany(req.user.company_id, 'users_updated', allUsers);
+
+    res.json({ success: true, phone: cleanPhone });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao atualizar telefone.' });
+  }
+}
+
+async function updateAttendantStatus(req, res) {
+  try {
+    const { status } = req.body;
+    if (!['online', 'offline'].includes(status)) {
+      return res.status(400).json({ error: 'Status inválido.' });
+    }
+
+    const target = await User.findById(req.params.id, req.user.company_id);
+    if (!target) return res.status(404).json({ error: 'Atendente não encontrado.' });
+
+    const self = target.id === req.user.id;
+    const allowed = self || ['admin', 'supervisor'].includes(req.user.role);
+    if (!allowed) return res.status(403).json({ error: 'Sem permissão para alterar o status deste usuário.' });
+
+    await prisma.user.updateMany({ where: { id: target.id, company_id: req.user.company_id }, data: { status } });
+    const allUsers = await User.findAll(req.user.company_id);
+    emitToCompany(req.user.company_id, 'users_updated', allUsers);
+
+    res.json({ success: true, status });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao alterar status.' });
+  }
+}
+
 module.exports = {
   listUsers,
   deleteUser,
   revokeSessions,
-  updateEmail
+  updateEmail,
+  updatePhone,
+  updateAttendantStatus
 };

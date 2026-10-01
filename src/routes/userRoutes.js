@@ -10,6 +10,8 @@ const router = express.Router();
 router.get('/', authenticateToken, checkCompanyActive, userController.listUsers);
 router.post('/:id/revoke-sessions', authenticateToken, checkCompanyActive, requireMinimumRole('admin'), audit('user', 'revoke_sessions'), userController.revokeSessions);
 router.patch('/:id/email', authenticateToken, checkCompanyActive, audit('user', 'update_email'), userController.updateEmail);
+router.patch('/:id/phone', authenticateToken, checkCompanyActive, audit('user', 'update_phone'), userController.updatePhone);
+router.patch('/:id/status', authenticateToken, checkCompanyActive, audit('user', 'update_status'), userController.updateAttendantStatus);
 router.delete('/:id', authenticateToken, checkCompanyActive, requireMinimumRole('supervisor'), audit('user', 'delete'), userController.deleteUser);
 
 module.exports = router;

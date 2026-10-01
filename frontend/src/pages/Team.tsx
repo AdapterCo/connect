@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/authStore';
 import api, { apiErrorMessage } from '../services/api';
 import type { User } from '../types';
 
-const emptyForm = { name: '', username: '', email: '', password: '', role: 'seller' };
+const emptyForm = { name: '', username: '', email: '', phone: '', password: '', role: 'seller' };
 
 export default function Team() {
   const { users, fetchUsers } = useAppStore();
@@ -35,7 +35,6 @@ export default function Team() {
     fetchUsers();
   };
 
-  // Admin edita qualquer e-mail; supervisor so de quem nao e gestor (mesma regra do backend).
   const canEditEmail = (user: User) => currentUser?.role === 'admin' || user.id === currentUser?.id ||
     (currentUser?.role === 'supervisor' && !['admin', 'supervisor'].includes(user.role));
 
@@ -48,6 +47,33 @@ export default function Team() {
       fetchUsers();
     } catch (err) {
       setError(apiErrorMessage(err, 'Erro ao atualizar e-mail.'));
+    }
+  };
+
+  const canEditPhone = (user: User) => currentUser?.role === 'admin' || user.id === currentUser?.id ||
+    (currentUser?.role === 'supervisor' && !['admin', 'supervisor'].includes(user.role));
+
+  const handlePhone = async (user: User) => {
+    const phone = prompt(`WhatsApp/Telefone de ${user.name} (ex: 21985080634). Deixe vazio para remover.`, user.phone || '');
+    if (phone === null) return;
+    setError('');
+    try {
+      await api.patch(`/users/${user.id}/phone`, { phone: phone.trim() });
+      fetchUsers();
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao atualizar telefone.'));
+    }
+  };
+
+  const canToggleStatus = currentUser?.role === 'admin' || currentUser?.role === 'supervisor';
+  const handleToggleStatus = async (user: User) => {
+    if (!canToggleStatus && user.id !== currentUser?.id) return;
+    const newStatus = user.status === 'online' ? 'offline' : 'online';
+    try {
+      await api.patch(`/users/${user.id}/status`, { status: newStatus });
+      fetchUsers();
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao alterar status.'));
     }
   };
 
@@ -100,6 +126,13 @@ export default function Team() {
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
             />
             <input
+              type="text"
+              placeholder="WhatsApp / Telefone (ex: 21985080634)"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+            />
+            <input
               type="password"
               placeholder="Senha Provisória (mín. 8 caracteres)"
               minLength={8}
@@ -135,6 +168,7 @@ export default function Team() {
             <tr>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Nome</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Usuário</th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">WhatsApp</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">E-mail</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Função</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Status</th>
@@ -147,6 +181,9 @@ export default function Team() {
                 <td className="px-4 py-3 text-white">{user.name}</td>
                 <td className="px-4 py-3 text-gray-400">{user.username}</td>
                 <td className="px-4 py-3 text-gray-400">
+                  {user.phone ? `+${user.phone}` : <span className="text-gray-500 text-sm">sem WhatsApp</span>}
+                </td>
+                <td className="px-4 py-3 text-gray-400">
                   {user.email || <span className="text-amber-300/80 text-sm">sem e-mail</span>}
                 </td>
                 <td className="px-4 py-3">
@@ -155,12 +192,21 @@ export default function Team() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex items-center gap-1 text-sm ${user.status === 'online' ? 'text-green-400' : 'text-gray-500'}`}>
+                  <button
+                    onClick={() => handleToggleStatus(user)}
+                    title={canToggleStatus ? 'Clique para alternar online/offline' : undefined}
+                    className={`inline-flex items-center gap-1 text-sm ${user.status === 'online' ? 'text-green-400' : 'text-gray-500'} ${canToggleStatus ? 'hover:underline cursor-pointer' : ''}`}
+                  >
                     <span className={`w-2 h-2 rounded-full ${user.status === 'online' ? 'bg-green-400' : 'bg-gray-500'}`} />
                     {user.status}
-                  </span>
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-right space-x-3">
+                  {canEditPhone(user) && (
+                    <button onClick={() => handlePhone(user)} className="text-emerald-400 hover:text-emerald-300 text-sm">
+                      WhatsApp
+                    </button>
+                  )}
                   {canEditEmail(user) && (
                     <button onClick={() => handleEmail(user)} className="text-indigo-300 hover:text-indigo-200 text-sm">
                       E-mail

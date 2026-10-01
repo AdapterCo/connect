@@ -66,6 +66,7 @@ model User {
   name            String
   username        String               @unique
   email           String?              @unique
+  phone           String?
   password        String
   role            String
   status          String               @default("offline")
@@ -76,6 +77,7 @@ model User {
   company         Company              @relation(fields: [company_id], references: [id], onDelete: Cascade)
   resetTokens     PasswordResetToken[]
   soldProducts    Product[]
+  instances       Instance[]
 
   @@unique([id, company_id])
 }
@@ -103,9 +105,11 @@ model Instance {
   phone      String?
   status     String   @default("disconnected")
   company_id String
+  user_id    String?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
   company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  user       User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
   chats      Chat[]
 }
 

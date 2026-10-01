@@ -35,6 +35,7 @@ async function create(user, companyId) {
       name: user.name,
       username: user.username,
       email: user.email || null,
+      phone: user.phone || null,
       password: user.password,
       role: user.role,
       status: user.status || 'offline',
