@@ -824,7 +824,6 @@ async function startWhatsAppInstance(instanceId, companyId) {
             }
 
 
-            /*
             await handleIncomingWhatsAppMessage(senderJid,
               name,
               text,
