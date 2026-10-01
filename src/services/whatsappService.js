@@ -825,14 +825,13 @@ async function startWhatsAppInstance(instanceId, companyId) {
 
 
             /*
-             * Processa a mensagem mantendo o JID original.
-             */
             await handleIncomingWhatsAppMessage(senderJid,
               name,
               text,
               mediaInfo,
               instanceId,
-              companyId
+              companyId,
+              senderJidAlt
             );
 
           } catch (msgErr) {
@@ -1069,7 +1068,8 @@ async function handleIncomingWhatsAppMessage(
   messageText,
   mediaInfo,
   instanceId,
-  companyId
+  companyId,
+  senderJidAlt = null
 ) {
   try {
     const senderJid =
@@ -1080,14 +1080,17 @@ async function handleIncomingWhatsAppMessage(
 
     const isNewChat = !chat;
 
+    let cleanPhone = senderJid.split('@')[0];
+    if (senderJid.endsWith('@lid') && senderJidAlt && senderJidAlt.includes('@s.whatsapp.net')) {
+      cleanPhone = senderJidAlt.split('@')[0];
+    } else if (senderJidAlt && senderJidAlt.includes('@s.whatsapp.net') && !senderJid.endsWith('@s.whatsapp.net')) {
+      cleanPhone = senderJidAlt.split('@')[0];
+    }
 
-    const cleanPhone =
-      senderJid.split('@')[0];
+    if (chat && cleanPhone && chat.client_phone !== cleanPhone && (chat.remote_jid?.endsWith('@lid') || chat.client_phone.length > 13)) {
+      chat = await Chat.update(chat.id, { client_phone: cleanPhone }, companyId);
+    }
 
-
-    /*
-     * Cria conversa quando não existe.
-     */
     if (!chat) {
       const newChatData = {
         id: Chat.createChatId(companyId, instanceId, senderJid),

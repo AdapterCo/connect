@@ -23,7 +23,16 @@ async function notifySeller(chat, sellerId) {
     if (!cleanSellerPhone) return;
 
     const sellerJid = `${cleanSellerPhone}@s.whatsapp.net`;
-    const clientDigits = normalizeDigits(chat.client_phone) || chat.client_phone;
+    let clientDigits = normalizeDigits(chat.client_phone) || chat.client_phone;
+    if (chat.id) {
+      const fresh = await prisma.chat.findUnique({
+        where: { id: chat.id },
+        select: { client_phone: true }
+      });
+      if (fresh && fresh.client_phone) {
+        clientDigits = normalizeDigits(fresh.client_phone) || fresh.client_phone;
+      }
+    }
     const clientName = chat.client_name || 'Cliente';
 
     const text = `🚨 *Novo Lead Atribuído!*\n\n` +
