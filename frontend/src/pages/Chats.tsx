@@ -8,11 +8,13 @@ import FlowAnswers from '../components/FlowAnswers';
 type FilterType = 'my' | 'queue' | 'favorite' | 'archive' | 'all';
 
 export default function Chats() {
-  const { chats, users, selectedChatId, selectChat, fetchChats, fetchUsers, sendMessage, updateChatStatus, assignChat, toggleAi, updateSector, toggleFavorite, toggleArchive, toggleBlock, addTag, deleteTag } = useAppStore();
+  const { chats, instances, users, selectedChatId, selectChat, fetchChats, fetchInstances, fetchUsers, sendMessage, updateChatStatus, assignChat, toggleAi, updateSector, toggleFavorite, toggleArchive, toggleBlock, addTag, deleteTag } = useAppStore();
   const { user } = useAuthStore();
+  const isManager = ['admin', 'supervisor'].includes(user?.role || '');
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterType>('my');
+  const [filter, setFilter] = useState<FilterType>(isManager ? 'all' : 'my');
   const [sectorFilter, setSectorFilter] = useState('');
+  const [instanceFilter, setInstanceFilter] = useState('');
   const [messageText, setMessageText] = useState('');
   const [isNote, setIsNote] = useState(false);
   const [sendError, setSendError] = useState('');
@@ -21,18 +23,20 @@ export default function Chats() {
   useEffect(() => {
     fetchChats();
     fetchUsers();
-  }, [fetchChats, fetchUsers]);
+    fetchInstances();
+  }, [fetchChats, fetchUsers, fetchInstances]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedChatId, chats]);
 
   const filteredChats = chats.filter(chat => {
-    if (search && !chat.client_name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !chat.client_name.toLowerCase().includes(search.toLowerCase()) && !chat.client_phone.includes(search)) return false;
     if (sectorFilter && chat.sector !== sectorFilter) return false;
+    if (instanceFilter && chat.instance_id !== instanceFilter) return false;
     
     switch (filter) {
-      case 'my': return chat.assigned_to === user?.id;
+      case 'my': return chat.assigned_to === user?.id || chat.instance?.user_id === user?.id;
       case 'queue': return !chat.assigned_to;
       case 'favorite': return chat.is_favorite;
       case 'archive': return chat.is_archived;
@@ -85,6 +89,21 @@ export default function Chats() {
               <option value="support">Suporte</option>
               <option value="finance">Financeiro</option>
             </select>
+
+            {instances.length > 0 && (
+              <select
+                value={instanceFilter}
+                onChange={(e) => setInstanceFilter(e.target.value)}
+                className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white truncate"
+              >
+                <option value="">Todas Conexões</option>
+                {instances.map((inst) => (
+                  <option key={inst.id} value={inst.id}>
+                    📱 {inst.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="flex gap-1 text-xs">
@@ -218,6 +237,13 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: Chat; isSelected: b
           <p className="text-xs text-gray-400 truncate">
             {lastMessage?.text || 'Sem mensagens'}
           </p>
+          {chat.instance && (
+            <div className="mt-1">
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 border border-gray-600 text-indigo-300 inline-block truncate max-w-full">
+                📱 {chat.instance.name}
+              </span>
+            </div>
+          )}
         </div>
         <div className={`w-2 h-2 rounded-full ${statusColors[chat.status]}`} />
       </div>
@@ -263,7 +289,14 @@ function ChatHeader({ chat, users, onUpdateStatus, onAssign, onToggleAi, onUpdat
                 {chat.is_favorite ? '★' : '☆'}
               </button>
             </div>
-            <p className="text-sm text-gray-400">+{chat.client_phone}</p>
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <span>+{chat.client_phone}</span>
+              {chat.instance && (
+                <span className="text-xs px-2 py-0.5 rounded bg-gray-700 text-indigo-300 border border-gray-600">
+                  📱 {chat.instance.name}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

@@ -25,14 +25,22 @@ async function findAll(companyId) {
   });
 }
 
-// Listagem (painel e eventos de lista): so as ultimas mensagens de cada conversa.
-// O historico completo e carregado ao abrir a conversa (GET /api/chats/:id).
 const LIST_MESSAGES = 50;
 
 async function findForList(companyId, assignedTo) {
+  const where = { company_id: companyId };
+  if (assignedTo) {
+    where.OR = [
+      { assigned_to: assignedTo },
+      { instance: { user_id: assignedTo } }
+    ];
+  }
   const chats = await prisma.chat.findMany({
-    where: { company_id: companyId, ...(assignedTo ? { assigned_to: assignedTo } : {}) },
+    where,
     include: {
+      instance: {
+        select: { id: true, name: true, phone: true, user_id: true }
+      },
       messages: {
         orderBy: { timestamp: 'desc' },
         take: LIST_MESSAGES
@@ -46,6 +54,9 @@ async function findById(id, companyId) {
   return prisma.chat.findFirst({
     where: { id, company_id: companyId },
     include: {
+      instance: {
+        select: { id: true, name: true, phone: true, user_id: true }
+      },
       messages: {
         orderBy: { timestamp: 'asc' }
       }

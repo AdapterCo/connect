@@ -25,18 +25,16 @@ const flowService = require('./flowService');
 const { decrypt } = require('../utils/crypto');
 
 const activeConnections = {};
+const recentServerSentIds = new Set();
 
+function registerSentMessageId(id) {
+  if (!id) return;
+  recentServerSentIds.add(id);
+  setTimeout(() => {
+    recentServerSentIds.delete(id);
+  }, 120000);
+}
 
-/**
- * Envia mensagem usando exatamente o JID conhecido pelo sistema.
- *
- * IMPORTANTE:
- * Não converte manualmente:
- *
- * @s.whatsapp.net -> @lid
- *
- * O LID é fornecido pelo próprio WhatsApp/Baileys.
- */
 async function sendMessage(instanceId, jid, content) {
   const conn = activeConnections[instanceId];
 
@@ -48,7 +46,11 @@ async function sendMessage(instanceId, jid, content) {
     return null;
   }
 
-  return await conn.sock.sendMessage(jid, content);
+  const result = await conn.sock.sendMessage(jid, content);
+  if (result?.key?.id) {
+    registerSentMessageId(result.key.id);
+  }
+  return result;
 }
 
 
@@ -463,14 +465,15 @@ async function startWhatsAppInstance(instanceId, companyId) {
 
 
           try {
-            /*
-             * Ignora mensagens enviadas pela própria conta
-             * e eventos que não sejam mensagens novas.
-             */
             if (
-              msg.key?.fromMe ||
-              m.type !== 'notify'
+              m.type !== 'notify' &&
+              m.type !== 'append'
             ) {
+              continue;
+            }
+
+            if (msg.key?.id && recentServerSentIds.has(msg.key.id)) {
+              recentServerSentIds.delete(msg.key.id);
               continue;
             }
 
@@ -882,6 +885,108 @@ async function startWhatsAppInstance(instanceId, companyId) {
               continue;
             }
 
+            if (msg.key?.fromMe) {
+              const inst = await prisma.instance.findUnique({
+                where: { id: instanceId },
+                select: { id: true, name: true, user_id: true }
+              });
+
+              let cleanPhone = senderIdentifier;
+              if (senderJid.endsWith('@lid') && senderJidAlt && senderJidAlt.includes('@s.whatsapp.net')) {
+                cleanPhone = senderJidAlt.split('@')[0];
+              } else if (senderJidAlt && senderJidAlt.includes('@s.whatsapp.net') && !senderJid.endsWith('@s.whatsapp.net')) {
+                cleanPhone = senderJidAlt.split('@')[0];
+              }
+
+              const candidateClientPhones = new Set();
+              const rawClean = cleanPhone.replace(/\D/g, '');
+              if (rawClean) {
+                candidateClientPhones.add(rawClean);
+                if (rawClean.startsWith('55')) candidateClientPhones.add(rawClean.slice(2));
+                else candidateClientPhones.add('55' + rawClean);
+              }
+              const clientPhonesList = Array.from(candidateClientPhones);
+
+              const otherChat = await prisma.chat.findFirst({
+                where: {
+                  company_id: companyId,
+                  client_phone: { in: clientPhonesList },
+                  sales_reply_due_at: { not: null }
+                },
+                orderBy: { updated_at: 'desc' }
+              });
+
+              if (otherChat) {
+                await Chat.update(otherChat.id, {
+                  sales_reply_due_at: null,
+                  status: 'em atendimento'
+                }, companyId);
+                await Chat.addMessage(otherChat.id, {
+                  sender: 'system',
+                  text: `Vendedor iniciou atendimento via WhatsApp (${inst?.name || 'conexão do vendedor'}). Rodízio pausado.`,
+                  timestamp: new Date()
+                });
+                const updatedOther = await Chat.findById(otherChat.id, companyId);
+                emitToCompany(companyId, 'chat_updated', updatedOther);
+              }
+
+              let chat = await Chat.findByRemoteJid(senderJid, companyId, instanceId);
+
+              if (!chat) {
+                const newChatData = {
+                  id: Chat.createChatId(companyId, instanceId, senderJid),
+                  remote_jid: senderJid,
+                  client_name: otherChat?.client_name || `Cliente (+${cleanPhone.slice(-4)})`,
+                  client_phone: cleanPhone,
+                  status: 'em atendimento',
+                  assigned_to: inst?.user_id || otherChat?.assigned_to || null,
+                  sector: otherChat?.sector || 'sales',
+                  ai_active: false,
+                  tags: otherChat?.tags || [],
+                  is_favorite: false,
+                  is_archived: false,
+                  is_blocked: false,
+                  waiting_since: null,
+                  company_id: companyId,
+                  instance_id: instanceId
+                };
+                chat = await Chat.create(newChatData, companyId);
+              } else {
+                const updates = {
+                  sales_reply_due_at: null,
+                  ai_active: false
+                };
+                if (chat.status === 'iniciada' || chat.status === 'interesse em compra') {
+                  updates.status = 'em atendimento';
+                }
+                if (!chat.assigned_to && inst?.user_id) {
+                  updates.assigned_to = inst.user_id;
+                }
+                chat = await Chat.update(chat.id, updates, companyId);
+              }
+
+              const resolvedText = text || (mediaInfo ? `[Mídia: ${mediaInfo.mediaType === 'image' ? 'Imagem' : mediaInfo.mediaType === 'video' ? 'Vídeo' : mediaInfo.mediaType === 'audio' ? 'Áudio' : 'Documento'}]` : '');
+
+              const attendantMsg = {
+                id: msg.key?.id,
+                sender: 'attendant',
+                sender_id: inst?.user_id || chat.assigned_to || null,
+                text: resolvedText,
+                timestamp: new Date(msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()),
+                is_ai: false,
+                media_url: mediaInfo?.mediaUrl,
+                media_type: mediaInfo?.mediaType,
+                file_name: mediaInfo?.fileName
+              };
+
+              await Chat.addMessage(chat.id, attendantMsg);
+
+              const updatedChat = await Chat.findById(chat.id, companyId);
+              emitToCompany(companyId, 'chat_updated', updatedChat);
+              emitToCompany(companyId, 'chats_updated', await Chat.findForList(companyId));
+
+              continue;
+            }
 
             await handleIncomingWhatsAppMessage(senderJid,
               name,
@@ -1092,10 +1197,7 @@ async function stopWhatsAppInstance(
 
 async function sendBotMessage(chat, instanceId, text) {
   await Chat.addMessage(chat.id, { sender: 'attendant', text, timestamp: new Date(), is_ai: true });
-  const conn = activeConnections[instanceId];
-  if (conn && conn.connectionStatus === 'open' && conn.sock) {
-    await conn.sock.sendMessage(Chat.getRemoteJid(chat), { text });
-  }
+  await sendMessage(instanceId, Chat.getRemoteJid(chat), { text });
 }
 
 async function runFlow(chat, message, isNewChat, instanceId, companyId) {
@@ -1166,7 +1268,34 @@ async function handleIncomingWhatsAppMessage(
     });
     if (isInstance) return null;
 
+    const inst = await prisma.instance.findUnique({
+      where: { id: instanceId },
+      select: { id: true, name: true, user_id: true }
+    });
+
     if (!chat) {
+      const otherChat = await prisma.chat.findFirst({
+        where: {
+          company_id: companyId,
+          client_phone: { in: Array.from(candidatePhones) }
+        },
+        orderBy: { updated_at: 'desc' }
+      });
+
+      if (otherChat && otherChat.sales_reply_due_at) {
+        await Chat.update(otherChat.id, {
+          sales_reply_due_at: null,
+          status: 'em atendimento'
+        }, companyId);
+        await Chat.addMessage(otherChat.id, {
+          sender: 'system',
+          text: `Cliente respondeu via WhatsApp na conexão ${inst?.name || 'do vendedor'}. Rodízio pausado.`,
+          timestamp: new Date()
+        });
+        const updatedOther = await Chat.findById(otherChat.id, companyId);
+        emitToCompany(companyId, 'chat_updated', updatedOther);
+      }
+
       const newChatData = {
         id: Chat.createChatId(companyId, instanceId, senderJid),
 
@@ -1175,22 +1304,23 @@ async function handleIncomingWhatsAppMessage(
 
         client_name:
           clientName ||
+          otherChat?.client_name ||
           `Cliente (+${cleanPhone.slice(-4)})`,
 
         client_phone:
           cleanPhone,
 
         status:
-          'iniciada',
+          inst?.user_id ? 'em atendimento' : 'iniciada',
 
         assigned_to:
-          null,
+          inst?.user_id || otherChat?.assigned_to || null,
 
         ai_active:
-          true,
+          !inst?.user_id,
 
         tags:
-          [],
+          otherChat?.tags || [],
 
         is_favorite:
           false,
@@ -1202,7 +1332,7 @@ async function handleIncomingWhatsAppMessage(
           false,
 
         waiting_since:
-          new Date(),
+          inst?.user_id ? null : new Date(),
 
         company_id:
           companyId,
@@ -1211,13 +1341,11 @@ async function handleIncomingWhatsAppMessage(
           instanceId
       };
 
-
       chat =
         await Chat.create(
           newChatData,
           companyId
         );
-
 
       await Log.add(
         `Novo chat iniciado para o cliente ${chat.client_name} (${cleanPhone}).`,
@@ -1225,7 +1353,7 @@ async function handleIncomingWhatsAppMessage(
       );
 
     } else if (
-      !chat.waiting_since
+      !chat.waiting_since && !inst?.user_id
     ) {
       chat =
         await Chat.update(
@@ -1303,14 +1431,13 @@ async function handleIncomingWhatsAppMessage(
 
 
     emitToCompany(companyId, 'chat_updated', chatAfterClientMsg);
-
+    emitToCompany(companyId, 'chats_updated', await Chat.findForList(companyId));
 
     emitToCompany(
       companyId,
       'logs_updated',
       await Log.findAll(companyId)
     );
-
 
     /*
      * Não responde chats bloqueados.
@@ -1319,9 +1446,10 @@ async function handleIncomingWhatsAppMessage(
       return chat;
     }
 
-    if (await runFlow(chat, resolvedText || messageText || '', isNewChat, instanceId, companyId)) {
+    if (!inst?.user_id && await runFlow(chat, resolvedText || messageText || '', isNewChat, instanceId, companyId)) {
       const flowChat = await Chat.findById(chat.id, companyId);
       emitToCompany(companyId, 'chat_updated', flowChat);
+      emitToCompany(companyId, 'chats_updated', await Chat.findForList(companyId));
       return flowChat;
     }
 
@@ -1357,7 +1485,7 @@ async function handleIncomingWhatsAppMessage(
     /*
      * ATENDENTE IA
      */
-    if (settings.ai_enabled) {
+    if (settings.ai_enabled && !inst?.user_id) {
       /*
        * IA desabilitada para esta conversa.
        */
@@ -1594,7 +1722,8 @@ async function handleIncomingWhatsAppMessage(
             Chat.getRemoteJid(chat);
 
 
-          await conn.sock.sendMessage(
+          await sendMessage(
+            instanceId,
             remoteJid,
             {
               text:
@@ -1642,7 +1771,8 @@ async function handleIncomingWhatsAppMessage(
               Chat.getRemoteJid(chat);
 
 
-            await conn.sock.sendMessage(
+            await sendMessage(
+              instanceId,
               remoteJid,
               {
                 text:
@@ -1672,6 +1802,11 @@ async function handleIncomingWhatsAppMessage(
       companyId,
       'chat_updated',
       finalChat
+    );
+    emitToCompany(
+      companyId,
+      'chats_updated',
+      await Chat.findForList(companyId)
     );
 
 

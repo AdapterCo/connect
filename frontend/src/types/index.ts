@@ -68,6 +68,7 @@ export interface Chat {
   waiting_since: string | null;
   claimed_at: string | null;
   messages: Message[];
+  instance?: { id: string; name: string; phone: string | null; user_id?: string | null };
 }
 
 export interface Settings {
