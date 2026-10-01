@@ -51,7 +51,11 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
     const chat = await tx.chat.findFirst({ where: { id, company_id: companyId } });
     if (!chat) return null;
     if (actor && !isManager(actor) && chat.assigned_to !== actor.id) {
-      throw Object.assign(new Error('Conversa transferida para outro vendedor.'), { status: 403 });
+      const { getUserInstanceIds } = require('../models/Instance');
+      const userInstances = await getUserInstanceIds(actor, companyId);
+      if (!userInstances.includes(chat.instance_id)) {
+        throw Object.assign(new Error('Conversa transferida para outro vendedor.'), { status: 403 });
+      }
     }
     const updates = { ...data };
     if (options.source === 'ai' && (chat.status !== 'iniciada' || updates.status !== INTEREST)) delete updates.status;

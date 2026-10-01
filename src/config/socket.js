@@ -82,12 +82,9 @@ function initSocket(server) {
     });
 
     try {
-      const { prisma } = require('./database');
-      prisma.instance.findMany({
-        where: { company_id: socket.user.company_id, user_id: socket.user.id },
-        select: { id: true }
-      }).then(instances => {
-        socket.userInstanceIds = instances.map(i => i.id);
+      const { getUserInstanceIds } = require('../models/Instance');
+      getUserInstanceIds(socket.user, socket.user.company_id).then(ids => {
+        socket.userInstanceIds = ids;
       }).catch(() => {});
     } catch {}
 

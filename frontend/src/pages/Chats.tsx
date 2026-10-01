@@ -12,7 +12,15 @@ export default function Chats() {
   const { user } = useAuthStore();
   const isManager = ['admin', 'supervisor'].includes(user?.role || '');
   const userSector = user?.sector || (user?.role === 'seller' ? 'sales' : (user?.role === 'support' ? 'support' : null));
-  const userInstance = instances.find(inst => inst.user_id === user?.id);
+  const userPhone = user?.phone ? user.phone.replace(/\D/g, '') : '';
+  const userInstance = instances.find(inst => {
+    if (inst.user_id && inst.user_id === user?.id) return true;
+    if (userPhone && inst.phone) {
+      const instPhone = inst.phone.replace(/\D/g, '');
+      return instPhone === userPhone || instPhone.endsWith(userPhone) || userPhone.endsWith(instPhone);
+    }
+    return false;
+  });
   const userInstanceId = userInstance?.id;
 
   const [search, setSearch] = useState('');

@@ -11,9 +11,17 @@ const FIXED_COLUMNS = Object.freeze([
   { id: 'finalizada', name: 'Finalizada / Pago', fixed: true }
 ]);
 const isFixed = id => FIXED_COLUMNS.some(column => column.id === id);
+const { getUserInstanceIds } = require('../models/Instance');
 const manager = user => ['admin', 'supervisor'].includes(user.role);
 const owner = user => ({ user_id: user.id, company_id: user.company_id });
-const chatScope = user => ({ company_id: user.company_id, ...(!manager(user) ? { assigned_to: user.id } : {}) });
+const chatScope = async user => {
+  if (manager(user)) return { company_id: user.company_id };
+  const userInstances = await getUserInstanceIds(user, user.company_id);
+  if (userInstances.length > 0) {
+    return { company_id: user.company_id, instance_id: { in: userInstances } };
+  }
+  return { company_id: user.company_id, assigned_to: user.id };
+};
 const normalize = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 function columnName(value) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > 60) throw Object.assign(new Error('Nome deve ter entre 1 e 60 caracteres.'), { status: 400 });
@@ -32,9 +40,10 @@ const wrap = handler => async (req, res) => {
 };
 router.use(auth, checkCompanyActive);
 router.get('/', wrap(async (req, res) => {
+  const scope = await chatScope(req.user);
   const [columns, placements] = await Promise.all([
     prisma.kanbanColumn.findMany({ where: owner(req.user), orderBy: [{ created_at: 'asc' }, { id: 'asc' }], select: { id: true, name: true } }),
-    prisma.kanbanCard.findMany({ where: { ...owner(req.user), chat: chatScope(req.user) }, select: { chat_id: true, column_id: true } })
+    prisma.kanbanCard.findMany({ where: { ...owner(req.user), chat: scope }, select: { chat_id: true, column_id: true } })
   ]);
   res.json({ columns: [...FIXED_COLUMNS, ...columns.map(column => ({ ...column, fixed: false }))], placements });
 }));
@@ -71,7 +80,8 @@ router.put('/cards/:id', wrap(async (req, res) => {
   }
   await withCompanyLock(req.user.company_id, async tx => {
     const column = await tx.kanbanColumn.findFirst({ where: { ...owner(req.user), id: columnId } });
-    const chat = await tx.chat.findFirst({ where: { ...chatScope(req.user), id: req.params.id } });
+    const scope = await chatScope(req.user);
+    const chat = await tx.chat.findFirst({ where: { ...scope, id: req.params.id } });
     if (!column || !chat) throw Object.assign(new Error('Conversa ou coluna indisponível.'), { status: 404 });
     await tx.kanbanCard.upsert({
       where: { user_id_chat_id: { user_id: req.user.id, chat_id: chat.id } },

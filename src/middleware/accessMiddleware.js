@@ -5,10 +5,8 @@ async function ownChat(req, res, next) {
   if (isManager(req.user)) return next();
   if (!req.params.id) return next();
   try {
-    const userInstances = await prisma.instance.findMany({
-      where: { company_id: req.user.company_id, user_id: req.user.id },
-      select: { id: true }
-    });
+    const { getUserInstanceIds } = require('../models/Instance');
+    const userInstanceIds = await getUserInstanceIds(req.user, req.user.company_id);
 
     const userSector = req.user.sector || (req.user.role === 'seller' ? 'sales' : (req.user.role === 'support' ? 'support' : null));
 
@@ -17,8 +15,8 @@ async function ownChat(req, res, next) {
       company_id: req.user.company_id
     };
 
-    if (userInstances.length > 0) {
-      where.instance_id = { in: userInstances.map(i => i.id) };
+    if (userInstanceIds.length > 0) {
+      where.instance_id = { in: userInstanceIds };
     } else {
       where.assigned_to = req.user.id;
     }

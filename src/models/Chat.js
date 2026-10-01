@@ -39,15 +39,13 @@ async function findForList(companyId, filterTarget) {
     }
 
     if (user && !['admin', 'supervisor', 'superadmin'].includes(user.role)) {
-      const userInstances = await prisma.instance.findMany({
-        where: { company_id: companyId, user_id: user.id },
-        select: { id: true }
-      });
+      const { getUserInstanceIds } = require('./Instance');
+      const userInstanceIds = await getUserInstanceIds(user, companyId);
 
       const userSector = user.sector || (user.role === 'seller' ? 'sales' : (user.role === 'support' ? 'support' : null));
 
-      if (userInstances.length > 0) {
-        where.instance_id = { in: userInstances.map(i => i.id) };
+      if (userInstanceIds.length > 0) {
+        where.instance_id = { in: userInstanceIds };
       } else {
         where.assigned_to = user.id;
       }

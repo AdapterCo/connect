@@ -79,7 +79,7 @@ export default function Kanban() {
     <DragDropContext onDragEnd={handleDragEnd}>
       <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto pb-3" aria-label="Colunas do Kanban">
         {board.columns.map(column => {
-          const cards = chats.filter(chat => (placements.get(chat.id) || chat.status) === column.id);
+          const cards = chats.filter(chat => (placements.get(chat.id) || ((chat.status as string) === 'em atendimento' ? 'interesse em compra' : chat.status)) === column.id);
           return <section key={column.id} className="w-80 min-w-72 shrink-0 flex flex-col min-h-0 bg-gray-800 border border-gray-700 rounded-xl p-3">
             <header className="shrink-0 pb-3 space-y-2">
               <div className="flex gap-2 items-center">

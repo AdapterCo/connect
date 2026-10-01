@@ -77,7 +77,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeChat: (id) => set(state => ({ chats: state.chats.filter(chat => chat.id !== id), selectedChatId: state.selectedChatId === id ? null : state.selectedChatId })),
   updateChat: (updatedChat) => set((state) => {
     const user = useAuthStore.getState().user;
-    if (!user || (!['admin', 'supervisor'].includes(user.role) && updatedChat.assigned_to !== user.id)) return { chats: state.chats.filter(chat => chat.id !== updatedChat.id), selectedChatId: state.selectedChatId === updatedChat.id ? null : state.selectedChatId };
+    if (!user) return state;
+    if (!['admin', 'supervisor'].includes(user.role)) {
+      const userPhone = user.phone ? user.phone.replace(/\D/g, '') : '';
+      const userInstances = state.instances.filter(inst => {
+        if (inst.user_id && inst.user_id === user.id) return true;
+        if (userPhone && inst.phone) {
+          const instPhone = inst.phone.replace(/\D/g, '');
+          return instPhone === userPhone || instPhone.endsWith(userPhone) || userPhone.endsWith(instPhone);
+        }
+        return false;
+      });
+      const userInstIds = userInstances.map(i => i.id);
+      const canSee = userInstIds.length > 0
+        ? userInstIds.includes(updatedChat.instance_id)
+        : updatedChat.assigned_to === user.id;
+      if (!canSee) {
+        return {
+          chats: state.chats.filter(c => c.id !== updatedChat.id),
+          selectedChatId: state.selectedChatId === updatedChat.id ? null : state.selectedChatId
+        };
+      }
+    }
     const exists = state.chats.some((c) => c.id === updatedChat.id);
     if (exists) {
       return { chats: state.chats.map((c) => c.id === updatedChat.id ? updatedChat : c) };

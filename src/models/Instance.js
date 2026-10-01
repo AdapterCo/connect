@@ -42,12 +42,29 @@ async function updateStatus(id, status, phone, companyId) {
   });
   if (!existing) return null;
 
+  const data = {
+    status,
+    phone
+  };
+
+  if (phone && !existing.user_id) {
+    const rawDigits = phone.replace(/\D/g, '');
+    const candidates = [rawDigits, rawDigits.startsWith('55') ? rawDigits.slice(2) : '55' + rawDigits];
+    const matchingUser = await prisma.user.findFirst({
+      where: {
+        company_id: companyId,
+        phone: { in: candidates }
+      },
+      select: { id: true }
+    });
+    if (matchingUser) {
+      data.user_id = matchingUser.id;
+    }
+  }
+
   return prisma.instance.update({
     where: { id },
-    data: {
-      status,
-      phone
-    }
+    data
   });
 }
 
@@ -65,11 +82,44 @@ async function updateUser(id, userId, companyId) {
   });
 }
 
+async function getUserInstanceIds(user, companyId) {
+  if (!user || !prisma.instance) return [];
+  if (['admin', 'supervisor', 'superadmin'].includes(user.role)) return [];
+
+  const rawPhone = user.phone ? user.phone.replace(/\D/g, '') : null;
+  const phoneCandidates = rawPhone ? [
+    rawPhone,
+    rawPhone.startsWith('55') ? rawPhone.slice(2) : '55' + rawPhone
+  ] : [];
+
+  const instances = await prisma.instance.findMany({
+    where: {
+      company_id: companyId,
+      OR: [
+        { user_id: user.id },
+        ...(phoneCandidates.length > 0 ? [{ phone: { in: phoneCandidates } }] : [])
+      ]
+    },
+    select: { id: true, user_id: true }
+  });
+
+  const unlinked = instances.filter(i => !i.user_id);
+  if (unlinked.length > 0) {
+    await prisma.instance.updateMany({
+      where: { id: { in: unlinked.map(i => i.id) }, company_id: companyId },
+      data: { user_id: user.id }
+    }).catch(() => {});
+  }
+
+  return instances.map(i => i.id);
+}
+
 module.exports = {
   findAll,
   findById,
   create,
   remove,
   updateStatus,
-  updateUser
+  updateUser,
+  getUserInstanceIds
 };

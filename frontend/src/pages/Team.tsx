@@ -7,7 +7,7 @@ import type { User } from '../types';
 const emptyForm = { name: '', username: '', email: '', phone: '', password: '', role: 'seller', sector: 'sales' };
 
 export default function Team() {
-  const { users, fetchUsers } = useAppStore();
+  const { users, instances, fetchUsers, fetchInstances } = useAppStore();
   const currentUser = useAuthStore((state) => state.user);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState(emptyForm);
@@ -15,7 +15,8 @@ export default function Team() {
 
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]);
+    fetchInstances();
+  }, [fetchUsers, fetchInstances]);
 
   const handleCreate = async () => {
     setError('');
@@ -218,6 +219,17 @@ export default function Team() {
                 <td className="px-4 py-3 text-gray-400">{user.username}</td>
                 <td className="px-4 py-3 text-gray-400">
                   {user.phone ? `+${user.phone}` : <span className="text-gray-500 text-sm">sem WhatsApp</span>}
+                  {(() => {
+                    const uPhone = user.phone ? user.phone.replace(/\D/g, '') : '';
+                    const inst = instances.find(i => i.user_id === user.id || (uPhone && i.phone && (i.phone.replace(/\D/g, '') === uPhone || i.phone.replace(/\D/g, '').endsWith(uPhone))));
+                    return inst ? (
+                      <div className="mt-1">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-700 text-indigo-300 border border-gray-600 inline-block">
+                          📱 {inst.name}
+                        </span>
+                      </div>
+                    ) : null;
+                  })()}
                 </td>
                 <td className="px-4 py-3 text-gray-400">
                   {user.email || <span className="text-amber-300/80 text-sm">sem e-mail</span>}

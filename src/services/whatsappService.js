@@ -919,7 +919,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
               if (otherChat) {
                 await Chat.update(otherChat.id, {
                   sales_reply_due_at: null,
-                  status: 'em atendimento'
+                  status: 'interesse em compra'
                 }, companyId);
                 await Chat.addMessage(otherChat.id, {
                   sender: 'system',
@@ -938,7 +938,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
                   remote_jid: senderJid,
                   client_name: otherChat?.client_name || `Cliente (+${cleanPhone.slice(-4)})`,
                   client_phone: cleanPhone,
-                  status: 'em atendimento',
+                  status: 'interesse em compra',
                   assigned_to: inst?.user_id || otherChat?.assigned_to || null,
                   sector: otherChat?.sector || 'sales',
                   ai_active: false,
@@ -956,8 +956,8 @@ async function startWhatsAppInstance(instanceId, companyId) {
                   sales_reply_due_at: null,
                   ai_active: false
                 };
-                if (chat.status === 'iniciada' || chat.status === 'interesse em compra') {
-                  updates.status = 'em atendimento';
+                if (chat.status === 'iniciada') {
+                  updates.status = 'interesse em compra';
                 }
                 if (!chat.assigned_to && inst?.user_id) {
                   updates.assigned_to = inst.user_id;
@@ -1285,7 +1285,7 @@ async function handleIncomingWhatsAppMessage(
       if (otherChat && otherChat.sales_reply_due_at) {
         await Chat.update(otherChat.id, {
           sales_reply_due_at: null,
-          status: 'em atendimento'
+          status: 'interesse em compra'
         }, companyId);
         await Chat.addMessage(otherChat.id, {
           sender: 'system',
@@ -1311,7 +1311,7 @@ async function handleIncomingWhatsAppMessage(
           cleanPhone,
 
         status:
-          inst?.user_id ? 'em atendimento' : 'iniciada',
+          inst?.user_id ? 'interesse em compra' : 'iniciada',
 
         assigned_to:
           inst?.user_id || otherChat?.assigned_to || null,
