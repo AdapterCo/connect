@@ -69,6 +69,7 @@ model User {
   phone           String?
   password        String
   role            String
+  sector          String?
   status          String               @default("offline")
   session_version Int                  @default(0)
   company_id      String

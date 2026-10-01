@@ -11,6 +11,10 @@ export default function Chats() {
   const { chats, instances, users, selectedChatId, selectChat, fetchChats, fetchInstances, fetchUsers, sendMessage, updateChatStatus, assignChat, toggleAi, updateSector, toggleFavorite, toggleArchive, toggleBlock, addTag, deleteTag } = useAppStore();
   const { user } = useAuthStore();
   const isManager = ['admin', 'supervisor'].includes(user?.role || '');
+  const userSector = user?.sector || (user?.role === 'seller' ? 'sales' : (user?.role === 'support' ? 'support' : null));
+  const userInstance = instances.find(inst => inst.user_id === user?.id);
+  const userInstanceId = userInstance?.id;
+
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>(isManager ? 'all' : 'my');
   const [sectorFilter, setSectorFilter] = useState('');
@@ -32,11 +36,21 @@ export default function Chats() {
 
   const filteredChats = chats.filter(chat => {
     if (search && !chat.client_name.toLowerCase().includes(search.toLowerCase()) && !chat.client_phone.includes(search)) return false;
-    if (sectorFilter && chat.sector !== sectorFilter) return false;
-    if (instanceFilter && chat.instance_id !== instanceFilter) return false;
-    
+
+    if (isManager) {
+      if (sectorFilter && chat.sector !== sectorFilter) return false;
+      if (instanceFilter && chat.instance_id !== instanceFilter) return false;
+    } else {
+      if (userSector && chat.sector && chat.sector !== userSector) return false;
+      if (userInstanceId) {
+        if (chat.instance_id !== userInstanceId) return false;
+      }
+    }
+
     switch (filter) {
-      case 'my': return chat.assigned_to === user?.id || chat.instance?.user_id === user?.id;
+      case 'my':
+        if (userInstanceId) return chat.instance_id === userInstanceId;
+        return chat.assigned_to === user?.id;
       case 'queue': return !chat.assigned_to;
       case 'favorite': return chat.is_favorite;
       case 'archive': return chat.is_archived;
@@ -78,36 +92,61 @@ export default function Chats() {
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
           />
           
-          <div className="flex gap-2">
-            <select
-              value={sectorFilter}
-              onChange={(e) => setSectorFilter(e.target.value)}
-              className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white"
-            >
-              <option value="">Todos os Setores</option>
-              <option value="sales">Vendas</option>
-              <option value="support">Suporte</option>
-              <option value="finance">Financeiro</option>
-            </select>
-
-            {instances.length > 0 && (
+          {isManager ? (
+            <div className="flex gap-2">
               <select
-                value={instanceFilter}
-                onChange={(e) => setInstanceFilter(e.target.value)}
-                className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white truncate"
+                value={sectorFilter}
+                onChange={(e) => setSectorFilter(e.target.value)}
+                className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white"
               >
-                <option value="">Todas Conexões</option>
-                {instances.map((inst) => (
-                  <option key={inst.id} value={inst.id}>
-                    📱 {inst.name}
-                  </option>
-                ))}
+                <option value="">Todos os Setores</option>
+                <option value="sales">Vendas</option>
+                <option value="support">Suporte</option>
+                <option value="finance">Financeiro</option>
               </select>
-            )}
-          </div>
+
+              {instances.length > 0 && (
+                <select
+                  value={instanceFilter}
+                  onChange={(e) => setInstanceFilter(e.target.value)}
+                  className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white truncate"
+                >
+                  <option value="">Todas Conexões</option>
+                  {instances.map((inst) => (
+                    <option key={inst.id} value={inst.id}>
+                      📱 {inst.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs">
+              {userInstance ? (
+                <span className="flex-1 px-2.5 py-1.5 rounded-lg bg-indigo-900/40 border border-indigo-700/60 text-indigo-300 font-medium truncate">
+                  📱 Linha: {userInstance.name}
+                </span>
+              ) : (
+                <span className="flex-1 px-2.5 py-1.5 rounded-lg bg-gray-700/50 border border-gray-600 text-gray-300 font-medium truncate">
+                  📱 Linha Geral
+                </span>
+              )}
+              {userSector && (
+                <span className="px-2.5 py-1.5 rounded-lg bg-gray-700/50 border border-gray-600 text-gray-300 font-medium whitespace-nowrap">
+                  🏷️ {userSector === 'sales' ? 'Vendas' : userSector === 'support' ? 'Suporte' : 'Financeiro'}
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-1 text-xs">
-            {(['my', 'queue', 'favorite', 'archive', 'all'] as FilterType[]).map(f => (
+            {(
+              isManager
+                ? (['my', 'queue', 'favorite', 'archive', 'all'] as FilterType[])
+                : userInstanceId
+                  ? (['my', 'favorite', 'archive'] as FilterType[])
+                  : (['my', 'queue', 'favorite', 'archive'] as FilterType[])
+            ).map(f => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
@@ -268,7 +307,7 @@ interface ChatHeaderProps {
   onDeleteTag: StoreActions['deleteTag'];
 }
 
-function ChatHeader({ chat, users, onUpdateStatus, onAssign, onToggleAi, onUpdateSector, onToggleFavorite, onToggleArchive, onToggleBlock, onAddTag, onDeleteTag }: ChatHeaderProps) {
+function ChatHeader({ chat, users, currentUser, onUpdateStatus, onAssign, onToggleAi, onUpdateSector, onToggleFavorite, onToggleArchive, onToggleBlock, onAddTag, onDeleteTag }: ChatHeaderProps) {
   const [newTag, setNewTag] = useState('');
   const [showTagInput, setShowTagInput] = useState(false);
 
@@ -317,27 +356,39 @@ function ChatHeader({ chat, users, onUpdateStatus, onAssign, onToggleAi, onUpdat
       </div>
 
       <div className="flex flex-wrap gap-3 text-xs">
-        <select
-          value={chat.assigned_to || ''}
-          onChange={(e) => onAssign(chat.id, e.target.value || null)}
-          className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
-        >
-          <option value="">Fila de Espera</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>{u.name}</option>
-          ))}
-        </select>
+        {['admin', 'supervisor'].includes(currentUser.role) ? (
+          <select
+            value={chat.assigned_to || ''}
+            onChange={(e) => onAssign(chat.id, e.target.value || null)}
+            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
+          >
+            <option value="">Fila de Espera</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        ) : (
+          <span className="bg-gray-700/60 border border-gray-600 rounded px-2.5 py-1 text-gray-300">
+            👤 {users.find(u => u.id === chat.assigned_to)?.name || currentUser.name}
+          </span>
+        )}
 
-        <select
-          value={chat.sector || ''}
-          onChange={(e) => onUpdateSector(chat.id, (e.target.value || null) as Chat['sector'])}
-          className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
-        >
-          <option value="">Sem Setor</option>
-          <option value="sales">Vendas</option>
-          <option value="support">Suporte</option>
-          <option value="finance">Financeiro</option>
-        </select>
+        {['admin', 'supervisor'].includes(currentUser.role) ? (
+          <select
+            value={chat.sector || ''}
+            onChange={(e) => onUpdateSector(chat.id, (e.target.value || null) as Chat['sector'])}
+            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
+          >
+            <option value="">Sem Setor</option>
+            <option value="sales">Vendas</option>
+            <option value="support">Suporte</option>
+            <option value="finance">Financeiro</option>
+          </select>
+        ) : (
+          <span className="bg-gray-700/60 border border-gray-600 rounded px-2.5 py-1 text-gray-300">
+            🏷️ {chat.sector === 'sales' ? 'Vendas' : chat.sector === 'support' ? 'Suporte' : chat.sector === 'finance' ? 'Financeiro' : 'Sem Setor'}
+          </span>
+        )}
 
         <select
           value={chat.status}

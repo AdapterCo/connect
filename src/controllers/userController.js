@@ -14,6 +14,7 @@ async function listUsers(req, res) {
       name: u.name,
       username: u.username,
       role: u.role,
+      sector: u.sector || (u.role === 'seller' ? 'sales' : (u.role === 'support' ? 'support' : (u.role === 'other' ? 'finance' : null))),
       status: u.status,
       company_id: u.company_id,
       ...(manager || u.id === req.user.id ? { email: u.email || null, phone: u.phone || null } : {})
@@ -186,11 +187,36 @@ async function updateAttendantStatus(req, res) {
   }
 }
 
+async function updateSector(req, res) {
+  try {
+    const { sector } = req.body;
+    if (sector !== null && !['sales', 'support', 'finance'].includes(sector)) {
+      return res.status(400).json({ error: 'Setor inválido.' });
+    }
+
+    const target = await User.findById(req.params.id, req.user.company_id);
+    if (!target) return res.status(404).json({ error: 'Atendente não encontrado.' });
+
+    await prisma.user.updateMany({
+      where: { id: target.id, company_id: req.user.company_id },
+      data: { sector }
+    });
+
+    const allUsers = await User.findAll(req.user.company_id);
+    emitToCompany(req.user.company_id, 'users_updated', allUsers);
+
+    res.json({ success: true, sector });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao atualizar setor.' });
+  }
+}
+
 module.exports = {
   listUsers,
   deleteUser,
   revokeSessions,
   updateEmail,
   updatePhone,
-  updateAttendantStatus
+  updateAttendantStatus,
+  updateSector
 };

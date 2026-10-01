@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/authStore';
 import api, { apiErrorMessage } from '../services/api';
 import type { User } from '../types';
 
-const emptyForm = { name: '', username: '', email: '', phone: '', password: '', role: 'seller' };
+const emptyForm = { name: '', username: '', email: '', phone: '', password: '', role: 'seller', sector: 'sales' };
 
 export default function Team() {
   const { users, fetchUsers } = useAppStore();
@@ -65,6 +65,19 @@ export default function Team() {
     }
   };
 
+  const canEditSector = (_user?: User) => currentUser?.role === 'admin' || currentUser?.role === 'supervisor';
+  const handleSector = async (user: User) => {
+    const newSector = prompt(`Setor de ${user.name} (sales = Vendas, support = Suporte, finance = Financeiro):`, user.sector || (user.role === 'seller' ? 'sales' : (user.role === 'support' ? 'support' : 'finance')));
+    if (!newSector || !['sales', 'support', 'finance'].includes(newSector.trim())) return;
+    setError('');
+    try {
+      await api.patch(`/users/${user.id}/sector`, { sector: newSector.trim() });
+      fetchUsers();
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao atualizar setor.'));
+    }
+  };
+
   const canToggleStatus = currentUser?.role === 'admin' || currentUser?.role === 'supervisor';
   const handleToggleStatus = async (user: User) => {
     if (!canToggleStatus && user.id !== currentUser?.id) return;
@@ -83,6 +96,12 @@ export default function Team() {
     seller: 'Vendedor',
     support: 'Suporte',
     other: 'Outro'
+  };
+
+  const sectorLabels: Record<string, string> = {
+    sales: 'Vendas',
+    support: 'Suporte',
+    finance: 'Financeiro'
   };
 
   return (
@@ -141,17 +160,33 @@ export default function Team() {
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
             />
-            <select
-              value={formData.role}
-              onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
-            >
-              <option value="seller">Vendedor</option>
-              <option value="support">Suporte</option>
-              <option value="other">Outro</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="admin">Administrador</option>
-            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={formData.role}
+                onChange={(e) => {
+                  const role = e.target.value;
+                  const defaultSector = role === 'seller' ? 'sales' : role === 'support' ? 'support' : role === 'other' ? 'finance' : formData.sector;
+                  setFormData({ ...formData, role, sector: defaultSector });
+                }}
+                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+              >
+                <option value="seller">Vendedor</option>
+                <option value="support">Suporte</option>
+                <option value="other">Outro</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="admin">Administrador</option>
+              </select>
+
+              <select
+                value={formData.sector}
+                onChange={(e) => setFormData({ ...formData, sector: e.target.value })}
+                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+              >
+                <option value="sales">Setor: Vendas</option>
+                <option value="support">Setor: Suporte</option>
+                <option value="finance">Setor: Financeiro</option>
+              </select>
+            </div>
             <button
               onClick={handleCreate}
               className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700"
@@ -171,6 +206,7 @@ export default function Team() {
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">WhatsApp</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">E-mail</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Função</th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Setor</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Status</th>
               <th className="text-right px-4 py-3 text-sm font-medium text-gray-400">Ações</th>
             </tr>
@@ -192,6 +228,11 @@ export default function Team() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
+                  <span className="px-2 py-1 bg-gray-700 text-gray-300 rounded text-xs">
+                    {sectorLabels[user.sector || (user.role === 'seller' ? 'sales' : (user.role === 'support' ? 'support' : 'finance'))] || 'Vendas'}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
                   <button
                     onClick={() => handleToggleStatus(user)}
                     title={canToggleStatus ? 'Clique para alternar online/offline' : undefined}
@@ -202,6 +243,11 @@ export default function Team() {
                   </button>
                 </td>
                 <td className="px-4 py-3 text-right space-x-3">
+                  {canEditSector(user) && (
+                    <button onClick={() => handleSector(user)} className="text-amber-400 hover:text-amber-300 text-sm">
+                      Setor
+                    </button>
+                  )}
                   {canEditPhone(user) && (
                     <button onClick={() => handlePhone(user)} className="text-emerald-400 hover:text-emerald-300 text-sm">
                       WhatsApp

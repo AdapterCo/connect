@@ -12,6 +12,7 @@ router.post('/:id/revoke-sessions', authenticateToken, checkCompanyActive, requi
 router.patch('/:id/email', authenticateToken, checkCompanyActive, audit('user', 'update_email'), userController.updateEmail);
 router.patch('/:id/phone', authenticateToken, checkCompanyActive, audit('user', 'update_phone'), userController.updatePhone);
 router.patch('/:id/status', authenticateToken, checkCompanyActive, audit('user', 'update_status'), userController.updateAttendantStatus);
+router.patch('/:id/sector', authenticateToken, checkCompanyActive, requireMinimumRole('supervisor'), audit('user', 'update_sector'), userController.updateSector);
 router.delete('/:id', authenticateToken, checkCompanyActive, requireMinimumRole('supervisor'), audit('user', 'delete'), userController.deleteUser);
 
 module.exports = router;

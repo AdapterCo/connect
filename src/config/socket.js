@@ -80,6 +80,17 @@ function initSocket(server) {
       clearTimeout(timer);
       schedulePresenceTimeout(socket.user);
     });
+
+    try {
+      const { prisma } = require('./database');
+      prisma.instance.findMany({
+        where: { company_id: socket.user.company_id, user_id: socket.user.id },
+        select: { id: true }
+      }).then(instances => {
+        socket.userInstanceIds = instances.map(i => i.id);
+      }).catch(() => {});
+    } catch {}
+
     socket.join(companyId);
 
     socket.on('join_company', (requestedCompanyId) => {
@@ -96,22 +107,32 @@ function getIO() {
   return io;
 }
 
+function canSocketSeeChat(socket, chat) {
+  if (['admin', 'supervisor', 'superadmin'].includes(socket.user.role)) return true;
+  const userSector = socket.user.sector || (socket.user.role === 'seller' ? 'sales' : (socket.user.role === 'support' ? 'support' : null));
+  if (userSector && chat.sector && chat.sector !== userSector) return false;
+  if (socket.userInstanceIds && socket.userInstanceIds.length > 0) {
+    return socket.userInstanceIds.includes(chat.instance_id);
+  }
+  return chat.assigned_to === socket.user.id;
+}
+
 function emitToCompany(companyId, event, data) {
   if (!io || !companyId) return;
   for (const socket of io.sockets.sockets.values()) {
     if (socket.user.company_id !== companyId) continue;
     const manager = ['admin', 'supervisor'].includes(socket.user.role);
     if (['logs_updated', 'whatsapp_status_updated'].includes(event) && !manager) continue;
-    if (event === 'chat_updated' && !manager && data.assigned_to !== socket.user.id) {
+    if (event === 'chat_updated' && !manager && !canSocketSeeChat(socket, data)) {
       socket.emit('chat_removed', { id: data.id });
       continue;
     }
     let payload = data;
-    if (event === 'chats_updated' && !manager) payload = data.filter(chat => chat.assigned_to === socket.user.id);
+    if (event === 'chats_updated' && !manager) payload = data.filter(chat => canSocketSeeChat(socket, chat));
     if (event === 'users_updated') {
       // E-mail (dado pessoal) so para gestores e para o proprio usuario.
-      payload = data.map(({ id, name, username, role, status, company_id, email }) => ({
-        id, name, username, role, status, company_id,
+      payload = data.map(({ id, name, username, role, status, company_id, email, sector }) => ({
+        id, name, username, role, status, company_id, sector,
         ...(manager || id === socket.user.id ? { email: email || null } : {})
       }));
     }

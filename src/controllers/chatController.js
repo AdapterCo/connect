@@ -8,8 +8,7 @@ const { emitToCompany } = require('../config/socket');
 
 async function getChats(req, res) {
   try {
-    // Vendedores recebem apenas as conversas atribuidas a eles (filtro no banco).
-    const chats = await Chat.findForList(req.user.company_id, ['admin', 'supervisor'].includes(req.user.role) ? null : req.user.id);
+    const chats = await Chat.findForList(req.user.company_id, ['admin', 'supervisor'].includes(req.user.role) ? null : req.user);
     res.json(chats);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao listar conversas.' });
@@ -43,10 +42,22 @@ async function createChat(req, res) {
 
     const jid = `${cleanPhone}@s.whatsapp.net`;
 
-    const defaultInst = await prisma.instance.findFirst({
-      where: { company_id: req.user.company_id }
-    });
-    const instanceId = defaultInst ? defaultInst.id : 'inst_default';
+    const isManager = ['admin', 'supervisor'].includes(req.user.role);
+    const userInstance = !isManager
+      ? await prisma.instance.findFirst({ where: { company_id: req.user.company_id, user_id: req.user.id } })
+      : null;
+
+    let instanceId;
+    if (userInstance) {
+      instanceId = userInstance.id;
+    } else {
+      const defaultInst = await prisma.instance.findFirst({
+        where: { company_id: req.user.company_id }
+      });
+      instanceId = defaultInst ? defaultInst.id : 'inst_default';
+    }
+
+    const userSector = req.user.sector || (req.user.role === 'seller' ? 'sales' : (req.user.role === 'support' ? 'support' : null));
 
     const existing = await Chat.findByRemoteJid(jid, req.user.company_id, instanceId);
     if (existing) {
@@ -64,7 +75,7 @@ async function createChat(req, res) {
       is_favorite: false,
       is_archived: false,
       is_blocked: false,
-      sector: null,
+      sector: userSector || null,
       company_id: req.user.company_id,
       instance_id: instanceId
     };

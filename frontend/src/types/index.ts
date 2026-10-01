@@ -3,6 +3,7 @@ export interface User {
   name: string;
   username: string;
   role: 'superadmin' | 'admin' | 'supervisor' | 'seller' | 'support' | 'other';
+  sector?: 'sales' | 'support' | 'finance' | null;
   status: 'online' | 'offline';
   company_id: string;
   email?: string | null;

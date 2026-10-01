@@ -42,7 +42,7 @@ async function authenticateToken(req, res, next) {
     // session_version (revogacao de sessoes e troca de senha).
     const user = await prisma.user.findFirst({
       where: { id: decoded.id, company_id: decoded.company_id },
-      select: { id: true, name: true, username: true, company_id: true, role: true, session_version: true }
+      select: { id: true, name: true, username: true, company_id: true, role: true, sector: true, session_version: true }
     });
 
     if (!user || Number(user.session_version || 0) !== Number(decoded.session_version || 0)) {

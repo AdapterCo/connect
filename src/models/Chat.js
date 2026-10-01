@@ -27,13 +27,42 @@ async function findAll(companyId) {
 
 const LIST_MESSAGES = 50;
 
-async function findForList(companyId, assignedTo) {
+async function findForList(companyId, filterTarget) {
   const where = { company_id: companyId };
-  if (assignedTo) {
-    where.OR = [
-      { assigned_to: assignedTo },
-      { instance: { user_id: assignedTo } }
-    ];
+  if (filterTarget) {
+    const userId = typeof filterTarget === 'string' ? filterTarget : filterTarget.id;
+    let user = typeof filterTarget === 'object' && filterTarget.role ? filterTarget : null;
+    if (!user && userId) {
+      user = await prisma.user.findFirst({
+        where: { id: userId, company_id: companyId }
+      });
+    }
+
+    if (user && !['admin', 'supervisor', 'superadmin'].includes(user.role)) {
+      const userInstances = await prisma.instance.findMany({
+        where: { company_id: companyId, user_id: user.id },
+        select: { id: true }
+      });
+
+      const userSector = user.sector || (user.role === 'seller' ? 'sales' : (user.role === 'support' ? 'support' : null));
+
+      if (userInstances.length > 0) {
+        where.instance_id = { in: userInstances.map(i => i.id) };
+      } else {
+        where.assigned_to = user.id;
+      }
+
+      if (userSector) {
+        where.AND = [
+          {
+            OR: [
+              { sector: userSector },
+              { sector: null }
+            ]
+          }
+        ];
+      }
+    }
   }
   const chats = await prisma.chat.findMany({
     where,

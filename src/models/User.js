@@ -38,6 +38,7 @@ async function create(user, companyId) {
       phone: user.phone || null,
       password: user.password,
       role: user.role,
+      sector: user.sector || null,
       status: user.status || 'offline',
       company_id: companyId
     }
