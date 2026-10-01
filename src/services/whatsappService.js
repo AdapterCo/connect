@@ -523,6 +523,65 @@ async function startWhatsAppInstance(instanceId, companyId) {
             const senderIdentifier =
               senderJid.split('@')[0];
 
+            const rawSenderDigits = senderIdentifier.replace(/\D/g, '');
+            const rawAltDigits = senderJidAlt ? senderJidAlt.split('@')[0].replace(/\D/g, '') : null;
+            const candidatePhones = new Set();
+            if (rawSenderDigits) {
+              candidatePhones.add(rawSenderDigits);
+              if (rawSenderDigits.startsWith('55')) candidatePhones.add(rawSenderDigits.slice(2));
+              else candidatePhones.add('55' + rawSenderDigits);
+            }
+            if (rawAltDigits) {
+              candidatePhones.add(rawAltDigits);
+              if (rawAltDigits.startsWith('55')) candidatePhones.add(rawAltDigits.slice(2));
+              else candidatePhones.add('55' + rawAltDigits);
+            }
+            const phonesList = Array.from(candidatePhones);
+
+            const isCompanyInstance = await prisma.instance.findFirst({
+              where: {
+                company_id: companyId,
+                phone: { in: phonesList }
+              }
+            });
+            if (isCompanyInstance) {
+              continue;
+            }
+
+            const teamMember = await prisma.user.findFirst({
+              where: {
+                company_id: companyId,
+                phone: { in: phonesList }
+              }
+            });
+
+            if (teamMember) {
+              const pendingChat = await prisma.chat.findFirst({
+                where: {
+                  company_id: companyId,
+                  assigned_to: teamMember.id,
+                  status: 'interesse em compra',
+                  sales_reply_due_at: { not: null }
+                },
+                orderBy: { updated_at: 'desc' }
+              });
+
+              if (pendingChat) {
+                await Chat.update(pendingChat.id, { sales_reply_due_at: null }, companyId);
+                await Chat.addMessage(pendingChat.id, {
+                  sender: 'system',
+                  text: `Vendedor ${teamMember.name} confirmou atendimento via WhatsApp. Rodízio pausado.`,
+                  timestamp: new Date()
+                });
+                const updated = await Chat.findById(pendingChat.id, companyId);
+                emitToCompany(companyId, 'chat_updated', updated);
+
+                await sendMessage(instanceId, senderJid, {
+                  text: `✅ Atendimento confirmado para o cliente *${pendingChat.client_name}* (+${pendingChat.client_phone})!\nO rodízio foi pausado para este lead.`
+                });
+              }
+              continue;
+            }
 
             const name =
               msg.pushName ||
@@ -1089,6 +1148,23 @@ async function handleIncomingWhatsAppMessage(
     if (chat && cleanPhone && chat.client_phone !== cleanPhone && (chat.remote_jid?.endsWith('@lid') || chat.client_phone.length > 13)) {
       chat = await Chat.update(chat.id, { client_phone: cleanPhone }, companyId);
     }
+
+    const candidatePhones = new Set();
+    const rawClean = (cleanPhone || '').replace(/\D/g, '');
+    if (rawClean) {
+      candidatePhones.add(rawClean);
+      if (rawClean.startsWith('55')) candidatePhones.add(rawClean.slice(2));
+      else candidatePhones.add('55' + rawClean);
+    }
+    const isInternal = await prisma.user.findFirst({
+      where: { company_id: companyId, phone: { in: Array.from(candidatePhones) } }
+    });
+    if (isInternal) return null;
+
+    const isInstance = await prisma.instance.findFirst({
+      where: { company_id: companyId, phone: { in: Array.from(candidatePhones) } }
+    });
+    if (isInstance) return null;
 
     if (!chat) {
       const newChatData = {

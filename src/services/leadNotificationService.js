@@ -27,19 +27,32 @@ async function notifySeller(chat, sellerId) {
     if (chat.id) {
       const fresh = await prisma.chat.findUnique({
         where: { id: chat.id },
-        select: { client_phone: true }
+        select: { client_phone: true, company_id: true }
       });
       if (fresh && fresh.client_phone) {
         clientDigits = normalizeDigits(fresh.client_phone) || fresh.client_phone;
       }
     }
+
+    if (clientDigits) {
+      const internalCandidates = [clientDigits, clientDigits.replace(/^55/, '')];
+      if (!clientDigits.startsWith('55')) internalCandidates.push('55' + clientDigits);
+      const isInternal = await prisma.user.findFirst({
+        where: {
+          company_id: chat.company_id,
+          phone: { in: internalCandidates }
+        }
+      });
+      if (isInternal) return;
+    }
+
     const clientName = chat.client_name || 'Cliente';
 
     const text = `🚨 *Novo Lead Atribuído!*\n\n` +
       `👤 *Cliente:* ${clientName}\n` +
       `📱 *Telefone:* +${clientDigits}\n\n` +
-      `👉 *Iniciar conversa no WhatsApp:* https://wa.me/${clientDigits}\n\n` +
-      `Ou responda diretamente pelo painel do Connect.`;
+      `👉 *Iniciar conversa:* https://wa.me/${clientDigits}\n\n` +
+      `*Para confirmar e pausar o rodízio:* responda "OK" aqui ou atenda pelo painel do Connect.`;
 
     const whatsappService = require('./whatsappService');
     const connections = whatsappService.getActiveConnections();
