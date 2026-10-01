@@ -907,26 +907,25 @@ async function startWhatsAppInstance(instanceId, companyId) {
               }
               const clientPhonesList = Array.from(candidateClientPhones);
 
-              const otherChat = await prisma.chat.findFirst({
+              const otherChats = await prisma.chat.findMany({
                 where: {
                   company_id: companyId,
                   client_phone: { in: clientPhonesList },
-                  sales_reply_due_at: { not: null }
-                },
-                orderBy: { updated_at: 'desc' }
+                  instance_id: { not: instanceId }
+                }
               });
 
-              if (otherChat) {
-                await Chat.update(otherChat.id, {
+              for (const other of otherChats) {
+                await Chat.update(other.id, {
                   sales_reply_due_at: null,
-                  status: 'interesse em compra'
+                  status: 'finalizada'
                 }, companyId);
-                await Chat.addMessage(otherChat.id, {
+                await Chat.addMessage(other.id, {
                   sender: 'system',
-                  text: `Vendedor iniciou atendimento via WhatsApp (${inst?.name || 'conexão do vendedor'}). Rodízio pausado.`,
+                  text: `Atendimento transferido para a conexão ${inst?.name || 'do vendedor'}. Rodízio pausado.`,
                   timestamp: new Date()
                 });
-                const updatedOther = await Chat.findById(otherChat.id, companyId);
+                const updatedOther = await Chat.findById(other.id, companyId);
                 emitToCompany(companyId, 'chat_updated', updatedOther);
               }
 
@@ -936,13 +935,13 @@ async function startWhatsAppInstance(instanceId, companyId) {
                 const newChatData = {
                   id: Chat.createChatId(companyId, instanceId, senderJid),
                   remote_jid: senderJid,
-                  client_name: otherChat?.client_name || `Cliente (+${cleanPhone.slice(-4)})`,
+                  client_name: otherChats[0]?.client_name || `Cliente (+${cleanPhone.slice(-4)})`,
                   client_phone: cleanPhone,
                   status: 'interesse em compra',
-                  assigned_to: inst?.user_id || otherChat?.assigned_to || null,
-                  sector: otherChat?.sector || 'sales',
+                  assigned_to: inst?.user_id || otherChats[0]?.assigned_to || null,
+                  sector: otherChats[0]?.sector || 'sales',
                   ai_active: false,
-                  tags: otherChat?.tags || [],
+                  tags: otherChats[0]?.tags || [],
                   is_favorite: false,
                   is_archived: false,
                   is_blocked: false,
@@ -1274,25 +1273,25 @@ async function handleIncomingWhatsAppMessage(
     });
 
     if (!chat) {
-      const otherChat = await prisma.chat.findFirst({
+      const otherChats = await prisma.chat.findMany({
         where: {
           company_id: companyId,
-          client_phone: { in: Array.from(candidatePhones) }
-        },
-        orderBy: { updated_at: 'desc' }
+          client_phone: { in: Array.from(candidatePhones) },
+          instance_id: { not: instanceId }
+        }
       });
 
-      if (otherChat && otherChat.sales_reply_due_at) {
-        await Chat.update(otherChat.id, {
+      for (const other of otherChats) {
+        await Chat.update(other.id, {
           sales_reply_due_at: null,
-          status: 'interesse em compra'
+          status: 'finalizada'
         }, companyId);
-        await Chat.addMessage(otherChat.id, {
+        await Chat.addMessage(other.id, {
           sender: 'system',
           text: `Cliente respondeu via WhatsApp na conexão ${inst?.name || 'do vendedor'}. Rodízio pausado.`,
           timestamp: new Date()
         });
-        const updatedOther = await Chat.findById(otherChat.id, companyId);
+        const updatedOther = await Chat.findById(other.id, companyId);
         emitToCompany(companyId, 'chat_updated', updatedOther);
       }
 
@@ -1304,7 +1303,7 @@ async function handleIncomingWhatsAppMessage(
 
         client_name:
           clientName ||
-          otherChat?.client_name ||
+          otherChats[0]?.client_name ||
           `Cliente (+${cleanPhone.slice(-4)})`,
 
         client_phone:
@@ -1314,13 +1313,13 @@ async function handleIncomingWhatsAppMessage(
           inst?.user_id ? 'interesse em compra' : 'iniciada',
 
         assigned_to:
-          inst?.user_id || otherChat?.assigned_to || null,
+          inst?.user_id || otherChats[0]?.assigned_to || null,
 
         ai_active:
           !inst?.user_id,
 
         tags:
-          otherChat?.tags || [],
+          otherChats[0]?.tags || [],
 
         is_favorite:
           false,

@@ -105,6 +105,20 @@ async function recordMessage(chatId, data, now = new Date()) {
     const result = await tx.message.create({ data });
     if (chat.status !== INTEREST || chat.is_archived || chat.is_blocked) return result;
     if (data.sender === 'client' && !chat.sales_reply_due_at) {
+      if (tx.instance) {
+        const sellerChat = await tx.chat.findFirst({
+          where: {
+            company_id: chat.company_id,
+            client_phone: chat.client_phone,
+            id: { not: chatId },
+            status: { in: ['iniciada', INTEREST] },
+            instance: { user_id: { not: null } }
+          }
+        });
+        if (sellerChat) {
+          return result;
+        }
+      }
       const assignment = !chat.assigned_to ? await assignNext(tx, chat, now, true) : null;
       await tx.chat.update({ where: { id: chatId }, data: {
         ...(assignment || {}), sales_reply_due_at: new Date(now.getTime() + REPLY_WINDOW_MS)
