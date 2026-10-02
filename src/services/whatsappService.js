@@ -929,7 +929,7 @@ async function startInstance(instanceId, companyId) {
                   remote_jid: senderJid,
                   client_name: otherChats[0]?.client_name || `Cliente (+${cleanPhone.slice(-4)})`,
                   client_phone: cleanPhone,
-                  status: 'interesse em compra',
+                  status: 'em atendimento',
                   assigned_to: inst?.user_id || otherChats[0]?.assigned_to || null,
                   sector: otherChats[0]?.sector || 'sales',
                   ai_active: false,
@@ -948,7 +948,7 @@ async function startInstance(instanceId, companyId) {
                   ai_active: false
                 };
                 if (chat.status === 'iniciada') {
-                  updates.status = 'interesse em compra';
+                  updates.status = 'em atendimento';
                 }
                 if (!chat.assigned_to && inst?.user_id) {
                   updates.assigned_to = inst.user_id;
@@ -1291,7 +1291,7 @@ async function handleIncomingWhatsAppMessage(
           cleanPhone,
 
         status:
-          inst?.user_id ? 'interesse em compra' : 'iniciada',
+          inst?.user_id ? 'em atendimento' : 'iniciada',
 
         assigned_to:
           inst?.user_id || otherChats[0]?.assigned_to || null,

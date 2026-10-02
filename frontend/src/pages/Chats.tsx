@@ -262,6 +262,8 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: Chat; isSelected: b
   const statusColors: Record<string, string> = {
     'iniciada': 'bg-blue-500',
     'interesse em compra': 'bg-amber-500',
+    'encaminhados': 'bg-violet-500',
+    'em atendimento': 'bg-cyan-500',
     'finalizada': 'bg-green-500',
   };
 
@@ -405,6 +407,8 @@ function ChatHeader({ chat, users, currentUser, onUpdateStatus, onAssign, onTogg
         >
           <option value="iniciada">Iniciada</option>
           <option value="interesse em compra">Interesse em Compra</option>
+          <option value="encaminhados">Encaminhados</option>
+          <option value="em atendimento">Em atendimento</option>
           <option value="finalizada">Finalizada</option>
         </select>
 

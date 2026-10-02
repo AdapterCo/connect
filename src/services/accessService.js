@@ -7,7 +7,8 @@ async function chatScope(user) {
   const where = { company_id: user.company_id };
   if (isManager(user)) return where;
   const ids = await require('../models/Instance').getUserInstanceIds(user, user.company_id);
-  where.OR = [{ assigned_to: user.id }, ...(ids.length ? [{ instance_id: { in: ids } }] : [])];
+  if (user.role === 'seller') where.instance_id = { in: ids };
+  else where.OR = [{ assigned_to: user.id }, ...(ids.length ? [{ instance_id: { in: ids } }] : [])];
   const sector = sectorOf(user);
   if (sector) where.AND = [{ OR: [{ sector }, { sector: null }] }];
   return where;
@@ -16,7 +17,8 @@ function canSeeChat(user, chat, instanceIds = []) {
   if (chat.company_id && chat.company_id !== user.company_id) return false;
   if (isManager(user)) return true;
   const sector = sectorOf(user);
-  return (!sector || !chat.sector || sector === chat.sector) && (chat.assigned_to === user.id || instanceIds.includes(chat.instance_id));
+  return (!sector || !chat.sector || sector === chat.sector) &&
+    (user.role === 'seller' ? instanceIds.includes(chat.instance_id) : chat.assigned_to === user.id || instanceIds.includes(chat.instance_id));
 }
 async function assertCompanyActive(companyId) {
   const company = await prisma.company.findUnique({ where: { id: companyId } });

@@ -1,6 +1,9 @@
 const { prisma } = require('../config/database');
 
 const INTEREST = 'interesse em compra';
+const FORWARDED = 'encaminhados';
+const ATTENDING = 'em atendimento';
+const HUMAN_STAGES = [INTEREST, FORWARDED, ATTENDING];
 const REPLY_WINDOW_MS = 60 * 1000;
 const messages = { messages: { orderBy: { timestamp: 'asc' } } };
 const isManager = user => ['admin', 'supervisor'].includes(user.role);
@@ -52,21 +55,28 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
   const result = await withCompanyLock(companyId, async tx => {
     const chat = await tx.chat.findFirst({ where: { id, company_id: companyId } });
     if (!chat) return null;
-    if (actor && !isManager(actor) && chat.assigned_to !== actor.id) {
+    if (actor && !isManager(actor)) {
       const { getUserInstanceIds } = require('../models/Instance');
       const userInstances = await getUserInstanceIds(actor, companyId);
-      if (!userInstances.includes(chat.instance_id)) {
+      if (!require('./accessService').canSeeChat(actor, chat, userInstances)) {
         throw Object.assign(new Error('Conversa transferida para outro vendedor.'), { status: 403 });
       }
     }
     if (options.source === 'handoff' && (!chat.ai_active || chat.status === 'finalizada' || chat.is_archived || chat.is_blocked)) return null;
     if (options.source === 'handoff' && !require('./accessService').companyActive(await tx.company.findUnique({ where: { id: companyId } }), now)) return null;
-    if (options.source === 'handoff' && chat.status === INTEREST && (chat.assigned_to || chat.sales_reply_due_at)) {
+    if (options.source === 'handoff' && HUMAN_STAGES.includes(chat.status) && (chat.assigned_to || chat.sales_reply_due_at)) {
       return tx.chat.findFirst({ where: { id, company_id: companyId }, include: messages });
     }
     const updates = { ...data };
     if (options.source === 'ai' && (chat.status !== 'iniciada' || updates.status !== INTEREST)) delete updates.status;
     const status = updates.status ?? chat.status;
+    if (updates.status === ATTENDING || updates.status === FORWARDED) {
+      const instance = await tx.instance.findFirst({ where: { id: chat.instance_id, company_id: companyId } });
+      if (!instance || (status === ATTENDING) !== !!instance.user_id) {
+        throw Object.assign(new Error('Em atendimento pertence a conexao do vendedor; Encaminhados pertence a conexao da loja.'), { status: 400 });
+      }
+      if (!chat.assigned_to && !updates.assigned_to) throw Object.assign(new Error('Defina o vendedor responsavel antes de assumir ou encaminhar.'), { status: 400 });
+    }
     const inactive = (data.is_archived ?? chat.is_archived) || (data.is_blocked ?? chat.is_blocked);
     const entering = status === INTEREST && chat.status !== INTEREST;
     const reassigned = data.assigned_to !== undefined && data.assigned_to !== chat.assigned_to;
@@ -123,12 +133,15 @@ async function captureRelated(tx, chat, sellerId, now, reason) {
   if (!phones.length) return [];
   const related = await tx.chat.findMany({ where: {
     company_id: chat.company_id, client_phone: { in: phones }, assigned_to: sellerId,
-    status: INTEREST, is_archived: false, is_blocked: false
-  } });
+    status: { in: HUMAN_STAGES }, is_archived: false, is_blocked: false
+  }, include: { instance: { select: { user_id: true } }, messages: { orderBy: { timestamp: 'asc' } } } });
   const changed = [];
   for (const lead of related) {
-    if (!lead.sales_reply_due_at || (lead.claimed_at && new Date(lead.claimed_at) > now)) continue;
-    changed.push(await tx.chat.update({ where: { id: lead.id }, data: { sales_reply_due_at: null }, include: messages }));
+    if (lead.claimed_at && new Date(lead.claimed_at) > now) continue;
+    const status = lead.instance?.user_id ? ATTENDING : FORWARDED;
+    if (!lead.sales_reply_due_at && lead.status === status) continue;
+    changed.push(await tx.chat.update({ where: { id: lead.id }, data: { sales_reply_due_at: null, status }, include: messages }));
+    await tx.kanbanCard.deleteMany({ where: { chat_id: lead.id, company_id: lead.company_id } });
     await tx.message.create({ data: { chat_id: lead.id, sender: 'system', text: reason } });
   }
   return changed;
@@ -143,7 +156,7 @@ async function confirmAttendance(companyId, sellerId, chatId = null, now = new D
     const seller = await tx.user.findFirst({ where: { id: sellerId, company_id: companyId, role: 'seller' } });
     if (!seller) return { status: 'unavailable', chats: [] };
     const leads = await tx.chat.findMany({ where: {
-      company_id: companyId, assigned_to: sellerId, status: INTEREST,
+      company_id: companyId, assigned_to: sellerId, status: { in: HUMAN_STAGES },
       is_archived: false, is_blocked: false, ...(chatId ? { id: chatId } : { sales_reply_due_at: { not: null } })
     }, orderBy: { updated_at: 'desc' } });
     if (!leads.length) return { status: 'unavailable', chats: [] };
@@ -165,15 +178,15 @@ async function recordMessage(chatId, data, now = new Date()) {
     const chat = await tx.chat.findFirst({ where: { id: chatId, company_id: existing.company_id } });
     if (!chat) throw new Error('Conversa não encontrada.');
     const result = await tx.message.create({ data });
-    if (chat.status !== INTEREST || chat.is_archived || chat.is_blocked) return result;
-    if (data.sender === 'client' && !chat.sales_reply_due_at && !chat.assigned_to) {
+    if (!HUMAN_STAGES.includes(chat.status) || chat.is_archived || chat.is_blocked) return result;
+    if (chat.status === INTEREST && data.sender === 'client' && !chat.sales_reply_due_at && !chat.assigned_to) {
       if (tx.instance) {
         const sellerChat = await tx.chat.findFirst({
           where: {
             company_id: chat.company_id,
             client_phone: chat.client_phone,
             id: { not: chatId },
-            status: { in: ['iniciada', INTEREST] },
+            status: { in: ['iniciada', INTEREST, ATTENDING] },
             instance: { user_id: { not: null } }
           }
         });

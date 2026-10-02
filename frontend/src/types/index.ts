@@ -59,7 +59,7 @@ export interface Chat {
   remote_jid?: string | null;
   client_name: string;
   client_phone: string;
-  status: 'iniciada' | 'interesse em compra' | 'finalizada';
+  status: 'iniciada' | 'interesse em compra' | 'encaminhados' | 'em atendimento' | 'finalizada';
   assigned_to: string | null;
   ai_active: boolean;
   tags: string[];

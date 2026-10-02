@@ -116,3 +116,13 @@ Confirmacoes de vendedores sao processadas antes de ignorar contatos que tambem 
 O Kanban apresenta um unico card para mesmo telefone, empresa, etapa e responsavel, preferindo a conversa de origem da loja. Historicos das conexoes continuam separados e preservados em Chats/Funil. Captura apresenta rodizio pausado, sem contagem regressiva. Nao houve exclusao/mesclagem de conversas nem migracao nova.
 
 Validacao: 126 testes passaram, sintaxe valida em 86 arquivos, lint e build frontend passaram. Casos incluem resposta no chip, confirmacao sem ID, clientes ambiguos, vendedor anterior, worker e agrupamento do Kanban. Sem teste com WhatsApp real ou acesso a producao.
+
+## Isolamento da loja e cinco colunas fixas — 02/10/2026
+
+Esta revisao substitui a visualizacao agrupada da revisao anterior. Vendedor acessa somente chats de suas conexoes explicitamente vinculadas; atribuicao de lead nao permite ler mensagens da loja. A regra cobre listagem, leitura/historico/fluxo, mutacoes, Kanban, arquivos e WebSocket. Sem conexao propria, o vendedor nao ganha acesso a loja nem pode criar conversa nela. Gestores continuam limitados a empresa e podem ver loja e vendedores. A notificacao preserva aparelho, variacao e pagamento, mas deixa de enviar trechos literais do historico da loja.
+
+Colunas fixas: Iniciada / Novo, Interesse em Compra, Encaminhados, Em atendimento e Finalizada / Pago. Interesse e espera com prazo ativo de rodizio. Quando a captura e confirmada, o registro da loja passa a Encaminhados e o da conexao pessoal passa a Em atendimento, ambos sem prazo. Conversas criadas diretamente no chip do vendedor iniciam Em atendimento. A IA da loja permanece ativa e pedidos repetidos nao reabrem o rodizio. Mudancas manuais validam que Em atendimento pertence a conexao pessoal e Encaminhados a conexao da loja; colunas fixas nao podem ser renomeadas/excluidas.
+
+Registros legados ja capturados (Interesse, responsavel definido, prazo nulo) sao apresentados nas novas colunas de acordo com sua conexao, sem mesclar historicos ou exigir migracao SQL. Novas capturas persistem as novas etapas. O vendedor nao ve cards da loja; recebe a notificacao de lead e depois acompanha a conversa na sua conexao.
+
+Validacao: 132 testes passaram, incluindo isolamento HTTP, WebSocket, arquivos, novas etapas e preservacao da IA; sintaxe valida em 86 arquivos, lint e build frontend passaram. Sem homologacao no WhatsApp real ou acesso ao banco de producao.

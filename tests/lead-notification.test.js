@@ -11,12 +11,12 @@ require.cache[require.resolve('../src/services/whatsappService')] = { exports: {
   sendMessage: async (instance, jid, content) => { sent = { instance, jid, ...content }; }
 } };
 const { notifySeller } = require('../src/services/leadNotificationService');
-test('seller notification includes confirmed device, variant, payment and conversation context', async () => {
+test('seller notification includes confirmed device, variant, payment without exposing store conversation messages', async () => {
   await notifySeller({ id: 'chat1', company_id: 'c1', instance_id: 'store', client_name: 'Daniel' }, 'seller');
   assert.equal(sent.instance, 'store');
   assert.equal(sent.jid, '5511988888888@s.whatsapp.net');
   assert.match(sent.text, /Aparelho: iPhone 13/);
   assert.match(sent.text, /Variacao: 128 GB/);
   assert.match(sent.text, /Pagamento: Pix/);
-  assert.match(sent.text, /quero comprar o iPhone 13/);
+  assert.doesNotMatch(sent.text, /quero comprar o iPhone 13/);
 });

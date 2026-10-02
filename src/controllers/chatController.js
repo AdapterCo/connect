@@ -48,6 +48,7 @@ async function createChat(req, res) {
       ? await prisma.instance.findFirst({ where: { company_id: req.user.company_id, user_id: req.user.id } })
       : null;
 
+    if (req.user.role === 'seller' && !userInstance) return res.status(403).json({ error: 'Vendedor precisa de uma conexao propria para criar conversas.' });
     let instanceId;
     if (userInstance) {
       instanceId = userInstance.id;
@@ -136,7 +137,7 @@ async function deleteChat(req, res) {
 async function updateStatus(req, res) {
   try {
     const { status } = req.body;
-    if (!['iniciada', 'interesse em compra', 'finalizada'].includes(status)) {
+    if (!['iniciada', 'interesse em compra', 'encaminhados', 'em atendimento', 'finalizada'].includes(status)) {
       return res.status(400).json({ error: 'Status inválido.' });
     }
 

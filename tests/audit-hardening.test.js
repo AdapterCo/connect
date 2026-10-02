@@ -18,12 +18,14 @@ test('instance cannot be linked to a user of another tenant', async () => {
   db.user.push({ id: 'u2', company_id: 'c2' });
   await assert.rejects(updateUser('i1', 'u2', 'c1'), /empresa/);
 });
-test('assignment and owned instance are both valid, sector and tenant still apply', async () => {
+test('seller access requires an owned connection even when the store lead is assigned', async () => {
   const user = { id: 'u1', company_id: 'c1', role: 'seller' };
   db.instance.push({ id: 'i1', company_id: 'c1', user_id: 'u1' });
   const scope = await chatScope(user);
-  assert.deepEqual(scope.OR, [{ assigned_to: 'u1' }, { instance_id: { in: ['i1'] } }]);
-  assert.equal(canSeeChat(user, { company_id: 'c1', assigned_to: 'u1', instance_id: 'store', sector: 'sales' }, ['i1']), true);
+  assert.deepEqual(scope.instance_id, { in: ['i1'] });
+  assert.equal(scope.OR, undefined);
+  assert.equal(canSeeChat(user, { company_id: 'c1', instance_id: 'i1', sector: 'sales' }, ['i1']), true);
+  assert.equal(canSeeChat(user, { company_id: 'c1', assigned_to: 'u1', instance_id: 'store', sector: 'sales' }, ['i1']), false);
   assert.equal(canSeeChat(user, { company_id: 'c2', assigned_to: 'u1', sector: 'sales' }, ['i1']), false);
   assert.equal(canSeeChat(user, { company_id: 'c1', assigned_to: 'u1', sector: 'support' }, ['i1']), false);
 });

@@ -41,6 +41,10 @@ const prisma = {
     findMany: async ({ where }) => copy(db.users.filter(row => matches(row, where))),
     findFirst: async ({ where }) => copy(db.users.find(row => matches(row, where)))
   },
+  instance: {
+    findMany: async ({ where }) => copy(db.instances.filter(row => matches(row, where))),
+    findFirst: async ({ where }) => copy(db.instances.find(row => matches(row, where)))
+  },
   chat: {
     findUnique: async ({ where }) => copy(db.chats.find(row => matches(row, where))),
     findFirst: async ({ where, include }) => {
@@ -48,7 +52,7 @@ const prisma = {
       if (row && include?.messages) row.messages = copy(db.messages.filter(message => message.chat_id === row.id));
       return row;
     },
-    findMany: async ({ where }) => copy(db.chats.filter(row => matches(row, where))),
+    findMany: async ({ where, include }) => copy(db.chats.filter(row => matches(row, where)).map(row => ({ ...row, ...(include?.instance ? { instance: db.instances.find(instance => instance.id === row.instance_id) || null } : {}) }))),
     update: async ({ where, data }) => {
       const row = db.chats.find(row => matches(row, where));
       Object.assign(row, data);
@@ -106,7 +110,8 @@ test.beforeEach(() => {
       { id: 'a2', name: 'Supervisor', role: 'supervisor', status: 'online', company_id: 'c1' },
       { id: 'x1', name: 'Other company', role: 'seller', status: 'online', company_id: 'c2' }
     ],
-    chats: [{ id: 'chat1', company_id: 'c1', client_phone: '5521985080634', status: 'iniciada', assigned_to: 's1', claimed_at: null, sales_reply_due_at: null, is_archived: false, is_blocked: false }],
+    instances: [{ id: 'seller-chip', company_id: 'c1', user_id: 's1' }, { id: 'store', company_id: 'c1', user_id: null }],
+    chats: [{ instance_id: 'seller-chip', id: 'chat1', company_id: 'c1', client_phone: '5521985080634', status: 'iniciada', assigned_to: 's1', claimed_at: null, sales_reply_due_at: null, is_archived: false, is_blocked: false }],
     columns: [], cards: [], messages: [], audit: [], metrics: []
   };
 });
@@ -128,9 +133,9 @@ test('fixed columns cannot be renamed or deleted by any profile', async () => {
 test('personal columns are isolated by owner, including against admins and other tenants', async () => {
   const column = await request('s1', '/columns', 'POST', { name: 'Visit scheduled', user_id: 's2', company_id: 'c2' });
   assert.equal(column.status, 201);
-  assert.equal((await request('s1')).body.columns.length, 4);
+  assert.equal((await request('s1')).body.columns.length, 6);
   for (const other of ['s2', 'a1', 'x1']) {
-    assert.equal((await request(other)).body.columns.length, 3);
+    assert.equal((await request(other)).body.columns.length, 5);
     assert.equal((await request(other, '/columns/' + column.body.id, 'DELETE')).status, 404);
     assert.equal((await request(other, '/columns/' + column.body.id, 'PATCH', { name: 'Changed' })).status, 404);
   }
@@ -301,6 +306,8 @@ test('reply from seller chip pauses the original store lead without changing its
   assert.equal(db.chats[0].sales_reply_due_at, null);
   assert.equal(db.chats[0].ai_active, true);
   assert.equal(db.chats[0].instance_id, 'store');
+  assert.equal(db.chats[0].status, 'encaminhados');
+  assert.equal(db.chats.find(chat => chat.id === 'seller-chat').status, 'em atendimento');
   assert.equal(await rotation.rotateExpiredChat('chat1', 'c1', after(60000)), null);
 });
 
@@ -356,4 +363,31 @@ test('worker repairs a legacy store deadline when a seller reply was recorded on
     assert.equal(result.assigned_to, 's1');
     assert.equal(db.audit.filter(row => row.action === 'sales_rotation_timeout').length, 0);
   } finally { delete prisma.message.findFirst; }
+});
+
+test('new fixed stages exist and sellers cannot move a store card even when assigned', async () => {
+  assert.ok(router.FIXED_COLUMNS.some(column => column.id === 'encaminhados'));
+  assert.ok(router.FIXED_COLUMNS.some(column => column.id === 'em atendimento'));
+  Object.assign(db.chats[0], { instance_id: 'store', assigned_to: 's1' });
+  assert.equal((await request('s1', '/cards/chat1', 'PUT', { column_id: 'em atendimento' })).status, 403);
+});
+
+test('manual fixed-stage moves respect the originating connection and cancel the timeout', async () => {
+  await enter();
+  assert.equal((await request('a1', '/cards/chat1', 'PUT', { column_id: 'encaminhados' })).status, 400);
+  assert.equal((await request('a1', '/cards/chat1', 'PUT', { column_id: 'em atendimento' })).status, 200);
+  assert.equal(db.chats[0].sales_reply_due_at, null);
+  Object.assign(db.chats[0], { instance_id: 'store', status: 'interesse em compra', sales_reply_due_at: after(60000) });
+  assert.equal((await request('a1', '/cards/chat1', 'PUT', { column_id: 'em atendimento' })).status, 400);
+  assert.equal((await request('a1', '/cards/chat1', 'PUT', { column_id: 'encaminhados' })).status, 200);
+  assert.equal(db.chats[0].sales_reply_due_at, null);
+});
+
+test('repeat handoff keeps forwarded store chats out of the rotation and preserves AI', async () => {
+  Object.assign(db.chats[0], { instance_id: 'store', status: 'encaminhados', assigned_to: 's1', ai_active: true, sales_reply_due_at: null });
+  const result = await rotation.handoffToHuman('chat1', 'c1', now);
+  assert.equal(result.status, 'encaminhados');
+  assert.equal(result.ai_active, true);
+  assert.equal(result.sales_reply_due_at, null);
+  assert.equal(db.audit.length, 0);
 });

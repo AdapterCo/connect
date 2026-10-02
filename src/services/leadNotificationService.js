@@ -49,7 +49,7 @@ async function notifySeller(chat, sellerId) {
 
     const clientName = chat.client_name || 'Cliente';
     const { previousQualification, sellerBrief } = require('./leadQualificationService');
-    const brief = sellerBrief(previousQualification(chat));
+    const brief = sellerBrief(previousQualification(chat), false);
 
     const text = `🚨 *Novo Lead Atribuído!*\n\n` +
       `👤 *Cliente:* ${clientName}\n` +

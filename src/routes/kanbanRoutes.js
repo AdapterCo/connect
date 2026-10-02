@@ -8,6 +8,8 @@ const { withCompanyLock } = require('../services/salesRotationService');
 const FIXED_COLUMNS = Object.freeze([
   { id: 'iniciada', name: 'Iniciada / Novo', fixed: true },
   { id: 'interesse em compra', name: 'Interesse em Compra', fixed: true },
+  { id: 'encaminhados', name: 'Encaminhados', fixed: true },
+  { id: 'em atendimento', name: 'Em atendimento', fixed: true },
   { id: 'finalizada', name: 'Finalizada / Pago', fixed: true }
 ]);
 const isFixed = id => FIXED_COLUMNS.some(column => column.id === id);

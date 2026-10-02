@@ -102,3 +102,11 @@ test('a concrete model on its own is recognized and asks only for missing paymen
   assert.equal(result.qualification.product, 'iPhone 13 Pro Max');
   assert.match(result.message, /Como prefere pagar/);
 });
+
+test('forwarded and attendance stages answer general questions without restarting qualification', () => {
+  for (const status of ['encaminhados', 'em atendimento']) {
+    const result = qualify({ status, messages: [] }, 'qual o horario da loja?', { message: 'Abrimos as 9h.', intent: 'question' }, catalog);
+    assert.equal(result.handoff_requested, false);
+    assert.equal(result.message, 'Abrimos as 9h.');
+  }
+});

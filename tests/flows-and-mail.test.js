@@ -222,9 +222,25 @@ test('phone and status updates respect roles and normalize numbers', async () =>
 
 test('conversation shows the answers captured by the flow', async () => {
   seed();
-  db.chat.push({ id: 'chat9', company_id: 'c1', assigned_to: 's1' });
+  db.instance.push({ id: 'seller-chip', company_id: 'c1', user_id: 's1' });
+  db.chat.push({ id: 'chat9', company_id: 'c1', assigned_to: 's1', instance_id: 'seller-chip' });
   db.flowSession.push({ id: 's9', chat_id: 'chat9', company_id: 'c1', flow_name: 'Captação', status: 'finished', variables: { nome: 'Ana' } });
   const res = await call('s1', '/api/chats/chat9/flow');
   assert.equal(res.status, 200);
   assert.deepEqual(res.body.variables, { nome: 'Ana' });
+});
+
+test('seller cannot read or mutate assigned store conversations through HTTP', async () => {
+  seed();
+  db.instance.push({ id: 'store', company_id: 'c1', user_id: null }, { id: 'seller-chip', company_id: 'c1', user_id: 's1' });
+  db.chat.push({ id: 'store-chat', company_id: 'c1', instance_id: 'store', assigned_to: 's1', sector: 'sales', messages: [] });
+  db.chat.push({ id: 'seller-chat', company_id: 'c1', instance_id: 'seller-chip', assigned_to: 's1', sector: 'sales', messages: [] });
+  for (const suffix of ['', '/messages', '/flow']) assert.equal((await call('s1', '/api/chats/store-chat' + suffix)).status, 404);
+  for (const [suffix, body] of [['/message', { text: 'Oi' }], ['/status', { status: 'finalizada' }], ['/ai-toggle', {}]]) {
+    assert.equal((await call('s1', '/api/chats/store-chat' + suffix, 'POST', body)).status, 404);
+  }
+  const list = await call('s1', '/api/chats');
+  assert.equal(list.status, 200);
+  assert.deepEqual(list.body.map(chat => chat.id), ['seller-chat']);
+  assert.equal((await call('a1', '/api/chats/store-chat')).status, 200);
 });

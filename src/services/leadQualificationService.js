@@ -29,6 +29,7 @@ function previousQualification(chat) {
 
 function qualify(chat, currentMessage, response, categories) {
   const prior = previousQualification(chat);
+  const alreadyRouted = ['interesse em compra', 'encaminhados', 'em atendimento'].includes(chat.status);
   const clientTexts = (chat.messages || []).filter(m => m.sender === 'client' && !m.is_note).slice(-20).map(m => m.text || '');
   if (clientTexts.at(-1) !== currentMessage) clientTexts.push(currentMessage);
   const evidence = fold(clientTexts.join('\n'));
@@ -69,12 +70,12 @@ function qualify(chat, currentMessage, response, categories) {
   if (cancelled) qualification.payment = null;
   qualification.purchase_confirmed = !cancelled && (purchaseIntent || prior.purchase_confirmed === true);
   const ready = !!qualification.product && !!qualification.payment;
-  const completesQualification = chat.status !== 'interesse em compra' && !!(statedProduct || payment || variant);
-  const qualifying = qualification.purchase_confirmed && !ready && !explicitHuman && !browsing && chat.status !== 'interesse em compra';
+  const completesQualification = !alreadyRouted && !!(statedProduct || payment || variant);
+  const qualifying = qualification.purchase_confirmed && !ready && !explicitHuman && !browsing && !alreadyRouted;
   qualification.missing_field = !qualification.product ? 'product' : !qualification.payment ? 'payment' : null;
   qualification.questions_asked = prior.missing_field === qualification.missing_field && Number.isInteger(prior.questions_asked) ? prior.questions_asked : 0;
   const stopRepeating = qualifying && qualification.questions_asked >= 1;
-  const handoff = explicitHuman || stopRepeating || (purchaseIntent && !cancelled && chat.status === 'interesse em compra') || (qualification.purchase_confirmed && ready && !browsing && (purchaseIntent || completesQualification));
+  const handoff = explicitHuman || stopRepeating || (purchaseIntent && !cancelled && alreadyRouted) || (qualification.purchase_confirmed && ready && !browsing && (purchaseIntent || completesQualification));
   let message = response.message;
   if (qualifying && !handoff) {
     qualification.questions_asked += 1;
@@ -91,12 +92,12 @@ function qualify(chat, currentMessage, response, categories) {
   return { ...response, message, status: handoff ? 'interesse em compra' : 'iniciada', disable_ai: explicitHuman, handoff_requested: handoff, qualification };
 }
 
-function sellerBrief(qualification = {}) {
+function sellerBrief(qualification = {}, includeContext = true) {
   return `Aparelho: ${qualification.product || 'nao escolhido'}\n` +
     (qualification.product && qualification.catalog_confirmed === false ? 'Modelo informado pelo cliente; disponibilidade e preco precisam ser confirmados.\n' : '') +
     `Variacao: ${qualification.variant || 'nao informada'}\n` +
     `Pagamento: ${qualification.payment || 'nao escolhido'}\n` +
-    `Contexto (mensagens do cliente):\n${qualification.context || 'Ainda nao informado.'}`;
+    (includeContext ? `Contexto (mensagens do cliente):\n${qualification.context || 'Ainda nao informado.'}` : 'Triagem de compra encaminhada; historico da loja restrito a gestores.');
 }
 
 async function saveQualification(chat, qualification) {

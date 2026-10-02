@@ -12,7 +12,7 @@ interface Column { id: string; name: string; fixed: boolean }
 interface Placement { chat_id: string; column_id: string }
 interface Board { columns: Column[]; placements: Placement[] }
 const colors: Record<string, string> = {
-  iniciada: 'bg-blue-500', 'interesse em compra': 'bg-amber-500', finalizada: 'bg-green-500'
+  iniciada: 'bg-blue-500', 'interesse em compra': 'bg-amber-500', encaminhados: 'bg-violet-500', 'em atendimento': 'bg-cyan-500', finalizada: 'bg-green-500'
 };
 const message = (error: unknown) => isAxiosError(error) ? error.response?.data?.error || 'Não foi possível atualizar o Kanban.' : 'Não foi possível atualizar o Kanban.';
 
@@ -91,7 +91,7 @@ export default function Kanban() {
     <DragDropContext onDragEnd={handleDragEnd}>
       <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto pb-3" aria-label="Colunas do Kanban">
         {board.columns.map(column => {
-          const cards = leads.filter(chat => (!tag || chat.tags.some(t => t.toLowerCase().includes(tag.toLowerCase()))) && (!sellerFilter || chat.assigned_to === sellerFilter) && (!from || new Date(chat.created_at) >= new Date(from + 'T00:00:00')) && (!to || new Date(chat.created_at) <= new Date(to + 'T23:59:59')) && (placements.get(chat.id) || ((chat.status as string) === 'em atendimento' ? 'interesse em compra' : chat.status)) === column.id);
+          const cards = leads.filter(chat => (!tag || chat.tags.some(t => t.toLowerCase().includes(tag.toLowerCase()))) && (!sellerFilter || chat.assigned_to === sellerFilter) && (!from || new Date(chat.created_at) >= new Date(from + 'T00:00:00')) && (!to || new Date(chat.created_at) <= new Date(to + 'T23:59:59')) && (placements.get(chat.id) || chat.status) === column.id);
           return <section key={column.id} className="w-80 min-w-72 shrink-0 flex flex-col min-h-0 bg-gray-800 border border-gray-700 rounded-xl p-3">
             <header className="shrink-0 pb-3 space-y-2">
               <div className="flex gap-2 items-center">
@@ -116,7 +116,7 @@ export default function Kanban() {
                       <p className="text-xs text-gray-400">+{chat.client_phone.slice(-4)}</p>
                       <p className="text-xs text-gray-300 mt-2">Responsável: {seller?.name || 'Aguardando vendedor online'}</p>
                       {seconds !== null && <p className="text-xs text-amber-300 mt-1">{seconds > 0 ? `Responder em ${seconds}s` : 'Verificando próximo vendedor…'}</p>}
-                      {seconds === null && chat.status === 'interesse em compra' && chat.assigned_to && <p className="text-xs text-emerald-300 mt-1">Atendimento assumido · rodízio pausado</p>}
+                      {seconds === null && ['encaminhados', 'em atendimento'].includes(chat.status) && chat.assigned_to && <p className="text-xs text-emerald-300 mt-1">Atendimento assumido · rodízio pausado</p>}
                       {!!chat.tags.length && <div className="flex flex-wrap gap-1 mt-2">{chat.tags.slice(0, 3).map(tag => <span key={tag} className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-xs">{tag}</span>)}</div>}
                     </article>}
                   </Draggable>;
