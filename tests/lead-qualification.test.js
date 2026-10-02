@@ -70,3 +70,35 @@ test('an already routed customer requesting purchase gets the waiting reminder',
   const result = qualify({ status: 'interesse em compra', messages: [] }, 'quero comprar agora', { ...response, intent: 'purchase' }, catalog);
   assert.equal(result.handoff_requested, true);
 });
+
+test('customer exact Pro Max and boleto selection routes without relying on AI extraction or catalog match', () => {
+  const result = qualify({ messages: [] }, 'iPhone 13 Pro Max no boleto', { message: 'Qual modelo?', intent: 'question' }, catalog);
+  assert.equal(result.handoff_requested, true);
+  assert.equal(result.qualification.product, 'iPhone 13 Pro Max');
+  assert.equal(result.qualification.payment, 'Boleto');
+  assert.equal(result.qualification.catalog_confirmed, false);
+  assert.match(sellerBrief(result.qualification), /disponibilidade e preco precisam ser confirmados/);
+});
+
+test('exact customer sequence preserves boleto while model is confirmed in another message', () => {
+  const first = qualify({ messages: [] }, 'iPhone 13 Pro Max no boleto', response, []);
+  const second = qualify({ messages: [saved(first.qualification)] }, 'quero o iPhone 13 Pro Max', { message: 'Qual modelo?', intent: 'question' }, []);
+  assert.equal(second.handoff_requested, true);
+  assert.equal(second.qualification.product, 'iPhone 13 Pro Max');
+  assert.equal(second.qualification.payment, 'Boleto');
+});
+
+test('qualification asks a missing field once then routes with available context', () => {
+  const first = qualify({ messages: [] }, 'quero comprar um iphone', { ...response, intent: 'purchase' }, catalog);
+  assert.equal(first.handoff_requested, false);
+  const repeated = qualify({ messages: [saved(first.qualification)] }, 'ja falei, quero comprar', { ...response, intent: 'purchase' }, catalog);
+  assert.equal(repeated.handoff_requested, true);
+  assert.equal(repeated.qualification.product, null);
+});
+
+test('a concrete model on its own is recognized and asks only for missing payment', () => {
+  const result = qualify({ messages: [] }, 'iPhone 13 Pro Max', { message: 'Qual modelo?', intent: 'question' }, []);
+  assert.equal(result.handoff_requested, false);
+  assert.equal(result.qualification.product, 'iPhone 13 Pro Max');
+  assert.match(result.message, /Como prefere pagar/);
+});
