@@ -45,7 +45,10 @@ async function findForList(companyId, filterTarget) {
       const userSector = user.sector || (user.role === 'seller' ? 'sales' : (user.role === 'support' ? 'support' : null));
 
       if (userInstanceIds.length > 0) {
-        where.instance_id = { in: userInstanceIds };
+        where.OR = [
+          { instance_id: { in: userInstanceIds } },
+          { assigned_to: user.id }
+        ];
       } else {
         where.assigned_to = user.id;
       }

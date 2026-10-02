@@ -31,7 +31,7 @@ async function assignNext(tx, chat, now, initial = false) {
   const sellers = await tx.user.findMany({
     where: { company_id: chat.company_id, role: 'seller', status: 'online' },
     orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
-    select: { id: true, name: true }
+    select: { id: true, name: true, phone: true }
   });
   // On timeout, advance from the current seller; new leads use the company cursor.
   const seller = nextSeller(sellers, initial ? company.sales_rotation_cursor : chat.assigned_to, initial ? null : chat.assigned_to);
@@ -42,7 +42,17 @@ async function assignNext(tx, chat, now, initial = false) {
     entity: 'chat', entity_id: chat.id,
     details: JSON.stringify({ previous_seller: chat.assigned_to, seller_id: seller.id, deadline_seconds: 60 })
   } });
-  return { assigned_to: seller.id, claimed_at: now };
+
+  let targetInstanceId = chat.instance_id;
+  try {
+    const { getUserInstanceIds } = require('../models/Instance');
+    const userInstances = await getUserInstanceIds(seller, chat.company_id);
+    if (userInstances && userInstances.length > 0) {
+      targetInstanceId = userInstances[0];
+    }
+  } catch {}
+
+  return { assigned_to: seller.id, claimed_at: now, ...(targetInstanceId ? { instance_id: targetInstanceId } : {}) };
 }
 
 async function updateChat(id, data, companyId, actor, now = new Date(), options = {}) {

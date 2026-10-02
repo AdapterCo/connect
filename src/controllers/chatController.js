@@ -185,8 +185,17 @@ async function sendMessage(req, res) {
     if (!isNote) {
       const whatsappService = require('../services/whatsappService');
       const activeConns = whatsappService.getActiveConnections();
-      const instanceId = chat.instance_id || 'inst_default';
+      let instanceId = chat.instance_id || 'inst_default';
       const companyId = req.user.company_id;
+
+      try {
+        const { getUserInstanceIds } = require('../models/Instance');
+        const userInstances = await getUserInstanceIds(req.user, companyId);
+        if (userInstances.length > 0 && !userInstances.includes(instanceId)) {
+          instanceId = userInstances[0];
+          await Chat.update(chat.id, { instance_id: instanceId }, companyId);
+        }
+      } catch {}
 
       // SEGURANÇA: findOpenConnection restrito ao company_id do chat autenticado.
       // Impede que um tenant use a conexão WhatsApp de outro tenant.

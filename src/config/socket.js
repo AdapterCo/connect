@@ -109,7 +109,7 @@ function canSocketSeeChat(socket, chat) {
   const userSector = socket.user.sector || (socket.user.role === 'seller' ? 'sales' : (socket.user.role === 'support' ? 'support' : null));
   if (userSector && chat.sector && chat.sector !== userSector) return false;
   if (socket.userInstanceIds && socket.userInstanceIds.length > 0) {
-    return socket.userInstanceIds.includes(chat.instance_id);
+    return socket.userInstanceIds.includes(chat.instance_id) || chat.assigned_to === socket.user.id;
   }
   return chat.assigned_to === socket.user.id;
 }

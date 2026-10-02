@@ -51,13 +51,13 @@ export default function Chats() {
     } else {
       if (userSector && chat.sector && chat.sector !== userSector) return false;
       if (userInstanceId) {
-        if (chat.instance_id !== userInstanceId) return false;
+        if (chat.instance_id !== userInstanceId && chat.assigned_to !== user?.id) return false;
       }
     }
 
     switch (filter) {
       case 'my':
-        if (userInstanceId) return chat.instance_id === userInstanceId;
+        if (userInstanceId) return chat.instance_id === userInstanceId || chat.assigned_to === user?.id;
         return chat.assigned_to === user?.id;
       case 'queue': return !chat.assigned_to;
       case 'favorite': return chat.is_favorite;
