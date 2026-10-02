@@ -859,7 +859,10 @@ async function startWhatsAppInstance(instanceId, companyId) {
 
                   mediaType,
 
-                  fileName
+                  fileName,
+                  savePath,
+                  mimetype: audioMsg?.mimetype || `${mediaType}/${ext}`,
+                  buffer
                 };
 
               } catch (dlErr) {
@@ -1366,24 +1369,32 @@ async function handleIncomingWhatsAppMessage(
     }
 
 
-    /*
-     * Texto exibido quando a mensagem contém apenas mídia.
-     */
-    const resolvedText =
-      messageText ||
-      (
-        mediaInfo
-          ? `[Mídia: ${
-              mediaInfo.mediaType === 'image'
-                ? 'Imagem'
-                : mediaInfo.mediaType === 'video'
-                  ? 'Vídeo'
-                  : mediaInfo.mediaType === 'audio'
-                    ? 'Áudio'
-                    : 'Documento'
-            }]`
-          : ''
-      );
+    let resolvedText = messageText;
+    if (!resolvedText && mediaInfo?.mediaType === 'audio') {
+      try {
+        const { transcribeAudio } = require('./audioTranscriptionService');
+        const transcription = await transcribeAudio(mediaInfo, companyId);
+        if (transcription) {
+          resolvedText = transcription;
+        }
+      } catch (transErr) {
+        console.warn(`[WhatsApp:${instanceId}] Erro ao transcrever áudio:`, transErr && transErr.message ? transErr.message : transErr);
+      }
+    }
+
+    if (!resolvedText) {
+      resolvedText = mediaInfo
+        ? `[Mídia: ${
+            mediaInfo.mediaType === 'image'
+              ? 'Imagem'
+              : mediaInfo.mediaType === 'video'
+                ? 'Vídeo'
+                : mediaInfo.mediaType === 'audio'
+                  ? 'Áudio'
+                  : 'Documento'
+          }]`
+        : '';
+    }
 
 
     /*
