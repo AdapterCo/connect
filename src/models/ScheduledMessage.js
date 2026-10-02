@@ -4,6 +4,10 @@ function mapToAppFormat(sm) {
   if (!sm) return null;
   return {
     id: sm.id,
+    status: sm.status,
+    attempts: sm.attempts,
+    last_error: sm.last_error,
+    sent_at: sm.sent_at,
     chatId: sm.chat_id,
     clientName: sm.client_name,
     text: sm.text,
@@ -48,14 +52,8 @@ async function create(message, companyId) {
 }
 
 async function remove(id, companyId) {
-  try {
-    await prisma.scheduledMessage.deleteMany({
-      where: { id, company_id: companyId }
-    });
-    return true;
-  } catch (err) {
-    return false;
-  }
+  const result = await prisma.scheduledMessage.deleteMany({ where: { id, company_id: companyId, status: { in: ['pending', 'failed'] } } });
+  return result.count > 0;
 }
 
 module.exports = {

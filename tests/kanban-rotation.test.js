@@ -10,12 +10,14 @@ const now = new Date('2026-09-28T12:00:00Z');
 let db, queue = Promise.resolve();
 function matches(row, where = {}) {
   return Object.entries(where).every(([key, value]) => {
+    if (key === 'OR') return value.some(part => matches(row, part));
+    if (key === 'AND') return value.every(part => matches(row, part));
     if (key === 'chat') return matches(db.chats.find(chat => chat.id === row.chat_id), value);
     if (value && typeof value === 'object' && !(value instanceof Date)) {
       if (value.lte !== undefined) return row[key] && new Date(row[key]) <= value.lte;
       return matches(row[key], value);
     }
-    return row?.[key] === value;
+    return (row?.[key] ?? null) === value;
   });
 }
 const copy = value => value ? structuredClone(value) : value;

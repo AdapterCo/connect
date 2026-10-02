@@ -54,7 +54,7 @@ async function login(req, res) {
     }
 
     const isExpired = company.expires_at && new Date(company.expires_at) < new Date();
-    if (!company.is_active || isExpired) {
+    if ((!company.is_active || isExpired) && user.role !== 'admin') {
       const pendingInvoice = company.invoices[0] || null;
       return res.status(402).json({
         error: pendingInvoice?.mp_payment_url
@@ -94,7 +94,8 @@ async function login(req, res) {
         username: user.username,
         role: user.role,
         status: 'online',
-        company_id: user.company_id
+        company_id: user.company_id,
+        requires_payment: !company.is_active || !!isExpired
       }
     });
   } catch (error) {
@@ -117,7 +118,9 @@ async function me(req, res) {
       select: { id: true, name: true, username: true, role: true, status: true, company_id: true }
     });
     if (!user) return res.status(401).json({ error: 'Sessao expirada. Faça login novamente.' });
-    res.json({ user });
+    const company = await prisma.company.findUnique({ where: { id: user.company_id } });
+    if (!require('../services/accessService').companyActive(company) && user.role !== 'admin') return res.status(403).json({ error: 'Empresa inativa.' });
+    res.json({ user: { ...user, requires_payment: !require('../services/accessService').companyActive(company) } });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao carregar sessao.' });
   }
@@ -130,9 +133,10 @@ async function logout(req, res) {
 
     await prisma.user.updateMany({
       where: { id: userId },
-      data: { status: 'offline' }
+      data: { status: 'offline', session_version: { increment: 1 } }
     });
 
+    require('../config/socket').disconnectUser(userId);
     const updatedUsers = await User.findAll(companyId);
     emitToCompany(companyId, 'users_updated', updatedUsers);
 
@@ -231,7 +235,7 @@ async function register(req, res) {
 
     res.json({ success: true, user: { id: newUser.id, name, username, email, phone: cleanPhone, role, sector: finalSector, company_id: newUser.company_id } });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao cadastrar atendente.' });
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Erro ao cadastrar atendente.' });
   }
 }
 
@@ -273,6 +277,7 @@ async function registerTenant(req, res) {
       where: {
         company_id: null,
         status: { in: ['pending', 'failed'] },
+        mp_payment_id: null,
         created_at: { lt: staleCheckoutDate }
       }
     });
@@ -283,16 +288,9 @@ async function registerTenant(req, res) {
     dueDate.setDate(dueDate.getDate() + 1);
 
     const existingCheckout = await prisma.signupCheckout.findFirst({
-      where: {
-        company_id: null,
-        status: { in: ['pending', 'failed'] },
-        OR: [
-          { company_slug: companySlug },
-          { admin_username: adminUsername }
-        ]
-      },
-      orderBy: { created_at: 'desc' }
+      where: { company_id: null, status: { in: ['pending', 'failed', 'processing'] }, OR: [{ company_slug: companySlug }, { admin_username: adminUsername }] }
     });
+    if (existingCheckout) return res.status(409).json({ error: 'Cadastro ja iniciado. Retome o checkout original ou aguarde sua expiracao.' });
 
     const checkoutData = {
       company_name: companyName,
@@ -310,14 +308,7 @@ async function registerTenant(req, res) {
       paid_at: null
     };
 
-    const checkout = existingCheckout
-      ? await prisma.signupCheckout.update({
-        where: { id: existingCheckout.id },
-        data: checkoutData
-      })
-      : await prisma.signupCheckout.create({
-        data: checkoutData
-      });
+    const checkout = await prisma.signupCheckout.create({ data: checkoutData });
 
     res.status(201).json({
       success: true,
@@ -333,7 +324,7 @@ async function registerTenant(req, res) {
       requires_payment: true
     });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao registrar empresa.' });
+    res.status(error.code === 'P2002' ? 409 : 500).json({ error: error.code === 'P2002' ? 'Cadastro ja iniciado.' : 'Erro ao registrar empresa.' });
   }
 }
 

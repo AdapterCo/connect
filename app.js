@@ -64,6 +64,11 @@ const corsOptions = {
   credentials: true
 };
 
+app.use((req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = data => json(JSON.parse(JSON.stringify(data, (_key, value) => value && typeof value === 'object' && value.constructor?.name === 'Decimal' ? Number(value) : value), (key, value) => ['price', 'amount', 'down_payment'].includes(key) && typeof value === 'string' && /^\d+(\.\d+)?$/.test(value) ? Number(value) : value));
+  next();
+});
 app.use(cors(corsOptions));
 app.use(requestId);
 app.use(noStoreApi);
@@ -81,7 +86,7 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-app.use('/uploads', authenticateToken, async (req, res, next) => {
+app.use('/uploads', authenticateToken, require('./src/middleware/planMiddleware').checkCompanyActive, async (req, res, next) => {
   try {
     if (!await require('./src/utils/media').canAccessMedia(req.user, '/uploads' + req.path)) return res.status(404).end();
     next();
@@ -162,7 +167,7 @@ const upload = multer({
   }
 });
 
-app.post('/api/upload', authenticateToken, uploadLimiter, upload.single('file'), (req, res) => {
+app.post('/api/upload', authenticateToken, require('./src/middleware/planMiddleware').checkCompanyActive, uploadLimiter, upload.single('file'), require('./src/utils/fileValidation').validateUpload, (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
   }

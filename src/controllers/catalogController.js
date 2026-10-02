@@ -36,6 +36,7 @@ async function createCategory(req, res) {
       return res.status(400).json({ error: 'Nome da categoria é obrigatório.' });
     }
 
+    if (printer_id && !await prisma.printer.findFirst({ where: { id: printer_id, company_id: companyId } })) return res.status(400).json({ error: 'Impressora indisponivel.' });
     const slug = slugify(name);
 
     const existing = await prisma.category.findUnique({
@@ -76,6 +77,7 @@ async function updateCategory(req, res) {
       return res.status(404).json({ error: 'Categoria não encontrada.' });
     }
 
+    if (printer_id && !await prisma.printer.findFirst({ where: { id: printer_id, company_id: companyId } })) return res.status(400).json({ error: 'Impressora indisponivel.' });
     const updateData = {};
     if (name !== undefined) {
       updateData.name = name.trim();

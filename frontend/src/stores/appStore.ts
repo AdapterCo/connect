@@ -58,7 +58,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSettings: (settings) => set({ settings }),
   selectChat: (chatId) => {
     set({ selectedChatId: chatId });
-    // A lista traz so as ultimas mensagens; ao abrir, carrega o historico completo.
+    // Detalhe e historico sao carregados em paginas de 50 mensagens.
     if (chatId) {
       api.get<Chat>(`/chats/${chatId}`).then((response) => get().updateChat(response.data)).catch(() => {});
     }
@@ -79,19 +79,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const user = useAuthStore.getState().user;
     if (!user) return state;
     if (!['admin', 'supervisor'].includes(user.role)) {
-      const userPhone = user.phone ? user.phone.replace(/\D/g, '') : '';
-      const userInstances = state.instances.filter(inst => {
-        if (inst.user_id && inst.user_id === user.id) return true;
-        if (userPhone && inst.phone) {
-          const instPhone = inst.phone.replace(/\D/g, '');
-          return instPhone === userPhone || instPhone.endsWith(userPhone) || userPhone.endsWith(instPhone);
-        }
-        return false;
-      });
-      const userInstIds = userInstances.map(i => i.id);
-      const canSee = userInstIds.length > 0
-        ? userInstIds.includes(updatedChat.instance_id)
-        : updatedChat.assigned_to === user.id;
+      const userInstIds = state.instances.filter(inst => inst.user_id === user.id).map(inst => inst.id);
+      const sector = user.sector || (user.role === 'seller' ? 'sales' : user.role === 'support' ? 'support' : 'finance');
+      const canSee = (!updatedChat.sector || updatedChat.sector === sector) && (userInstIds.includes(updatedChat.instance_id) || updatedChat.assigned_to === user.id);
       if (!canSee) {
         return {
           chats: state.chats.filter(c => c.id !== updatedChat.id),
@@ -101,7 +91,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const exists = state.chats.some((c) => c.id === updatedChat.id);
     if (exists) {
-      return { chats: state.chats.map((c) => c.id === updatedChat.id ? updatedChat : c) };
+      return { chats: state.chats.map((c) => {
+        if (c.id !== updatedChat.id) return c;
+        const messages = updatedChat.client_phone?.startsWith('anon-') ? updatedChat.messages : [...new Map([...c.messages, ...updatedChat.messages].map(message => [message.id, message])).values()].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime() || a.id.localeCompare(b.id));
+        return { ...c, ...updatedChat, messages };
+      }) };
     }
     return { chats: [...state.chats, updatedChat] };
   }),
@@ -147,7 +141,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   assignChat: async (chatId, userId) => {
-    const response = await api.post(`/chats/${chatId}/assign`, { userId });
+    const reason = window.prompt('Motivo da transferencia (opcional):', '');
+    if (reason === null) return;
+    const response = await api.post(`/chats/${chatId}/assign`, { userId, reason });
     if (response.data?.chat) get().updateChat(response.data.chat);
   },
 

@@ -29,7 +29,10 @@ async function findByUsername(username) {
 }
 
 async function create(user, companyId) {
-  return prisma.user.create({
+  return require('../services/salesRotationService').withCompanyLock(companyId, async tx => {
+  const company = await tx.company.findUnique({ where: { id: companyId } });
+  if (!company || await tx.user.count({ where: { company_id: companyId } }) >= company.max_users) throw Object.assign(new Error('Limite de usuarios atingido.'), { status: 403 });
+  return tx.user.create({
     data: {
       id: user.id,
       name: user.name,
@@ -42,6 +45,7 @@ async function create(user, companyId) {
       status: user.status || 'offline',
       company_id: companyId
     }
+  });
   });
 }
 

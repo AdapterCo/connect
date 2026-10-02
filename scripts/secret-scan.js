@@ -15,7 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const SCAN_DIRS = ['src', 'scripts', 'app.js', 'server.js'];
+const SCAN_DIRS = ['src', 'frontend/src', 'frontend/public', 'scripts', '.github', 'prisma', 'Dockerfile', 'docker-compose.yml', 'stack.yml', 'package.json', 'frontend/package.json', 'app.js', 'server.js'];
 const IGNORE_PATTERNS = [
   'node_modules', '.git', 'dist', 'build', 'auth_info_baileys',
   'secret-scan.js', 'security-smoke-test.js'
@@ -37,10 +37,11 @@ const SECRET_PATTERNS = [
   { re: /(?:JWT_SECRET|ENCRYPTION_KEY)\s*=\s*['"][^'"]{1,15}['"]/gi, desc: 'JWT/Encryption key muito curta', sev: 'HIGH' },
 ];
 
-const IGNORE_EXTENSIONS = ['.md', '.json', '.lock', '.log', '.png', '.jpg', '.svg', '.ico', '.woff', '.ttf'];
+const IGNORE_EXTENSIONS = [ '.lock', '.log', '.png', '.jpg', '.svg', '.ico', '.woff', '.ttf'];
 
 let findings = 0;
 let scanned = 0;
+const visited = new Set();
 
 function shouldIgnore(filePath) {
   const normalized = filePath.replace(/\\/g, '/');
@@ -48,7 +49,8 @@ function shouldIgnore(filePath) {
 }
 
 function scanFile(filePath) {
-  if (shouldIgnore(filePath)) return;
+  if (shouldIgnore(filePath) || visited.has(filePath)) return;
+  visited.add(filePath);
   const ext = path.extname(filePath);
   if (IGNORE_EXTENSIONS.includes(ext)) return;
 
@@ -57,20 +59,21 @@ function scanFile(filePath) {
     content = fs.readFileSync(filePath, 'utf8');
   } catch { return; }
 
+  if (content.includes('\0')) return;
   scanned++;
   const lines = content.split('\n');
 
-  for (const { re, desc, sev } of SECRET_PATTERNS) {
+  for (const { re, desc, sev } of SECRET_PATTERNS.filter(pattern => !filePath.replace(/\\/g, '/').includes('/tests/') && ext !== '.md' || pattern.sev === 'CRITICAL' || pattern.desc === 'Mercado Pago Token')) {
     re.lastIndex = 0;
     let match;
     while ((match = re.exec(content)) !== null) {
       const lineNum = content.substring(0, match.index).split('\n').length;
       const line = lines[lineNum - 1]?.trim() || '';
       // Ignorar linhas que sao claramente exemplos ou comentarios
-      if (line.startsWith('//') || line.startsWith('#') || line.startsWith('*') || line.includes('example') || line.includes('placeholder')) continue;
+      if (line.startsWith('//') || line.startsWith('#') || line.startsWith('*') || line.includes('example') || line.includes('placeholder') || /(?:APP|TEST)_USR-(?:seu-|sua-|your-)/i.test(line)) continue;
       console.log(`[${sev}] ${path.relative(process.cwd(), filePath)}:${lineNum}`);
       console.log(`       Padrao: ${desc}`);
-      console.log(`       Linha:  ${line.substring(0, 120)}\n`);
+      console.log('       Valor omitido.\n');
       findings++;
     }
   }
@@ -96,8 +99,29 @@ function scanPath(target) {
 }
 
 console.log('\n[Secret Scan] Verificando segredos hardcoded...\n');
+const tracked = require('child_process').spawnSync('git', ['ls-files', '-z'], { encoding: 'utf8' });
+if (tracked.status === 0) for (const file of tracked.stdout.split('\0').filter(Boolean)) scanFile(path.resolve(file));
 for (const d of SCAN_DIRS) {
   scanPath(path.resolve(d));
+}
+
+if (process.argv.includes('--history')) {
+  const result = require('child_process').spawnSync('git', ['log', '--all', '--format=HISTORY_COMMIT:%H', '--patch', '--no-ext-diff', '--unified=0'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  if (result.status !== 0 || result.error) {
+    console.error('Nao foi possivel concluir o scan do historico Git.'); process.exit(2);
+  }
+  let commit = '', file = '', historyFindings = 0;
+  for (const line of result.stdout.split('\n')) {
+    if (line.startsWith('HISTORY_COMMIT:')) { commit = line.slice(15); continue; }
+    if (line.startsWith('+++ b/')) { file = line.slice(6); continue; }
+    if (!line.startsWith('+') || line.startsWith('+++') || line.includes('placeholder') || line.includes('example') || /(?:APP|TEST)_USR-(?:seu-|sua-|your-)/i.test(line)) continue;
+    for (const pattern of SECRET_PATTERNS.filter(pattern => pattern.sev === 'CRITICAL' || pattern.desc === 'Mercado Pago Token')) {
+      pattern.re.lastIndex = 0;
+      if (pattern.re.test(line)) { console.error('[HISTORY] ' + commit + ' ' + file + ': ' + pattern.desc + ' (valor omitido)'); historyFindings++; }
+    }
+  }
+  findings += historyFindings;
+  console.log('Historico Git verificado; ocorrencias: ' + historyFindings);
 }
 
 console.log(`\nArquivos escaneados: ${scanned}`);

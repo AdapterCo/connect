@@ -16,8 +16,7 @@ export default function WhatsApp() {
   useEffect(() => {
     fetchInstances();
     fetchUsers();
-    const interval = setInterval(fetchInstances, 3000);
-    return () => clearInterval(interval);
+
   }, [fetchInstances, fetchUsers]);
 
   const handleCreate = async () => {

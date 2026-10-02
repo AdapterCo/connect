@@ -30,6 +30,7 @@ async function anonymizeClientData(req, res) {
       return res.status(404).json({ error: 'Cliente nao encontrado.' });
     }
 
+    require('../config/socket').emitToCompany(req.user.company_id, 'chat_updated', result);
     res.json({ success: true, chat: result });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao anonimizar dados do cliente.' });
@@ -48,6 +49,7 @@ async function deleteClientData(req, res) {
       return res.status(404).json({ error: 'Cliente nao encontrado.' });
     }
 
+    require('../config/socket').emitToCompany(req.user.company_id, 'chat_removed', { id: req.params.chatId });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao excluir dados do cliente.' });

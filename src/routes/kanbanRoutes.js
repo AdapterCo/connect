@@ -14,14 +14,7 @@ const isFixed = id => FIXED_COLUMNS.some(column => column.id === id);
 const { getUserInstanceIds } = require('../models/Instance');
 const manager = user => ['admin', 'supervisor'].includes(user.role);
 const owner = user => ({ user_id: user.id, company_id: user.company_id });
-const chatScope = async user => {
-  if (manager(user)) return { company_id: user.company_id };
-  const userInstances = await getUserInstanceIds(user, user.company_id);
-  if (userInstances.length > 0) {
-    return { company_id: user.company_id, instance_id: { in: userInstances } };
-  }
-  return { company_id: user.company_id, assigned_to: user.id };
-};
+const { chatScope } = require('../services/accessService');
 const normalize = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 function columnName(value) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > 60) throw Object.assign(new Error('Nome deve ter entre 1 e 60 caracteres.'), { status: 400 });

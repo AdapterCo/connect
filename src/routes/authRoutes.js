@@ -8,7 +8,7 @@ const audit = require('../middleware/auditMiddleware');
 const router = express.Router();
 
 router.post('/login', validateLogin, audit('auth', 'login'), authController.login);
-router.get('/me', authenticateToken, checkCompanyActive, authController.me);
+router.get('/me', authenticateToken, authController.me);
 router.post('/logout', authController.clearSession, authenticateToken, audit('auth', 'logout'), authController.logout);
 router.post('/status', authenticateToken, checkCompanyActive, authController.updateStatus);
 router.post('/register', authenticateToken, checkCompanyActive, checkUserLimit, validateRegister, audit('user', 'create'), authController.register);

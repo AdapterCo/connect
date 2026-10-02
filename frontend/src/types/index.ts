@@ -1,4 +1,5 @@
 export interface User {
+  requires_payment?: boolean;
   id: string;
   name: string;
   username: string;
@@ -51,6 +52,8 @@ export interface Message {
 }
 
 export interface Chat {
+  history_has_more?: boolean;
+  created_at: string;
   sales_reply_due_at?: string | null;
   id: string;
   remote_jid?: string | null;

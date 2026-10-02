@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const { prisma } = require('../config/database');
 const auditService = require('./auditService');
-const { removeChatMedia } = require('../utils/media');
+const cleanup = require('./mediaCleanupService');
 
 function anonymizedLabel(chatId) {
   return `anon-${crypto.createHash('sha256').update(chatId).digest('hex').slice(0, 12)}`;
@@ -52,9 +52,14 @@ async function anonymizeClientData({ companyId, chatId, actor }) {
   if (!chat) return null;
 
   const label = anonymizedLabel(chatId);
-  const removedMedia = await removeChatMedia(chatId);
+  const media = await prisma.message.findMany({ where: { chat_id: chatId, media_url: { not: null } }, select: { media_url: true } });
+  const schedules = await prisma.scheduledMessage.findMany({ where: { chat_id: chatId }, select: { media_url: true } });
+  const urls = [...media, ...schedules].map(m => m.media_url).filter(Boolean);
+  const removedMedia = urls.length;
 
   await prisma.$transaction(async (tx) => {
+    await cleanup.enqueue(tx, urls);
+    await tx.scheduledMessage.deleteMany({ where: { chat_id: chatId, company_id: companyId } });
     await tx.message.updateMany({
       where: { chat_id: chatId },
       data: {
@@ -85,6 +90,8 @@ async function anonymizeClientData({ companyId, chatId, actor }) {
       data: {
         client_name: 'Cliente anonimizado',
         client_phone: label,
+        remote_jid: null,
+        sales_reply_due_at: null,
         tags: [],
         assigned_to: null,
         ai_active: false,
@@ -103,7 +110,7 @@ async function anonymizeClientData({ companyId, chatId, actor }) {
     action: 'anonymize_client_data',
     entity: 'privacy',
     entity_id: chatId,
-    details: JSON.stringify({ chat_id: chatId, anonymized_label: label, removed_media: removedMedia })
+    details: JSON.stringify({ chat_id: chatId, anonymized_label: label, queued_media: removedMedia })
   });
 
   return getChatForPrivacy(companyId, chatId);
@@ -116,9 +123,16 @@ async function deleteClientData({ companyId, chatId, actor }) {
   });
   if (!chat) return false;
 
-  const removedMedia = await removeChatMedia(chatId);
-  await prisma.chat.deleteMany({
-    where: { id: chatId, company_id: companyId }
+  const [messages, schedules] = await Promise.all([
+    prisma.message.findMany({ where: { chat_id: chatId }, select: { media_url: true } }),
+    prisma.scheduledMessage.findMany({ where: { chat_id: chatId }, select: { media_url: true } })
+  ]);
+  const urls = [...messages, ...schedules].map(item => item.media_url).filter(Boolean);
+  const removedMedia = urls.length;
+  await prisma.$transaction(async tx => {
+    await cleanup.enqueue(tx, urls);
+    await tx.scheduledMessage.deleteMany({ where: { chat_id: chatId, company_id: companyId } });
+    await tx.chat.deleteMany({ where: { id: chatId, company_id: companyId } });
   });
 
   await auditService.log({
@@ -128,7 +142,7 @@ async function deleteClientData({ companyId, chatId, actor }) {
     action: 'delete_client_data',
     entity: 'privacy',
     entity_id: chatId,
-    details: JSON.stringify({ chat_id: chatId, client_name: chat.client_name, removed_media: removedMedia })
+    details: JSON.stringify({ chat_id: chatId, queued_media: removedMedia })
   });
 
   return true;

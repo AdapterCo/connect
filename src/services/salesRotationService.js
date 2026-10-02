@@ -43,16 +43,8 @@ async function assignNext(tx, chat, now, initial = false) {
     details: JSON.stringify({ previous_seller: chat.assigned_to, seller_id: seller.id, deadline_seconds: 60 })
   } });
 
-  let targetInstanceId = chat.instance_id;
-  try {
-    const { getUserInstanceIds } = require('../models/Instance');
-    const userInstances = await getUserInstanceIds(seller, chat.company_id);
-    if (userInstances && userInstances.length > 0) {
-      targetInstanceId = userInstances[0];
-    }
-  } catch {}
-
-  return { assigned_to: seller.id, claimed_at: now, ...(targetInstanceId ? { instance_id: targetInstanceId } : {}) };
+  // Preserva a conexao de origem enquanto muda o responsavel.
+  return { assigned_to: seller.id, claimed_at: now };
 }
 
 async function updateChat(id, data, companyId, actor, now = new Date(), options = {}) {

@@ -17,6 +17,7 @@ initSocket(server);
 // Os workers usam intervalos em memoria: rode apenas UMA instancia do app
 // (replicas: 1 no stack.yml), senao rodizio e cobrancas executam em duplicidade.
 const intervals = [];
+const activeJobs = new Set();
 
 function every(ms, name, task) {
   let running = false;
@@ -24,7 +25,9 @@ function every(ms, name, task) {
     if (running) return;
     running = true;
     try {
-      await task();
+      const job = Promise.resolve().then(task);
+      activeJobs.add(job);
+      try { await job; } finally { activeJobs.delete(job); }
     } catch (err) {
       console.error(`[${name}]`, err.code || err.name, err.message);
     } finally {
@@ -35,9 +38,12 @@ function every(ms, name, task) {
 
 function startWorkers() {
   every(5000, 'Sales rotation', () => salesRotationService.checkSalesRotation());
+  every(60000, 'Media cleanup', () => require('./src/services/mediaCleanupService').cleanPending());
   every(10000, 'Scheduler', () => schedulerService.checkScheduledMessages());
-  every(3600000, 'Billing', () => billingService.checkExpiredSubscriptions());
+  every(60000, 'Payment reconciliation', () => billingService.reconcilePayments());
+  every(60000, 'Billing', () => billingService.checkExpiredSubscriptions());
   every(24 * 60 * 60 * 1000, 'Retention', async () => {
+    await require('./src/services/mediaStorageService').cleanOrphans();
     const result = await retentionService.applyRetentionPolicy();
     if (!result.skipped) {
       await Log.add(`Politica de retencao executada: ${JSON.stringify(result)}.`);
@@ -50,24 +56,15 @@ function startWorkers() {
   presenceSweep.unref();
 }
 
-server.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-  initializeDatabase().then(async () => {
-    // Workers e WhatsApp so comecam com o banco pronto.
-    startWorkers();
-    await Log.add(`Adapter Connect iniciado na porta ${PORT}.`);
-    const instances = await prisma.instance.findMany({
-      where: { status: 'connected' }
-    });
-    instances.forEach(inst => {
-      whatsappService.startWhatsAppInstance(inst.id, inst.company_id).catch(err => {
-        console.error(`Failed to automatically start instance ${inst.id}:`, err);
-      });
-    });
-  }).catch(err => {
-    console.error('Failed to initialize database:', err);
-  });
-});
+async function boot() {
+  await initializeDatabase();
+  await Log.add('Adapter Connect iniciado.');
+  startWorkers();
+  server.listen(PORT, () => console.log('Server running on port ' + PORT));
+  const instances = await prisma.instance.findMany({ where: { status: 'connected' } });
+  for (const inst of instances) whatsappService.startWhatsAppInstance(inst.id, inst.company_id).catch(error => console.error('[WhatsApp boot]', error.code || error.name));
+}
+boot().catch(error => { console.error('[Boot failed]', error.code || error.name); process.exit(1); });
 
 let shuttingDown = false;
 
@@ -90,6 +87,7 @@ function gracefulShutdown(signal) {
 
   server.close(async () => {
     console.log('HTTP server closed.');
+    await Promise.allSettled([...activeJobs]);
     // Fecha os sockets do WhatsApp sem apagar as sessoes pareadas.
     const connections = Object.keys(whatsappService.getActiveConnections());
     await Promise.allSettled(connections.map(id => whatsappService.stopWhatsAppInstance(id, false)));

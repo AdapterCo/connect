@@ -9,7 +9,7 @@ async function canAccessMedia(user, url) {
   mediaPath(url);
   if (path.basename(url).startsWith(ownerPrefix(user) + '_')) return true;
   const { prisma } = require('../config/database');
-  const where = { company_id: user.company_id, ...(['admin', 'supervisor'].includes(user.role) ? {} : { assigned_to: user.id }), messages: { some: { media_url: url } } };
+  const where = { ...await require('../services/accessService').chatScope(user), messages: { some: { media_url: url } } };
   return !!(await prisma.chat.findFirst({ where, select: { id: true } }));
 }
 // Remove do disco as midias de uma conversa (LGPD: anonimizar/excluir o cliente

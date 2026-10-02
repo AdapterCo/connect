@@ -2,19 +2,25 @@
 // install() substitui @prisma/client, entao o src/config/database.js real
 // (inclusive o seed) roda contra este banco.
 const TABLES = ['plan', 'company', 'settings', 'user', 'instance', 'invoice', 'subscription',
-  'signupCheckout', 'log', 'auditLog', 'passwordResetToken', 'chat', 'message', 'flow', 'flowSession'];
+  'signupCheckout', 'paymentAttempt', 'mediaDeletion', 'scheduledMessage', 'order', 'log', 'auditLog', 'passwordResetToken', 'chat', 'message', 'flow', 'flowSession'];
 
 const db = {};
 const reset = () => Object.assign(db, Object.fromEntries(TABLES.map(name => [name, []])));
 reset();
 
 const matches = (row, where = {}) => Object.entries(where).every(([key, value]) => {
+  if (key === 'OR') return value.some(part => matches(row, part));
+  if (key === 'AND') return value.every(part => matches(row, part));
   if (value && typeof value === 'object' && !(value instanceof Date)) {
     if ('in' in value) return value.in.includes(row[key]);
-    if ('not' in value) return row[key] !== value.not;
+    if ('not' in value) return (row[key] ?? null) !== value.not;
+    if ('lt' in value) return row[key] != null && row[key] < value.lt;
+    if ('lte' in value) return row[key] != null && row[key] <= value.lte;
+    if ('gt' in value) return row[key] > value.gt;
+    if ('gte' in value) return row[key] >= value.gte;
     return true;
   }
-  return row[key] === value;
+  return (row[key] ?? null) === value;
 });
 
 const apply = (row, data) => {

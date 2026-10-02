@@ -43,12 +43,16 @@ async function applyRetentionPolicy() {
   }
 
   if (config.messageDays > 0) {
-    const anonymized = await prisma.message.updateMany({
+    const expired = await prisma.message.findMany({ where: { timestamp: { lt: cutoffDate(config.messageDays) }, text: { not: '[mensagem expirada por politica de retencao]' } }, take: 1000, select: { id: true, media_url: true } });
+    const anonymized = await prisma.$transaction(async tx => {
+    await require('./mediaCleanupService').enqueue(tx, expired.map(m => m.media_url));
+    return tx.message.updateMany({
       where: {
         timestamp: { lt: cutoffDate(config.messageDays) },
-        is_note: false
+        id: { in: expired.map(m => m.id) }
       },
       data: {
+        sender_id: null,
         text: '[mensagem expirada por politica de retencao]',
         media_url: null,
         media_type: null,
@@ -56,7 +60,9 @@ async function applyRetentionPolicy() {
         payment_url: null
       }
     });
+    });
     result.messagesAnonymized = anonymized.count;
+    await prisma.flowSession.updateMany({ where: { updated_at: { lt: cutoffDate(config.messageDays) } }, data: { variables: {}, current_node_id: null, status: 'expired' } });
   }
 
   return result;

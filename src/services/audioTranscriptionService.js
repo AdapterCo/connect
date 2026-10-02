@@ -16,7 +16,13 @@ function cleanMimeType(mimeType) {
   return 'audio/ogg';
 }
 
+const busy = new Set();
 async function transcribeAudio(mediaInfo, companyId) {
+  if (busy.has(companyId)) return null;
+  busy.add(companyId);
+  try { return await transcribeAudioImpl(mediaInfo, companyId); } finally { busy.delete(companyId); }
+}
+async function transcribeAudioImpl(mediaInfo, companyId) {
   if (!mediaInfo || mediaInfo.mediaType !== 'audio') return null;
 
   try {
@@ -60,13 +66,13 @@ async function transcribeAudio(mediaInfo, companyId) {
       }
     }
 
-    if (!buffer || buffer.length === 0) {
+    if (!buffer || buffer.length === 0 || buffer.length > 10 * 1024 * 1024) {
       return null;
     }
 
     const mimeType = cleanMimeType(mediaInfo.mimetype);
     const genAI = new GoogleGenerativeAI(geminiKey);
-    const modelsToTry = [preferredModel, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelsToTry = [preferredModel, 'gemini-2.5-flash'];
     const seen = new Set();
     const candidateModels = modelsToTry.filter(m => {
       if (seen.has(m)) return false;
@@ -77,7 +83,7 @@ async function transcribeAudio(mediaInfo, companyId) {
     for (const modelId of candidateModels) {
       try {
         const model = genAI.getGenerativeModel({ model: modelId });
-        const result = await model.generateContent([
+        const result = await require('../utils/timeout').withTimeout(model.generateContent([
           {
             inlineData: {
               mimeType,
@@ -87,22 +93,22 @@ async function transcribeAudio(mediaInfo, companyId) {
           {
             text: 'Transcreva este áudio em português de forma literal e precisa. Retorne SOMENTE o texto falado, sem aspas, sem introduções e sem comentários adicionais.'
           }
-        ]);
+        ], { timeout: 15000 }), 16000);
 
         const rawText = result?.response?.text?.();
         if (typeof rawText === 'string' && rawText.trim()) {
           const cleanText = rawText.trim().replace(/^["']|["']$/g, '');
           if (cleanText) {
-            await Log.add(`Áudio transcrito via Gemini (${modelId}): "${cleanText.slice(0, 100)}${cleanText.length > 100 ? '...' : ''}"`, companyId).catch(() => {});
+            await Log.add(`Audio transcrito via Gemini (${modelId}).`, companyId).catch(() => {});
             return cleanText;
           }
         }
       } catch (genErr) {
-        console.warn(`[GeminiAudio] Falha no modelo ${modelId}:`, genErr?.message || genErr);
+        console.warn(`[GeminiAudio] Falha no modelo ${modelId}:`, genErr?.code || genErr?.name);
       }
     }
   } catch (err) {
-    console.error('[GeminiAudio] Erro geral na transcrição de áudio:', err?.message || err);
+    console.error('[GeminiAudio] Erro geral na transcrição de áudio:', err?.code || err?.name);
   }
 
   return null;

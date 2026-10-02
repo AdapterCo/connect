@@ -194,6 +194,11 @@ async function updateCompany(req, res) {
       data: updateData
     });
 
+    require('../config/socket').disconnectCompany(company.id);
+    if (!require('../services/accessService').companyActive(updated)) {
+      const whatsapp = require('../services/whatsappService');
+      for (const [id, conn] of Object.entries(whatsapp.getActiveConnections())) if (conn.companyId === company.id) await whatsapp.stopWhatsAppInstance(id, false);
+    }
     res.json({ success: true, company: updated });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao atualizar empresa.' });
@@ -207,7 +212,15 @@ async function deleteCompany(req, res) {
       return res.status(404).json({ error: 'Empresa não encontrada.' });
     }
 
-    await prisma.company.delete({ where: { id: req.params.id } });
+    require('../config/socket').disconnectCompany(company.id);
+    const instances = await prisma.instance.findMany({ where: { company_id: company.id } });
+    const whatsapp = require('../services/whatsappService');
+    for (const instance of instances) await whatsapp.stopWhatsAppInstance(instance.id, true);
+    const [media, schedules] = await Promise.all([prisma.message.findMany({ where: { chat: { company_id: company.id } }, select: { media_url: true } }), prisma.scheduledMessage.findMany({ where: { company_id: company.id }, select: { media_url: true } })]);
+    await prisma.$transaction(async tx => {
+      await require('../services/mediaCleanupService').enqueue(tx, [...media, ...schedules].map(m => m.media_url));
+      await tx.company.delete({ where: { id: company.id } });
+    });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao excluir empresa.' });

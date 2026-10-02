@@ -1,128 +1,38 @@
-const Metrics = require('../models/Metrics');
-const Chat = require('../models/Chat');
-const User = require('../models/User');
-
+﻿const { prisma } = require('../config/database');
 async function getStatistics(companyId) {
-  const { responseTimes, attendanceTimes } = await Metrics.getMetrics(companyId);
-  const chats = await Chat.findAll(companyId);
-  const users = await User.findAll(companyId);
-
-  const tmrGeral = responseTimes.length > 0 
-    ? Math.round(responseTimes.reduce((acc, curr) => acc + curr.durationSeconds, 0) / responseTimes.length) 
-    : 0;
-  
-  const aiResponses = responseTimes.filter(r => r.isAi);
-  const tmrAi = aiResponses.length > 0
-    ? Math.round(aiResponses.reduce((acc, curr) => acc + curr.durationSeconds, 0) / aiResponses.length)
-    : 0;
-
-  const humanResponses = responseTimes.filter(r => !r.isAi);
-  const tmrHumano = humanResponses.length > 0
-    ? Math.round(humanResponses.reduce((acc, curr) => acc + curr.durationSeconds, 0) / humanResponses.length)
-    : 0;
-
-  const tmaGeral = attendanceTimes.length > 0
-    ? Math.round(attendanceTimes.reduce((acc, curr) => acc + curr.durationSeconds, 0) / attendanceTimes.length)
-    : 0;
-
-  const sectorCounts = {
-    sales: chats.filter(c => c.sector === 'sales').length,
-    support: chats.filter(c => c.sector === 'support').length,
-    finance: chats.filter(c => c.sector === 'finance').length,
-    none: chats.filter(c => !c.sector).length
+  if (!companyId) throw new Error('Empresa obrigatoria.');
+  const since = new Date(); since.setUTCHours(0, 0, 0, 0); since.setUTCDate(since.getUTCDate() - 6);
+  const [chats, metrics, messages, users, days] = await Promise.all([
+    prisma.chat.groupBy({ by: ['status', 'sector', 'assigned_to'], where: { company_id: companyId }, _count: { _all: true } }),
+    prisma.metric.groupBy({ by: ['type', 'is_ai', 'attendant_id'], where: { company_id: companyId }, _sum: { duration_seconds: true }, _count: { _all: true } }),
+    prisma.message.groupBy({ by: ['sender_id'], where: { chat: { company_id: companyId }, sender: 'attendant', is_note: false }, _count: { _all: true } }),
+    prisma.user.findMany({ where: { company_id: companyId }, select: { id: true, name: true, role: true, status: true } }),
+    prisma.$queryRaw`SELECT TO_CHAR(m.timestamp, 'YYYY-MM-DD') AS day, m.sender, COUNT(*)::integer AS count
+      FROM "Message" m JOIN "Chat" c ON c.id = m.chat_id
+      WHERE c.company_id = ${companyId} AND m.timestamp >= ${since} AND (m.sender = 'client' OR (m.sender = 'attendant' AND m.is_note = false))
+      GROUP BY day, m.sender`
+  ]);
+  const countChats = filter => chats.filter(filter).reduce((sum, row) => sum + row._count._all, 0);
+  const average = filter => {
+    const rows = metrics.filter(filter), count = rows.reduce((sum, row) => sum + row._count._all, 0);
+    return count ? Math.round(rows.reduce((sum, row) => sum + (row._sum.duration_seconds || 0), 0) / count) : 0;
   };
-
-  const statusCounts = {
-    iniciada: chats.filter(c => c.status === 'iniciada').length,
-    interesse: chats.filter(c => c.status === 'interesse em compra').length,
-    finalizada: chats.filter(c => c.status === 'finalizada').length
-  };
-
-  const attendantStats = users.map(u => {
-    const replies = responseTimes.filter(r => r.attendantId === u.id);
-    const individualTmr = replies.length > 0
-      ? Math.round(replies.reduce((acc, curr) => acc + curr.durationSeconds, 0) / replies.length)
-      : 0;
-
-    const attendances = attendanceTimes.filter(a => a.attendantId === u.id);
-    const individualTma = attendances.length > 0
-      ? Math.round(attendances.reduce((acc, curr) => acc + curr.durationSeconds, 0) / attendances.length)
-      : 0;
-
-    const activeChatsCount = chats.filter(c => c.assigned_to === u.id).length;
-
-    let totalMessagesSent = 0;
-    chats.forEach(c => {
-      c.messages.forEach(m => {
-        if (m.sender === 'attendant' && m.sender_id === u.id && !m.is_note) {
-          totalMessagesSent++;
-        }
-      });
-    });
-
-    return {
-      id: u.id,
-      name: u.name,
-      role: u.role,
-      status: u.status,
-      repliesCount: totalMessagesSent || replies.length,
-      tmr: individualTmr,
-      tma: individualTma,
-      activeChats: activeChatsCount
-    };
+  const status = { iniciada: countChats(row => row.status === 'iniciada'), interesse: countChats(row => row.status === 'interesse em compra'), finalizada: countChats(row => row.status === 'finalizada') };
+  const history = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(since); day.setUTCDate(day.getUTCDate() + index);
+    const fullDate = day.toISOString().slice(0, 10);
+    return { label: day.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }), fullDate,
+      clientMessages: Number(days.find(row => row.day === fullDate && row.sender === 'client')?.count || 0),
+      attendantMessages: Number(days.find(row => row.day === fullDate && row.sender === 'attendant')?.count || 0) };
   });
-
-  const last7Days = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateString = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    const fullDateString = d.toISOString().split('T')[0];
-    last7Days.push({
-      label: dateString,
-      fullDate: fullDateString,
-      clientMessages: 0,
-      attendantMessages: 0
-    });
-  }
-
-  chats.forEach(c => {
-    c.messages.forEach(m => {
-      if (m.timestamp) {
-        const timestampStr = typeof m.timestamp === 'string' ? m.timestamp : m.timestamp.toISOString();
-        const msgDate = timestampStr.split('T')[0];
-        const dayBucket = last7Days.find(d => d.fullDate === msgDate);
-        if (dayBucket) {
-          if (m.sender === 'client') {
-            dayBucket.clientMessages++;
-          } else if (m.sender === 'attendant' && !m.is_note) {
-            dayBucket.attendantMessages++;
-          }
-        }
-      }
-    });
-  });
-
   return {
-    kpis: {
-      tmrGeral,
-      tmrAi,
-      tmrHumano,
-      tmaGeral,
-      totalChats: chats.length,
-      finishedChats: statusCounts.finalizada
-    },
-    attendants: attendantStats,
-    sectors: sectorCounts,
-    status: statusCounts,
-    history: last7Days,
-    rawMetrics: {
-      responseTimes,
-      attendanceTimes
-    }
+    kpis: { tmrGeral: average(row => row.type === 'response_time'), tmrAi: average(row => row.type === 'response_time' && row.is_ai), tmrHumano: average(row => row.type === 'response_time' && !row.is_ai), tmaGeral: average(row => row.type === 'attendance_time'), totalChats: countChats(() => true), finishedChats: status.finalizada },
+    attendants: users.map(user => ({ ...user,
+      repliesCount: messages.find(row => row.sender_id === user.id)?._count._all || metrics.filter(row => row.type === 'response_time' && row.attendant_id === user.id).reduce((sum, row) => sum + row._count._all, 0),
+      tmr: average(row => row.type === 'response_time' && row.attendant_id === user.id),
+      tma: average(row => row.type === 'attendance_time' && row.attendant_id === user.id),
+      activeChats: countChats(row => row.assigned_to === user.id) })),
+    sectors: { sales: countChats(row => row.sector === 'sales'), support: countChats(row => row.sector === 'support'), finance: countChats(row => row.sector === 'finance'), none: countChats(row => !row.sector) }, status, history
   };
 }
-
-module.exports = {
-  getStatistics
-};
+module.exports = { getStatistics };

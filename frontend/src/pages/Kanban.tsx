@@ -18,6 +18,10 @@ const message = (error: unknown) => isAxiosError(error) ? error.response?.data?.
 export default function Kanban() {
   const { chats, users, fetchChats, fetchUsers, updateChat } = useAppStore();
   const [board, setBoard] = useState<Board>({ columns: [], placements: [] });
+  const [tag, setTag] = useState('');
+  const [sellerFilter, setSellerFilter] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -70,6 +74,12 @@ export default function Kanban() {
       <h1 className="text-2xl font-bold">Meu Kanban</h1>
       <p className="text-sm text-gray-400">As três etapas fixas são protegidas. Suas colunas extras organizam somente a sua visão.</p>
       <p className="text-sm text-amber-200">Em Interesse em Compra: rodízio entre vendedores online após 1 minuto sem resposta humana. Mover para uma coluna pessoal não pausa esse prazo.</p>
+      <div className="flex flex-wrap gap-2">
+        <input aria-label="Filtrar por etiqueta" placeholder="Etiqueta" value={tag} onChange={event => setTag(event.target.value)} className="bg-gray-700 p-2 rounded" />
+        <select aria-label="Filtrar por vendedor" value={sellerFilter} onChange={event => setSellerFilter(event.target.value)} className="bg-gray-700 p-2 rounded"><option value="">Todos vendedores</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select>
+        <input aria-label="Criado a partir de" type="date" value={from} onChange={event => setFrom(event.target.value)} className="bg-gray-700 p-2 rounded" />
+        <input aria-label="Criado ate" type="date" value={to} onChange={event => setTo(event.target.value)} className="bg-gray-700 p-2 rounded" />
+      </div>
       <form onSubmit={createColumn} className="flex flex-wrap gap-2">
         <input aria-label="Nome da nova coluna" className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white max-w-full" placeholder="Ex.: Visita agendada" value={name} onChange={event => setName(event.target.value)} maxLength={60} required />
         <button className="bg-indigo-600 rounded-lg px-4 py-2 disabled:opacity-50" disabled={busy}>Criar minha coluna</button>
@@ -79,7 +89,7 @@ export default function Kanban() {
     <DragDropContext onDragEnd={handleDragEnd}>
       <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto pb-3" aria-label="Colunas do Kanban">
         {board.columns.map(column => {
-          const cards = chats.filter(chat => (placements.get(chat.id) || ((chat.status as string) === 'em atendimento' ? 'interesse em compra' : chat.status)) === column.id);
+          const cards = chats.filter(chat => (!tag || chat.tags.some(t => t.toLowerCase().includes(tag.toLowerCase()))) && (!sellerFilter || chat.assigned_to === sellerFilter) && (!from || new Date(chat.created_at) >= new Date(from + 'T00:00:00')) && (!to || new Date(chat.created_at) <= new Date(to + 'T23:59:59')) && (placements.get(chat.id) || ((chat.status as string) === 'em atendimento' ? 'interesse em compra' : chat.status)) === column.id);
           return <section key={column.id} className="w-80 min-w-72 shrink-0 flex flex-col min-h-0 bg-gray-800 border border-gray-700 rounded-xl p-3">
             <header className="shrink-0 pb-3 space-y-2">
               <div className="flex gap-2 items-center">

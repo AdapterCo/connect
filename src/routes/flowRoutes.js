@@ -40,10 +40,10 @@ router.get('/', wrap(async (req, res) => {
 
 router.post('/', audit('flow', 'create'), wrap(async (req, res) => {
   const name = flowService.flowName(req.body.name);
-  if (await prisma.flow.count({ where: { company_id: req.user.company_id } }) >= MAX_FLOWS) {
-    return res.status(400).json({ error: `Limite de ${MAX_FLOWS} fluxos atingido.` });
-  }
-  const flow = await prisma.flow.create({ data: { company_id: req.user.company_id, name, graph: flowService.defaultGraph() } });
+  const flow = await require('../services/salesRotationService').withCompanyLock(req.user.company_id, async tx => {
+    if (await tx.flow.count({ where: { company_id: req.user.company_id } }) >= MAX_FLOWS) throw new flowService.FlowValidationError('Limite de fluxos atingido.');
+    return tx.flow.create({ data: { company_id: req.user.company_id, name, graph: flowService.defaultGraph() } });
+  });
   res.status(201).json({ ...summary(flow), graph: flow.graph });
 }));
 
@@ -77,7 +77,7 @@ router.post('/:id/active', audit('flow', 'toggle_active'), wrap(async (req, res)
 
   if (req.body.active) {
     flowService.assertActivatable(flowService.validateGraph(flow.graph));
-    await prisma.$transaction(async tx => {
+    await require('../services/salesRotationService').withCompanyLock(req.user.company_id, async tx => {
       await tx.flow.updateMany({ where: { company_id: req.user.company_id, id: { not: flow.id } }, data: { is_active: false } });
       await tx.flow.update({ where: { id: flow.id }, data: { is_active: true } });
     });

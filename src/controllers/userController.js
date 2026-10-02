@@ -157,6 +157,7 @@ async function updatePhone(req, res) {
     const allUsers = await User.findAll(req.user.company_id);
     emitToCompany(req.user.company_id, 'users_updated', allUsers);
 
+    disconnectUser(target.id);
     res.json({ success: true, phone: cleanPhone });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao atualizar telefone.' });
@@ -205,6 +206,7 @@ async function updateSector(req, res) {
     const allUsers = await User.findAll(req.user.company_id);
     emitToCompany(req.user.company_id, 'users_updated', allUsers);
 
+    disconnectUser(target.id);
     res.json({ success: true, sector });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao atualizar setor.' });

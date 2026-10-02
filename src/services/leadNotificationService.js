@@ -14,7 +14,7 @@ async function notifySeller(chat, sellerId) {
   if (!sellerId || !chat) return;
   try {
     const seller = await prisma.user.findFirst({
-      where: { id: sellerId },
+      where: { id: sellerId, company_id: chat.company_id },
       select: { id: true, name: true, phone: true }
     });
     if (!seller || !seller.phone) return;
@@ -52,14 +52,14 @@ async function notifySeller(chat, sellerId) {
       `👤 *Cliente:* ${clientName}\n` +
       `📱 *Telefone:* +${clientDigits}\n\n` +
       `👉 *Iniciar conversa:* https://wa.me/${clientDigits}\n\n` +
-      `*Para confirmar e pausar o rodízio:* responda "OK" aqui ou atenda pelo painel do Connect.`;
+      `*Para confirmar e pausar o rodízio:* responda "CONFIRMAR ${chat.id}" aqui ou atenda pelo painel do Connect.`;
 
     const whatsappService = require('./whatsappService');
     const connections = whatsappService.getActiveConnections();
     let instanceId = chat.instance_id;
 
     if (!connections[instanceId] || connections[instanceId].connectionStatus !== 'open') {
-      const openId = Object.keys(connections).find(id => connections[id]?.connectionStatus === 'open');
+      const openId = Object.keys(connections).find(id => connections[id]?.connectionStatus === 'open' && connections[id]?.companyId === chat.company_id);
       if (openId) instanceId = openId;
     }
 

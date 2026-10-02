@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { useAuthStore } from '../stores/authStore';
 import type { Chat, Message, User } from '../types';
-import { apiErrorMessage } from '../services/api';
+import api, { apiErrorMessage } from '../services/api';
+import ChatTools from '../components/ChatTools';
 import FlowAnswers from '../components/FlowAnswers';
 
 type FilterType = 'my' | 'queue' | 'favorite' | 'archive' | 'all';
@@ -12,15 +13,7 @@ export default function Chats() {
   const { user } = useAuthStore();
   const isManager = ['admin', 'supervisor'].includes(user?.role || '');
   const userSector = user?.sector || (user?.role === 'seller' ? 'sales' : (user?.role === 'support' ? 'support' : null));
-  const userPhone = user?.phone ? user.phone.replace(/\D/g, '') : '';
-  const userInstance = instances.find(inst => {
-    if (inst.user_id && inst.user_id === user?.id) return true;
-    if (userPhone && inst.phone) {
-      const instPhone = inst.phone.replace(/\D/g, '');
-      return instPhone === userPhone || instPhone.endsWith(userPhone) || userPhone.endsWith(instPhone);
-    }
-    return false;
-  });
+  const userInstance = instances.find(inst => inst.user_id === user?.id);
   const userInstanceId = userInstance?.id;
 
   const [search, setSearch] = useState('');
@@ -203,6 +196,12 @@ export default function Chats() {
             <FlowAnswers chatId={selectedChat.id} refreshKey={selectedChat.messages.length} />
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {selectedChat.messages.length >= 50 && selectedChat.history_has_more !== false && <button className="text-sm text-indigo-300 mb-3" onClick={async () => {
+                try {
+                  const response = await api.get('/chats/' + selectedChat.id + '/messages', { params: { before: selectedChat.messages[0]?.id } });
+                  useAppStore.getState().updateChat({ ...selectedChat, messages: [...response.data.messages, ...selectedChat.messages], history_has_more: response.data.has_more });
+                } catch (error) { window.alert(apiErrorMessage(error, 'Erro ao carregar historico.')); }
+              }}>Carregar mensagens anteriores</button>}
               {selectedChat.messages.map(msg => (
                 <MessageBubble key={msg.id} message={msg} />
               ))}
@@ -210,6 +209,7 @@ export default function Chats() {
             </div>
 
             <div className="border-t border-gray-700 p-4">
+              <ChatTools key={selectedChatId} chatId={selectedChatId!} text={messageText} onText={setMessageText} />
               <div className="flex gap-2 mb-2">
                 <button
                   onClick={() => setIsNote(false)}

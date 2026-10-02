@@ -370,7 +370,7 @@ function handleIncoming({ chat, message, isNewChat, actions }) {
         await prisma.flowSession.update({ where: { id: session.id }, data: { status: 'cancelled', current_node_id: null, finished_at: new Date() } });
         return false;
       }
-      await answer(session, flow.graph, chat, message, actions);
+      await answer(session, session.graph_snapshot || flow.graph, chat, message, actions);
       return true;
     }
 
@@ -380,7 +380,7 @@ function handleIncoming({ chat, message, isNewChat, actions }) {
     if (!flow) return false;
 
     session = await prisma.flowSession.create({
-      data: { chat_id: chat.id, company_id: chat.company_id, flow_id: flow.id, flow_name: flow.name, status: 'active', variables: {} }
+      data: { chat_id: chat.id, company_id: chat.company_id, flow_id: flow.id, flow_name: flow.name, graph_snapshot: flow.graph, status: 'active', variables: {} }
     });
     const start = flow.graph.nodes.find(node => node.type === 'start');
     await runFrom(session, flow.graph, start.id, chat, actions);

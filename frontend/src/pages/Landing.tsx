@@ -166,6 +166,14 @@ export default function Landing() {
     return () => window.clearInterval(interval);
   }, [checkoutInvoice, paymentApproved]);
 
+  useEffect(() => {
+    const id = sessionStorage.getItem('crm_pending_checkout');
+    if (!id) return;
+    api.get('/billing/checkout/' + id).then(response => {
+      if (response.data.status === 'paid') { sessionStorage.removeItem('crm_pending_checkout'); return; }
+      setCheckoutInvoice(response.data);
+    }).catch(() => sessionStorage.removeItem('crm_pending_checkout'));
+  }, []);
   const handleCompanyNameChange = (value: string) => {
     setCompanyName(value);
     setCompanySlug(normalizeSlug(value));
@@ -189,6 +197,7 @@ export default function Landing() {
         payerEmail
       });
 
+      sessionStorage.setItem('crm_pending_checkout', response.data.invoice.id);
       setCheckoutInvoice({
         id: response.data.invoice.id,
         amount: response.data.invoice.amount,

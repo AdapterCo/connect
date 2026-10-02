@@ -1,0 +1,42 @@
+name: Quality
+on: [push, pull_request]
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_PASSWORD: integration-only
+          POSTGRES_DB: adapter_test
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:integration-only@localhost:5432/adapter_test
+      TEST_DATABASE_URL: postgresql://postgres:integration-only@localhost:5432/adapter_test
+      JWT_SECRET: ci-only-random-placeholder-with-at-least-32-characters
+      ENCRYPTION_KEY: ci-only-encryption-placeholder-with-at-least-32-characters
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - run: npm ci
+      - run: npm run check:all-js
+      - run: npm test
+      - run: npm run security:smoke
+      - run: npm run secret:scan
+      - run: npx prisma validate
+      - run: npx prisma migrate deploy
+      - run: node --test tests/integration/postgres.test.js
+      - run: npm audit --audit-level=high
+      - run: npm ci && npm run lint && npm run build && npm audit --audit-level=high
+        working-directory: frontend
+
+      - run: npm run secret:scan -- --history

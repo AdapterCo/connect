@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { csvCell, downloadFile } from '../services/download';
 import type { Statistics } from '../types';
 
 export default function Reports() {
+  const exportCsv = () => {
+    if (!stats) return;
+    const rows = [['Indicador', 'Valor'], ['Conversas', stats.kpis.totalChats], ['Conversas finalizadas', stats.kpis.finishedChats], ['Percentual de finalizacao', stats.kpis.totalChats ? (stats.kpis.finishedChats / stats.kpis.totalChats * 100).toFixed(2) : 0], ['TMR humano (s)', stats.kpis.tmrHumano], ['TMR IA (s)', stats.kpis.tmrAi], ['TMA (s)', stats.kpis.tmaGeral], [], ['Atendente', 'Respostas', 'TMR segundos', 'TMA segundos', 'Conversas ativas'], ...stats.attendants.map(user => [user.name, user.repliesCount, user.tmr, user.tma, user.activeChats])];
+    downloadFile('relatorio-atendimento.csv', '\ufeff' + rows.map(row => row.map(csvCell).join(';')).join('\r\n'));
+  };
   const [stats, setStats] = useState<Statistics | null>(null);
   const [error, setError] = useState('');
 
@@ -43,6 +49,7 @@ export default function Reports() {
 
   return (
     <div className="h-full overflow-y-auto p-6">
+      <button onClick={exportCsv} className="mb-4 bg-indigo-600 px-4 py-2 rounded">Exportar CSV</button>
       <h2 className="text-2xl font-bold mb-6">Relatórios e Métricas</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

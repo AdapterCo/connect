@@ -1,5 +1,5 @@
 const { Server } = require('socket.io');
-const { verifyToken } = require('./auth');
+const { companyActive, canSeeChat } = require('../services/accessService');
 
 let io = null;
 
@@ -52,12 +52,20 @@ function disconnectUser(userId) {
   for (const socket of socketsOf(userId)) socket.disconnect(true);
 }
 
+function disconnectCompany(companyId) {
+  if (!io) return;
+  for (const socket of io.sockets.sockets.values()) if (socket.user?.company_id === companyId) socket.disconnect(true);
+}
 function initSocket(server) {
   const corsOrigin = process.env.NODE_ENV === 'production'
     ? [`https://${process.env.DOMAIN || 'connect.adapterco.com.br'}`]
     : '*';
 
   io = new Server(server, {
+    allowRequest: (req, callback) => {
+      const origin = req.headers.origin;
+      callback(null, process.env.NODE_ENV !== 'production' || !origin || origin === 'https://' + process.env.DOMAIN);
+    },
     cors: {
       origin: corsOrigin
     }
@@ -68,7 +76,18 @@ function initSocket(server) {
     const token = socket.handshake.auth?.token;
     const req = { headers: { cookie: socket.handshake.headers.cookie, ...(token ? { authorization: 'Bearer ' + token } : {}) } };
     const res = { status() { return this; }, json() { next(new Error('Sessao indisponivel.')); } };
-    require('../middleware/authMiddleware')(req, res, () => { socket.user = req.user; next(); });
+    require('../middleware/authMiddleware')(req, res, async () => {
+      try {
+        const { prisma } = require('./database');
+        const company = await prisma.company.findUnique({ where: { id: req.user.company_id } });
+        if (!companyActive(company)) return next(new Error('Empresa indisponivel.'));
+        const connections = socketsOf(req.user.id);
+        if (connections.length >= 10) return next(new Error('Limite de conexoes atingido.'));
+        socket.user = req.user;
+        socket.userInstanceIds = await require('../models/Instance').getUserInstanceIds(req.user, req.user.company_id);
+        next();
+      } catch { next(new Error('Sessao indisponivel.')); }
+    });
   });
 
   io.on('connection', (socket) => {
@@ -76,7 +95,24 @@ function initSocket(server) {
     const timer = setTimeout(() => socket.disconnect(true), Math.max(0, socket.user.exp * 1000 - Date.now()));
     timer.unref();
     cancelPresenceTimeout(socket.user.id);
+    let refreshing = false;
+    const refresh = setInterval(async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const { prisma } = require('./database');
+        const [user, company] = await Promise.all([
+          prisma.user.findUnique({ where: { id: socket.user.id } }),
+          prisma.company.findUnique({ where: { id: companyId } })
+        ]);
+        const ids = user ? await require('../models/Instance').getUserInstanceIds(user, companyId) : [];
+        if (!user || !companyActive(company) || Number(user.session_version || 0) !== Number(socket.user.session_version || 0) || user.role !== socket.user.role || user.sector !== socket.user.sector || ids.join(',') !== (socket.userInstanceIds || []).join(',')) socket.disconnect(true);
+      } catch { socket.disconnect(true); }
+      finally { refreshing = false; }
+    }, 30000);
+    refresh.unref();
     socket.on('disconnect', () => {
+      clearInterval(refresh);
       clearTimeout(timer);
       schedulePresenceTimeout(socket.user);
     });
@@ -105,21 +141,18 @@ function getIO() {
 }
 
 function canSocketSeeChat(socket, chat) {
-  if (['admin', 'supervisor', 'superadmin'].includes(socket.user.role)) return true;
-  const userSector = socket.user.sector || (socket.user.role === 'seller' ? 'sales' : (socket.user.role === 'support' ? 'support' : null));
-  if (userSector && chat.sector && chat.sector !== userSector) return false;
-  if (socket.userInstanceIds && socket.userInstanceIds.length > 0) {
-    return socket.userInstanceIds.includes(chat.instance_id) || chat.assigned_to === socket.user.id;
-  }
-  return chat.assigned_to === socket.user.id;
+  return canSeeChat(socket.user, chat, socket.userInstanceIds || []);
 }
 
 function emitToCompany(companyId, event, data) {
   if (!io || !companyId) return;
+  if (event === 'chat_updated' && Array.isArray(data?.messages)) data = { ...data, messages: data.messages.slice(-50) };
+  if (event === 'chats_updated') data = data.map(chat => ({ ...chat, messages: (chat.messages || []).slice(-50) }));
   for (const socket of io.sockets.sockets.values()) {
     if (socket.user.company_id !== companyId) continue;
     const manager = ['admin', 'supervisor'].includes(socket.user.role);
-    if (['logs_updated', 'whatsapp_status_updated'].includes(event) && !manager) continue;
+    if (event === 'logs_updated' && !manager) continue;
+    if (event === 'whatsapp_status_updated' && !manager) { socket.emit(event, { changed: true }); continue; }
     if (event === 'chat_updated' && !manager && !canSocketSeeChat(socket, data)) {
       socket.emit('chat_removed', { id: data.id });
       continue;
@@ -142,6 +175,7 @@ module.exports = {
   getIO,
   emitToCompany,
   disconnectUser,
+  disconnectCompany,
   markOfflineIfDisconnected,
   sweepPresence,
   PRESENCE_GRACE_MS

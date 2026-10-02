@@ -28,43 +28,9 @@ async function findAll(companyId) {
 const LIST_MESSAGES = 50;
 
 async function findForList(companyId, filterTarget) {
-  const where = { company_id: companyId };
-  if (filterTarget) {
-    const userId = typeof filterTarget === 'string' ? filterTarget : filterTarget.id;
-    let user = typeof filterTarget === 'object' && filterTarget.role ? filterTarget : null;
-    if (!user && userId) {
-      user = await prisma.user.findFirst({
-        where: { id: userId, company_id: companyId }
-      });
-    }
-
-    if (user && !['admin', 'supervisor', 'superadmin'].includes(user.role)) {
-      const { getUserInstanceIds } = require('./Instance');
-      const userInstanceIds = await getUserInstanceIds(user, companyId);
-
-      const userSector = user.sector || (user.role === 'seller' ? 'sales' : (user.role === 'support' ? 'support' : null));
-
-      if (userInstanceIds.length > 0) {
-        where.OR = [
-          { instance_id: { in: userInstanceIds } },
-          { assigned_to: user.id }
-        ];
-      } else {
-        where.assigned_to = user.id;
-      }
-
-      if (userSector) {
-        where.AND = [
-          {
-            OR: [
-              { sector: userSector },
-              { sector: null }
-            ]
-          }
-        ];
-      }
-    }
-  }
+  const user = typeof filterTarget === 'string' ? await prisma.user.findFirst({ where: { id: filterTarget, company_id: companyId } }) : filterTarget;
+  if (filterTarget && (!user || user.company_id !== companyId)) throw new Error('Usuario indisponivel para esta empresa.');
+  const where = user ? await require('../services/accessService').chatScope(user) : { company_id: companyId };
   const chats = await prisma.chat.findMany({
     where,
     include: {
@@ -80,7 +46,7 @@ async function findForList(companyId, filterTarget) {
   return chats.map(chat => ({ ...chat, messages: [...chat.messages].reverse() }));
 }
 
-async function findById(id, companyId) {
+async function findById(id, companyId, limit) {
   return prisma.chat.findFirst({
     where: { id, company_id: companyId },
     include: {
@@ -88,7 +54,8 @@ async function findById(id, companyId) {
         select: { id: true, name: true, phone: true, user_id: true }
       },
       messages: {
-        orderBy: { timestamp: 'asc' }
+        orderBy: limit ? [{ timestamp: 'desc' }, { id: 'desc' }] : { timestamp: 'asc' },
+        ...(limit ? { take: limit } : {})
       }
     }
   });
@@ -146,6 +113,7 @@ async function create(chat, companyId) {
 
 async function update(id, updates, companyId, actor, options) {
   const data = {};
+  if (updates.sales_reply_due_at !== undefined) data.sales_reply_due_at = updates.sales_reply_due_at;
   if (updates.remote_jid !== undefined) data.remote_jid = updates.remote_jid;
   if (updates.client_name !== undefined) data.client_name = updates.client_name;
   if (updates.client_phone !== undefined) data.client_phone = updates.client_phone;
@@ -165,14 +133,8 @@ async function update(id, updates, companyId, actor, options) {
 }
 
 async function remove(id, companyId) {
-  try {
-    await prisma.chat.deleteMany({
-      where: { id, company_id: companyId }
-    });
-    return true;
-  } catch (err) {
-    return false;
-  }
+  const result = await prisma.chat.deleteMany({ where: { id, company_id: companyId } });
+  return result.count > 0;
 }
 
 async function addMessage(chatId, msg) {

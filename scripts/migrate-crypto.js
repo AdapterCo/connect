@@ -22,7 +22,7 @@ const DRY_RUN = process.argv.includes('--dry-run');
 function needsMigration(value) {
   if (!value) return false;
   if (String(value).startsWith('v2:')) return false;
-  if (!String(value).includes(':')) return false;
+  // Texto puro tambem precisa ser migrado.
   return true;
 }
 

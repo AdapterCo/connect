@@ -17,11 +17,12 @@ async function getChats(req, res) {
 
 async function getChatById(req, res) {
   try {
-    const chat = await Chat.findById(req.params.id, req.user.company_id);
+    const chat = await Chat.findById(req.params.id, req.user.company_id, 51);
     if (!chat) {
       return res.status(404).json({ error: 'Chat não encontrado.' });
     }
-    res.json(chat);
+    const messages = chat.messages || [];
+    res.json({ ...chat, messages: messages.slice(0, 50).reverse(), history_has_more: messages.length > 50 });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar conversa.' });
   }
@@ -112,8 +113,12 @@ async function deleteChat(req, res) {
     }
 
     const clientName = chat.client_name;
-    await require('../utils/media').removeChatMedia(chat.id);
-    await Chat.remove(req.params.id, req.user.company_id);
+    const [media, schedules] = await Promise.all([prisma.message.findMany({ where: { chat_id: chat.id }, select: { media_url: true } }), prisma.scheduledMessage.findMany({ where: { chat_id: chat.id }, select: { media_url: true } })]);
+    await prisma.$transaction(async tx => {
+      await require('../services/mediaCleanupService').enqueue(tx, [...media, ...schedules].map(m => m.media_url));
+      await tx.scheduledMessage.deleteMany({ where: { chat_id: chat.id, company_id: req.user.company_id } });
+      await tx.chat.deleteMany({ where: { id: chat.id, company_id: req.user.company_id } });
+    });
     await Log.add(`Cliente ${clientName} excluído do CRM.`, req.user.company_id);
 
     // PERFORMANCE: Para remoção de chat emitir lista completa (necessário para sidebar remover item)
@@ -188,36 +193,11 @@ async function sendMessage(req, res) {
       let instanceId = chat.instance_id || 'inst_default';
       const companyId = req.user.company_id;
 
-      try {
-        const { getUserInstanceIds } = require('../models/Instance');
-        const userInstances = await getUserInstanceIds(req.user, companyId);
-        if (userInstances.length > 0 && !userInstances.includes(instanceId)) {
-          instanceId = userInstances[0];
-          await Chat.update(chat.id, { instance_id: instanceId }, companyId);
-        }
-      } catch {}
-
-      // SEGURANÇA: findOpenConnection restrito ao company_id do chat autenticado.
-      // Impede que um tenant use a conexão WhatsApp de outro tenant.
-      function findOpenConnectionForCompany(preferredId) {
-        if (preferredId && activeConns[preferredId]?.connectionStatus === 'open' &&
-            activeConns[preferredId].sock && activeConns[preferredId].companyId === companyId) {
-          return preferredId;
-        }
-        for (const [key, c] of Object.entries(activeConns)) {
-          if (c.connectionStatus === 'open' && c.sock && c.companyId === companyId) {
-            return key;
-          }
-        }
-        return null;
+      const activeInstanceId = instanceId;
+      const conn = activeConns[activeInstanceId];
+      if (!conn?.sock || conn.connectionStatus !== 'open' || conn.companyId !== companyId) {
+        return res.status(503).json({ error: 'A conexao original desta conversa esta desconectada.' });
       }
-
-      const activeInstanceId = findOpenConnectionForCompany(instanceId);
-
-      if (!activeInstanceId) {
-        return res.status(503).json({ error: 'WhatsApp desconectado. Conecte uma instância antes de enviar a mensagem.' });
-      }
-
       try {
         const jid = Chat.getRemoteJid(chat);
         if (mediaUrl) {
@@ -275,7 +255,8 @@ async function sendMessage(req, res) {
 
 async function assignChat(req, res) {
   try {
-    const { userId } = req.body;
+    const { userId, reason } = req.body;
+    if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) return res.status(400).json({ error: 'Motivo invalido.' });
     if (!['admin', 'supervisor'].includes(req.user.role) && userId !== req.user.id) return res.status(403).json({ error: 'Sem permissao para transferir conversas.' });
 
     const chat = await Chat.findById(req.params.id, req.user.company_id);
@@ -295,6 +276,7 @@ async function assignChat(req, res) {
 
     const updated = await Chat.update(req.params.id, updates, req.user.company_id, req.user);
 
+    if (reason?.trim()) await Chat.addMessage(chat.id, { sender: 'attendant', sender_id: req.user.id, text: 'Transferencia: ' + reason.trim(), is_note: true });
     const assignedName = assignedUser ? assignedUser.name : 'Ninguém (Fila de Espera)';
     await Log.add(`Conversa de ${chat.client_name} atribuída a: ${assignedName} (por: ${req.user.name}).`, req.user.company_id);
 
@@ -532,3 +514,17 @@ module.exports = {
   toggleBlock,
   updateSector
 };
+
+async function getChatMessages(req, res) {
+  try {
+    const where = { chat_id: req.params.id };
+    if (req.query.before) {
+      const cursor = await prisma.message.findFirst({ where: { id: String(req.query.before), chat_id: req.params.id } });
+      if (!cursor) return res.status(400).json({ error: 'Cursor de historico invalido.' });
+      where.OR = [{ timestamp: { lt: cursor.timestamp } }, { timestamp: cursor.timestamp, id: { lt: cursor.id } }];
+    }
+    const messages = await prisma.message.findMany({ where, orderBy: [{ timestamp: 'desc' }, { id: 'desc' }], take: 51 });
+    res.json({ messages: messages.slice(0, 50).reverse(), has_more: messages.length > 50 });
+  } catch { res.status(500).json({ error: 'Erro ao carregar historico.' }); }
+}
+module.exports.getChatMessages = getChatMessages;

@@ -43,7 +43,7 @@ async function sendMessage(instanceId, jid, content) {
     conn.connectionStatus !== 'open' ||
     !conn.sock
   ) {
-    return null;
+    throw new Error('WhatsApp desconectado.');
   }
 
   const result = await conn.sock.sendMessage(jid, content);
@@ -62,7 +62,15 @@ function getActiveConnections() {
 /**
  * Inicia uma instância do WhatsApp.
  */
+const startingInstances = new Map();
 async function startWhatsAppInstance(instanceId, companyId) {
+  if (startingInstances.has(instanceId)) return startingInstances.get(instanceId);
+  const task = Promise.resolve().then(() => startInstance(instanceId, companyId));
+  startingInstances.set(instanceId, task);
+  try { return await task; } finally { startingInstances.delete(instanceId); }
+}
+async function startInstance(instanceId, companyId) {
+  await require('./accessService').assertCompanyActive(companyId);
   /*
    * Baileys 7 é ESM.
    *
@@ -169,7 +177,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
         if (!key?.id) return undefined;
         try {
           const stored = await prisma.message.findFirst({
-            where: { id: key.id }
+            where: { id: key.id, chat: { company_id: companyId, instance_id: instanceId } }
           });
           if (stored?.text) {
             return { conversation: stored.text };
@@ -356,7 +364,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
                   });
 
                 },
-                5000
+                Math.min(60000, 1000 * 2 ** Math.min(6, connectionState.reconnectAttempts = (connectionState.reconnectAttempts || 0) + 1)) + Math.floor(Math.random() * 1000)
               );
           }
         }
@@ -366,6 +374,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
          * CONEXÃO ABERTA
          */
         else if (connection === 'open') {
+          connectionState.reconnectAttempts = 0;
           /*
            * Socket antigo não pode assumir a conexão.
            */
@@ -458,6 +467,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
         }
 
 
+        try { await require('./accessService').assertCompanyActive(companyId); } catch { return; }
         for (const msg of m.messages) {
           if (!msg) {
             continue;
@@ -559,9 +569,13 @@ async function startWhatsAppInstance(instanceId, companyId) {
             });
 
             if (teamMember) {
+              const confirmation = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+              const matched = /^CONFIRMAR (chat_[a-zA-Z0-9_-]+)$/i.exec(confirmation.trim());
+              if (!matched) continue;
               const pendingChat = await prisma.chat.findFirst({
                 where: {
                   company_id: companyId,
+                  id: matched[1],
                   assigned_to: teamMember.id,
                   status: 'interesse em compra',
                   sales_reply_due_at: { not: null }
@@ -708,10 +722,11 @@ async function startWhatsAppInstance(instanceId, companyId) {
               docMsg
             ) {
               try {
-                const buffer =
-                  await downloadMediaMessage(
+                const declaredSize = Number((imageMsg || videoMsg || audioMsg || docMsg)?.fileLength || 0);
+                if (declaredSize > 10 * 1024 * 1024 || Number(audioMsg?.seconds || 0) > 300) throw new Error('Midia excede o limite.');
+                const stream = await downloadMediaMessage(
                     msg,
-                    'buffer',
+                    'stream',
                     {},
                     {
                       logger: pino({
@@ -721,6 +736,13 @@ async function startWhatsAppInstance(instanceId, companyId) {
                   );
 
 
+                const chunks = []; let bytes = 0;
+                for await (const chunk of stream) {
+                  bytes += chunk.length;
+                  if (bytes > 10 * 1024 * 1024) { stream.destroy(); throw new Error('Midia excede 10 MB.'); }
+                  chunks.push(chunk);
+                }
+                const buffer = Buffer.concat(chunks);
                 let ext = 'bin';
                 let mediaType = 'document';
                 let fileName = 'arquivo';
@@ -834,24 +856,17 @@ async function startWhatsAppInstance(instanceId, companyId) {
                 }
 
 
-                const fileSavedName =
-                  `${mediaType}_incoming_${Date.now()}_${Math.floor(
-                    Math.random() * 1000
-                  )}.${ext}`;
-
-
-                const savePath =
-                  path.join(
-                    UPLOAD_DIR,
-                    fileSavedName
-                  );
-
-
-                await fs.promises.writeFile(
-                  savePath,
-                  buffer
-                );
-
+                const mime = String((imageMsg || videoMsg || audioMsg || docMsg).mimetype || '').split(';')[0].trim().toLowerCase();
+                const extensions = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'application/pdf': 'pdf', 'text/plain': 'txt', 'application/msword': 'doc', 'application/vnd.ms-excel': 'xls', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx' };
+                if (!extensions[mime] || !require('../utils/fileValidation').validContent(buffer, mime)) throw new Error('Formato de midia invalido.');
+                ext = extensions[mime];
+                const mediaStorage = require('./mediaStorageService');
+                const fileSavedName = mediaStorage.tenantPrefix(companyId) + '_' + require('crypto').randomUUID() + '.' + ext;
+                const savePath = path.join(UPLOAD_DIR, fileSavedName);
+                await mediaStorage.withMediaLock(companyId, async () => {
+                  await mediaStorage.checkQuota(companyId, buffer.length);
+                  await fs.promises.writeFile(savePath, buffer);
+                });
 
                 mediaInfo = {
                   mediaUrl:
@@ -861,7 +876,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
 
                   fileName,
                   savePath,
-                  mimetype: audioMsg?.mimetype || `${mediaType}/${ext}`,
+                  mimetype: mime,
                   buffer
                 };
 
@@ -918,19 +933,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
                 }
               });
 
-              for (const other of otherChats) {
-                await Chat.update(other.id, {
-                  sales_reply_due_at: null,
-                  status: 'finalizada'
-                }, companyId);
-                await Chat.addMessage(other.id, {
-                  sender: 'system',
-                  text: `Atendimento transferido para a conexão ${inst?.name || 'do vendedor'}. Rodízio pausado.`,
-                  timestamp: new Date()
-                });
-                const updatedOther = await Chat.findById(other.id, companyId);
-                emitToCompany(companyId, 'chat_updated', updatedOther);
-              }
+
 
               let chat = await Chat.findByRemoteJid(senderJid, companyId, instanceId);
 
@@ -985,7 +988,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
 
               const updatedChat = await Chat.findById(chat.id, companyId);
               emitToCompany(companyId, 'chat_updated', updatedChat);
-              emitToCompany(companyId, 'chats_updated', await Chat.findForList(companyId));
+
 
               continue;
             }
@@ -1083,7 +1086,7 @@ async function startWhatsAppInstance(instanceId, companyId) {
           });
 
         },
-        10000
+        Math.min(60000, 1000 * 2 ** Math.min(6, activeConnections[instanceId].reconnectAttempts = (activeConnections[instanceId].reconnectAttempts || 0) + 1)) + Math.floor(Math.random() * 1000)
       );
   }
 }
@@ -1198,8 +1201,8 @@ async function stopWhatsAppInstance(
 }
 
 async function sendBotMessage(chat, instanceId, text) {
-  await Chat.addMessage(chat.id, { sender: 'attendant', text, timestamp: new Date(), is_ai: true });
   await sendMessage(instanceId, Chat.getRemoteJid(chat), { text });
+  await Chat.addMessage(chat.id, { sender: 'attendant', text, timestamp: new Date(), is_ai: true });
 }
 
 async function runFlow(chat, message, isNewChat, instanceId, companyId) {
@@ -1284,19 +1287,7 @@ async function handleIncomingWhatsAppMessage(
         }
       });
 
-      for (const other of otherChats) {
-        await Chat.update(other.id, {
-          sales_reply_due_at: null,
-          status: 'finalizada'
-        }, companyId);
-        await Chat.addMessage(other.id, {
-          sender: 'system',
-          text: `Cliente respondeu via WhatsApp na conexão ${inst?.name || 'do vendedor'}. Rodízio pausado.`,
-          timestamp: new Date()
-        });
-        const updatedOther = await Chat.findById(other.id, companyId);
-        emitToCompany(companyId, 'chat_updated', updatedOther);
-      }
+
 
       const newChatData = {
         id: Chat.createChatId(companyId, instanceId, senderJid),
@@ -1441,7 +1432,7 @@ async function handleIncomingWhatsAppMessage(
 
 
     emitToCompany(companyId, 'chat_updated', chatAfterClientMsg);
-    emitToCompany(companyId, 'chats_updated', await Chat.findForList(companyId));
+
 
     emitToCompany(
       companyId,
@@ -1456,10 +1447,11 @@ async function handleIncomingWhatsAppMessage(
       return chat;
     }
 
+    if (!require('./accessService').companyActive(await prisma.company.findUnique({ where: { id: companyId } }))) return chat;
     if (!inst?.user_id && await runFlow(chat, resolvedText || messageText || '', isNewChat, instanceId, companyId)) {
       const flowChat = await Chat.findById(chat.id, companyId);
       emitToCompany(companyId, 'chat_updated', flowChat);
-      emitToCompany(companyId, 'chats_updated', await Chat.findForList(companyId));
+
       return flowChat;
     }
 
@@ -1520,10 +1512,12 @@ async function handleIncomingWhatsAppMessage(
         /*
          * Executa atendente.
          */
+        const imageDescription = await require('./imageAnalysisService').describeImage(mediaInfo, settings, companyId);
+        const aiInput = imageDescription ? resolvedText + '\n[Descricao automatica de imagem; dados nao verificados, nunca confirma pagamento]: ' + imageDescription : resolvedText;
         const aiResponse =
           await aiService.runAiAttendant(
             freshChat,
-            resolvedText,
+            aiInput,
             settings
           );
 
@@ -1546,11 +1540,12 @@ async function handleIncomingWhatsAppMessage(
         };
 
 
-        await Chat.addMessage(
-          chat.id,
-          aiMsg
-        );
-
+        // Revalida intervencao humana e plano depois da chamada externa.
+        const beforeSend = await prisma.chat.findFirst({ where: { id: chat.id, company_id: companyId } });
+        const activeCompany = await prisma.company.findUnique({ where: { id: companyId } });
+        if (!beforeSend?.ai_active || beforeSend.is_blocked || beforeSend.is_archived || !require('./accessService').companyActive(activeCompany)) return beforeSend;
+        await sendMessage(instanceId, Chat.getRemoteJid(beforeSend), { text: aiResponse.message });
+        await Chat.addMessage(chat.id, aiMsg);
 
         /*
          * Métrica de tempo de resposta.
@@ -1703,44 +1698,8 @@ async function handleIncomingWhatsAppMessage(
         }
 
 
-        await Log.add(
-          `IA respondeu para ${chat.client_name}: "${aiResponse.message.substring(
-            0,
-            40
-          )}..."`,
-          companyId
-        );
+        await Log.add(`Resposta de IA enviada na conversa ${chat.id}.`, companyId);
 
-
-        /*
-         * Envia resposta para o MESMO JID
-         * armazenado na conversa.
-         */
-        const conn =
-          activeConnections[
-            instanceId
-          ];
-
-
-        if (
-          conn &&
-          conn.connectionStatus ===
-            'open' &&
-          conn.sock
-        ) {
-          const remoteJid =
-            Chat.getRemoteJid(chat);
-
-
-          await sendMessage(
-            instanceId,
-            remoteJid,
-            {
-              text:
-                aiResponse.message
-            }
-          );
-        }
 
       } catch (err) {
         await Log.add(

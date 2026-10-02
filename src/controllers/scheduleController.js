@@ -66,7 +66,7 @@ async function deleteSchedule(req, res) {
 
     const chat = await Chat.findById(sch.chatId, req.user.company_id);
     if (!chat || (!['admin', 'supervisor'].includes(req.user.role) && chat.assigned_to !== req.user.id)) return res.status(404).json({ error: 'Agendamento indisponivel.' });
-    await ScheduledMessage.remove(req.params.id, req.user.company_id);
+    if (!await ScheduledMessage.remove(req.params.id, req.user.company_id)) return res.status(409).json({ error: 'O agendamento ja foi enviado ou esta em processamento.' });
     await Log.add(`Agendamento cancelado para ${sch.clientName} (era para ${new Date(sch.scheduledTime).toLocaleString()}) por ${req.user.name}.`, req.user.company_id);
 
     res.json({ success: true });

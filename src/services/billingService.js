@@ -5,6 +5,28 @@ const { encrypt } = require('../utils/crypto');
 
 // Erro de regra de negocio cuja mensagem pode ser exibida ao usuario.
 class BillingError extends Error {}
+const { nextMonth } = require('../utils/billingDate');
+async function createPaymentAttempt(charge, type, method, payload, paymentData) {
+  const fingerprint = require('crypto').createHash('sha256').update(String(payload.token || method)).digest('hex');
+  const key = charge.id + '-' + method + '-' + fingerprint;
+  const attempt = await prisma.paymentAttempt.upsert({ where: { idempotency_key: key }, update: {}, create: { charge_id: charge.id, charge_type: type, idempotency_key: key } });
+  if (attempt.mp_payment_id) return fetchPayment(attempt.mp_payment_id);
+  const response = await new mercadopago.Payment(createMercadoPagoClient()).create({ body: paymentData, requestOptions: { idempotencyKey: key } });
+  await prisma.paymentAttempt.update({ where: { id: attempt.id }, data: { mp_payment_id: String(response.id), status: response.status || 'pending' } });
+  return response;
+}
+function validatePayment(payload) {
+  if (!payload || !['pix', 'card'].includes(payload.method)) throw new BillingError('Forma de pagamento invalida.');
+  if (payload.method !== 'card') return;
+  const installments = payload.installments ?? 1;
+  if (!['number', 'string'].includes(typeof installments) || !/^[0-9]{1,2}$/.test(String(installments)) || Number(installments) < 1 || Number(installments) > 12 || typeof payload.token !== 'string' || !payload.token.trim() || payload.token.length > 512 || typeof payload.payment_method_id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(payload.payment_method_id)) throw new BillingError('Dados do cartao invalidos.');
+  if (payload.issuer_id !== undefined && (!['number', 'string'].includes(typeof payload.issuer_id) || !/^[0-9]{1,20}$/.test(String(payload.issuer_id)))) throw new BillingError('Emissor invalido.');
+  if (payload.identification_type !== undefined || payload.identification_number !== undefined) {
+    if (!['CPF', 'CNPJ'].includes(payload.identification_type) || typeof payload.identification_number !== 'string' || !/^[0-9.\-/]{11,18}$/.test(payload.identification_number)) throw new BillingError('Documento do pagador invalido.');
+    const digits = payload.identification_number.replace(/\D/g, '');
+    if (digits.length !== (payload.identification_type === 'CPF' ? 11 : 14)) throw new BillingError('Documento do pagador invalido.');
+  }
+}
 
 const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
 
@@ -22,7 +44,7 @@ function createMercadoPagoClient() {
     throw new Error('Mercado Pago da plataforma nao configurado. Defina PLATFORM_MP_ACCESS_TOKEN.');
   }
 
-  return new mercadopago.MercadoPagoConfig({ accessToken });
+  return new mercadopago.MercadoPagoConfig({ accessToken, options: { timeout: 15000 } });
 }
 
 async function listActivePlans() {
@@ -36,75 +58,16 @@ async function listActivePlans() {
 }
 
 async function createSubscription(companyId, planId) {
-  try {
-    const company = await prisma.company.findUnique({
-      where: { id: companyId },
-      include: { plan_relation: true }
-    });
-
-    if (!company) {
-      throw new BillingError('Empresa não encontrada');
-    }
-
-    const plan = await prisma.plan.findUnique({
-      where: { id: planId }
-    });
-
-    if (!plan || !plan.is_active || plan.price <= 0) {
-      throw new BillingError('Plano não encontrado');
-    }
-
-    const existingSubscription = await prisma.subscription.findFirst({
-      where: {
-        company_id: companyId,
-        status: { in: ['active', 'pending'] }
-      }
-    });
-
-    if (existingSubscription) {
-      throw new BillingError('Empresa já possui uma assinatura ativa');
-    }
-
-    const now = new Date();
-    const periodEnd = new Date(now);
-    periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-    const subscription = await prisma.subscription.create({
-      data: {
-        company_id: companyId,
-        plan_id: planId,
-        status: 'pending',
-        current_period_start: now,
-        current_period_end: periodEnd
-      }
-    });
-
-    await prisma.company.update({
-      where: { id: companyId },
-      data: {
-        plan_id: planId,
-        plan: plan.name,
-        max_instances: plan.max_instances,
-        max_users: plan.max_users,
-        max_products: plan.max_products,
-        expires_at: periodEnd,
-        is_active: false
-      }
-    });
-
-    const invoice = await createInvoice(companyId, subscription.id, plan.price, periodEnd);
-
-    await Log.add(`Assinatura pendente criada para empresa ${company.name} - Plano ${plan.name}`, companyId);
-
-    return {
-      subscription,
-      invoice,
-      mp_payment_url: invoice.mp_payment_url
-    };
-  } catch (error) {
-    console.error('Erro ao criar assinatura:', error);
-    throw error;
-  }
+  return require('./salesRotationService').withCompanyLock(companyId, async tx => {
+    const company = await tx.company.findUnique({ where: { id: companyId } });
+    const plan = await tx.plan.findUnique({ where: { id: planId } });
+    if (!company || !plan?.is_active || Number(plan.price) <= 0) throw new BillingError('Empresa ou plano indisponivel.');
+    if (await tx.subscription.findFirst({ where: { company_id: companyId, status: { in: ['active', 'pending', 'past_due'] } } })) throw new BillingError('Empresa ja possui assinatura.');
+    const now = new Date(), periodEnd = nextMonth(now);
+    const subscription = await tx.subscription.create({ data: { company_id: companyId, plan_id: planId, status: 'pending', current_period_start: now, current_period_end: periodEnd } });
+    const invoice = await tx.invoice.create({ data: { company_id: companyId, subscription_id: subscription.id, amount: plan.price, status: 'pending', due_date: now } });
+    return { subscription, invoice, mp_payment_url: null };
+  });
 }
 
 async function createInvoice(companyId, subscriptionId, amount, dueDate) {
@@ -207,7 +170,7 @@ async function getSignupCheckout(checkoutId) {
   });
 }
 
-async function activateSignupCheckout(checkoutId) {
+async function activateSignupCheckout(checkoutId, approvedPaymentId) {
   const checkout = await prisma.signupCheckout.findUnique({
     where: { id: checkoutId },
     include: { plan: true }
@@ -245,8 +208,7 @@ async function activateSignupCheckout(checkoutId) {
   const userId = `usr_${nowMs}_${suffix}`;
   const instanceId = `inst_${nowMs}_${suffix}`;
   const now = new Date();
-  const periodEnd = new Date(now);
-  periodEnd.setMonth(periodEnd.getMonth() + 1);
+  const periodEnd = nextMonth(now);
 
   const activated = await prisma.$transaction(async (tx) => {
     // Reivindica o checkout primeiro: consultas de status simultaneas nao podem
@@ -255,6 +217,7 @@ async function activateSignupCheckout(checkoutId) {
       where: { id: checkout.id, status: { not: 'paid' } },
       data: {
         status: 'paid',
+        mp_payment_id: approvedPaymentId || checkout.mp_payment_id,
         paid_at: now,
         company_id: companyId,
         // [LGPD/Segurança] Apagar dados sensíveis após ativação — senha e e-mail não devem
@@ -334,7 +297,7 @@ async function activateSignupCheckout(checkoutId) {
         subscription_id: subscription.id,
         amount: checkout.amount,
         status: 'paid',
-        mp_payment_id: checkout.mp_payment_id,
+        mp_payment_id: approvedPaymentId || checkout.mp_payment_id,
         mp_payment_url: checkout.mp_payment_url,
         due_date: checkout.due_date,
         paid_at: now
@@ -355,6 +318,7 @@ async function activateSignupCheckout(checkoutId) {
 }
 
 async function createCheckoutPayment(invoiceId, payload) {
+  validatePayment(payload);
   const signupCheckout = await getSignupCheckout(invoiceId);
   if (signupCheckout) {
     if (signupCheckout.status === 'paid') {
@@ -368,8 +332,6 @@ async function createCheckoutPayment(invoiceId, payload) {
       throw new BillingError('E-mail do pagador e obrigatorio.');
     }
 
-    const client = createMercadoPagoClient();
-    const payment = new mercadopago.Payment(client);
 
     const paymentData = {
       transaction_amount: Number(signupCheckout.amount),
@@ -399,25 +361,18 @@ async function createCheckoutPayment(invoiceId, payload) {
       throw new BillingError('Forma de pagamento invalida.');
     }
 
-    const response = await payment.create({
-      body: paymentData,
-      requestOptions: {
-        idempotencyKey: method === 'card'
-          ? `${signupCheckout.id}-${method}-${payload.token?.slice(-8) || ''}`
-          : `${signupCheckout.id}-${method}`
-      }
-    });
+    const response = await createPaymentAttempt(signupCheckout, 'signup', method, payload, paymentData);
 
     const mpPaymentUrl = response.point_of_interaction?.transaction_data?.ticket_url || null;
-    let updatedCheckout = await prisma.signupCheckout.update({
-      where: { id: signupCheckout.id },
+    await prisma.signupCheckout.updateMany({
+      where: { id: signupCheckout.id, status: { not: 'paid' } },
       data: {
         mp_payment_id: String(response.id),
         mp_payment_url: mpPaymentUrl,
         status: response.status === 'approved' ? 'processing' : response.status === 'rejected' ? 'failed' : 'pending'
       },
-      include: { plan: true }
     });
+    let updatedCheckout = await getSignupCheckout(signupCheckout.id);
 
     if (response.status === 'approved') {
       await confirmPayment(response.id);
@@ -440,8 +395,6 @@ async function createCheckoutPayment(invoiceId, payload) {
     throw new BillingError('E-mail do pagador e obrigatorio.');
   }
 
-  const client = createMercadoPagoClient();
-  const payment = new mercadopago.Payment(client);
 
   const paymentData = {
     transaction_amount: Number(invoice.amount),
@@ -471,19 +424,12 @@ async function createCheckoutPayment(invoiceId, payload) {
     throw new BillingError('Forma de pagamento invalida.');
   }
 
-  const response = await payment.create({
-    body: paymentData,
-    requestOptions: {
-      idempotencyKey: method === 'card'
-        ? `${invoice.id}-${method}-${payload.token?.slice(-8) || ''}`
-        : `${invoice.id}-${method}`
-    }
-  });
+  const response = await createPaymentAttempt(invoice, 'invoice', method, payload, paymentData);
 
   const mpPaymentUrl = response.point_of_interaction?.transaction_data?.ticket_url || null;
   // A fatura so vira 'paid' em confirmPayment, apos consulta a API do MP.
-  let updatedInvoice = await prisma.invoice.update({
-    where: { id: invoice.id },
+  await prisma.invoice.updateMany({
+    where: { id: invoice.id, status: { not: 'paid' } },
     data: {
       mp_payment_id: String(response.id),
       mp_payment_url: mpPaymentUrl,
@@ -491,6 +437,7 @@ async function createCheckoutPayment(invoiceId, payload) {
     }
   });
 
+  let updatedInvoice = await prisma.invoice.findUnique({ where: { id: invoice.id } });
   if (response.status === 'approved') {
     await confirmPayment(response.id);
     updatedInvoice = await prisma.invoice.findUnique({ where: { id: invoice.id } });
@@ -535,7 +482,7 @@ async function checkExpiredSubscriptions() {
 
     const expiredSubscriptions = await prisma.subscription.findMany({
       where: {
-        status: 'active',
+        status: { in: ['active', 'cancelled'] },
         current_period_end: {
           lt: now
         }
@@ -547,15 +494,22 @@ async function checkExpiredSubscriptions() {
     });
 
     for (const subscription of expiredSubscriptions) {
-      await prisma.subscription.update({
-        where: { id: subscription.id },
-        data: { status: 'past_due' }
+      const suspended = await require('./salesRotationService').withCompanyLock(subscription.company_id, async tx => {
+        const claimed = await tx.subscription.updateMany({
+          where: { id: subscription.id, status: { in: ['active', 'cancelled'] }, current_period_end: { lt: now } },
+          data: { status: subscription.status === 'cancelled' ? 'expired' : 'past_due' }
+        });
+        if (!claimed.count) return false;
+        const company = await tx.company.findUnique({ where: { id: subscription.company_id } });
+        if (company?.expires_at && new Date(company.expires_at) > now) return false;
+        await tx.company.update({ where: { id: subscription.company_id }, data: { is_active: false } });
+        return true;
       });
-
-      await prisma.company.update({
-        where: { id: subscription.company_id },
-        data: { is_active: false }
-      });
+      if (!suspended) continue;
+      require('../config/socket').disconnectCompany(subscription.company_id);
+      const whatsapp = require('./whatsappService');
+      for (const [id, connection] of Object.entries(whatsapp.getActiveConnections())) if (connection.companyId === subscription.company_id) await whatsapp.stopWhatsAppInstance(id, false);
+      if (subscription.status !== 'cancelled') await ensureRenewalInvoice(subscription.company_id);
 
       await Log.add(
         `Assinatura expirada para empresa ${subscription.company.name} - Plano ${subscription.plan.name}`,
@@ -572,6 +526,33 @@ async function checkExpiredSubscriptions() {
   }
 }
 
+async function ensureRenewalInvoice(companyId) {
+  return require('./salesRotationService').withCompanyLock(companyId, async tx => {
+    const subscription = await tx.subscription.findFirst({ where: { company_id: companyId, status: { in: ['active', 'past_due', 'pending'] } }, include: { plan: true }, orderBy: { created_at: 'desc' } });
+    if (!subscription) return null;
+    const existing = await tx.invoice.findFirst({ where: { subscription_id: subscription.id, status: { in: ['pending', 'failed'] } } });
+    if (existing) return existing;
+    if (new Date(subscription.current_period_end).getTime() > Date.now() + 7 * 86400000) return null;
+    return tx.invoice.create({ data: { company_id: companyId, subscription_id: subscription.id, amount: subscription.plan.price, status: 'pending', due_date: subscription.current_period_end } });
+  });
+}
+
+async function reconcilePayments() {
+  if (!getPlatformAccessToken()) return;
+  const attempts = await prisma.paymentAttempt.findMany({
+    where: { mp_payment_id: { not: null }, OR: [
+      { status: { in: ['pending', 'in_process', 'authorized'] }, OR: [{ checked_at: null }, { checked_at: { lt: new Date(Date.now() - 60000) } }] },
+      { status: 'approved', OR: [{ checked_at: null }, { checked_at: { lt: new Date(Date.now() - 86400000) } }] }
+    ] }, orderBy: { checked_at: { sort: 'asc', nulls: 'first' } }, take: 50
+  });
+  for (const attempt of attempts) {
+    try {
+      await confirmPayment(attempt.mp_payment_id);
+      await prisma.paymentAttempt.update({ where: { id: attempt.id }, data: { checked_at: new Date() } });
+    } catch (error) { console.error('[Payment reconciliation]', error.code || error.name); }
+  }
+}
+
 // Consulta o pagamento diretamente na API do Mercado Pago. O status nunca vem
 // do cliente: esta e a unica fonte de verdade para liberar acesso.
 async function fetchPayment(paymentId) {
@@ -581,6 +562,7 @@ async function fetchPayment(paymentId) {
   }
 
   const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+    signal: AbortSignal.timeout(15000),
     headers: { Authorization: `Bearer ${accessToken}` }
   });
   if (!response.ok) {
@@ -592,7 +574,7 @@ async function fetchPayment(paymentId) {
 // O pagamento precisa ter sido criado para esta cobranca e com o valor dela.
 function matchesCharge(payment, reference, amount) {
   return String(payment.external_reference || '') === String(reference)
-    && Math.abs(Number(payment.transaction_amount) - Number(amount)) < 0.01;
+    && Math.round(Number(payment.transaction_amount) * 100) === Math.round(Number(amount) * 100);
 }
 
 // Usado pelo polling: uma falha temporaria na API do MP mantem o status atual.
@@ -608,9 +590,10 @@ async function confirmPayment(paymentId) {
   const normalizedPaymentId = String(paymentId);
   const payment = await fetchPayment(normalizedPaymentId);
   const status = payment.status;
-
+  const attempt = await prisma.paymentAttempt.findFirst({ where: { mp_payment_id: normalizedPaymentId } });
+  await prisma.paymentAttempt.updateMany({ where: { mp_payment_id: normalizedPaymentId }, data: { status, checked_at: new Date() } });
   const signupCheckout = await prisma.signupCheckout.findFirst({
-    where: { mp_payment_id: normalizedPaymentId },
+    where: attempt?.charge_type === 'signup' ? { id: attempt.charge_id } : { mp_payment_id: normalizedPaymentId },
     include: { plan: true }
   });
 
@@ -620,7 +603,7 @@ async function confirmPayment(paymentId) {
       return;
     }
     if (status === 'approved') {
-      await activateSignupCheckout(signupCheckout.id);
+      await activateSignupCheckout(signupCheckout.id, normalizedPaymentId);
     } else if (status === 'rejected') {
       await prisma.signupCheckout.updateMany({
         where: { id: signupCheckout.id, status: { not: 'paid' } },
@@ -631,7 +614,7 @@ async function confirmPayment(paymentId) {
   }
 
   const invoice = await prisma.invoice.findFirst({
-    where: { mp_payment_id: normalizedPaymentId }
+    where: attempt?.charge_type === 'invoice' ? { id: attempt.charge_id } : { mp_payment_id: normalizedPaymentId }
   });
 
   if (!invoice) {
@@ -644,8 +627,11 @@ async function confirmPayment(paymentId) {
     return;
   }
 
+  if (['refunded', 'charged_back'].includes(status) && attempt?.status !== status) {
+    await Log.add('Revisao financeira necessaria: pagamento ' + normalizedPaymentId + ' da fatura ' + invoice.id + ' com status ' + status + '.', invoice.company_id);
+  }
   if (status === 'approved') {
-    const newPeriodEnd = await prisma.$transaction(async (tx) => {
+    const newPeriodEnd = await require('./salesRotationService').withCompanyLock(invoice.company_id, async (tx) => {
       // Idempotente: so a primeira confirmacao marca a fatura e renova o periodo.
       const claimed = await tx.invoice.updateMany({
         where: { id: invoice.id, status: { not: 'paid' } },
@@ -660,8 +646,11 @@ async function confirmPayment(paymentId) {
       if (!subscription) return null;
 
       const now = new Date();
-      const periodEnd = new Date(now);
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
+      const company = await tx.company.findUnique({ where: { id: subscription.company_id } });
+      const prepaidEnd = ['active', 'cancelled'].includes(subscription.status) ? new Date(subscription.current_period_end).getTime() : 0;
+      const companyEnd = company?.is_active && company.expires_at ? new Date(company.expires_at).getTime() : 0;
+      const base = new Date(Math.max(now.getTime(), prepaidEnd, companyEnd));
+      const periodEnd = nextMonth(base);
 
       await tx.subscription.update({
         where: { id: subscription.id },
@@ -711,6 +700,7 @@ async function confirmPayment(paymentId) {
 
 async function getCompanyInvoices(companyId) {
   try {
+    await ensureRenewalInvoice(companyId);
     const invoices = await prisma.invoice.findMany({
       where: { company_id: companyId },
       orderBy: { created_at: 'desc' },
@@ -741,14 +731,14 @@ async function cancelSubscription(companyId) {
       throw new BillingError('Nenhuma assinatura ativa encontrada');
     }
 
-    await prisma.subscription.update({
+    const updated = await prisma.subscription.update({
       where: { id: subscription.id },
       data: { status: 'cancelled' }
     });
 
     await Log.add('Assinatura cancelada', companyId);
 
-    return subscription;
+    return updated;
   } catch (error) {
     console.error('Erro ao cancelar assinatura:', error);
     throw error;
@@ -767,5 +757,7 @@ module.exports = {
   checkExpiredSubscriptions,
   confirmPayment,
   getCompanyInvoices,
-  cancelSubscription
+  cancelSubscription,
+  ensureRenewalInvoice,
+  reconcilePayments
 };

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import api from '../services/api';
+import api, { apiErrorMessage } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
 
 interface Invoice {
   id: string;
@@ -35,27 +36,52 @@ interface PlanInfo {
 }
 
 export default function Billing() {
+  const [plans, setPlans] = useState<{ id: string; name: string; price: number }[]>([]);
+  const [planId, setPlanId] = useState('');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null);
+  const [error, setError] = useState('');
+  const [pix, setPix] = useState<{ qr_code: string; qr_code_base64: string; invoice_id: string } | null>(null);
+  const [payerEmail, setPayerEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const pay = async (id: string) => {
+    setBusy(true); setError('');
+    try { const response = await api.post('/billing/checkout/' + id + '/payment', { method: 'pix', payer_email: payerEmail }); setPix(response.data.payment); }
+    catch (err) { setError(apiErrorMessage(err, 'Nao foi possivel gerar Pix.')); } finally { setBusy(false); }
+  };
+  const confirm = async () => {
+    if (!pix) return;
+    setBusy(true); setError('');
+    try { const response = await api.get('/billing/checkout/' + pix.invoice_id + '/status');
+      if (response.data.status === 'paid') { setPix(null); await useAuthStore.getState().initialize(); await loadData(); }
+      else setError('Pagamento ainda nao confirmado.');
+    } catch (err) { setError(apiErrorMessage(err, 'Falha na confirmacao.')); } finally { setBusy(false); }
+  };
+  const cancel = async () => {
+    if (!window.confirm('Cancelar renovacao? O acesso permanece ate o fim do periodo pago.')) return;
+    try { await api.post('/billing/cancel'); await loadData(); } catch (err) { setError(apiErrorMessage(err, 'Falha ao cancelar.')); }
+  };
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     try {
-      const [invoicesRes, planRes] = await Promise.all([
+      const [invoicesRes, planRes, plansRes] = await Promise.all([
         api.get('/billing/invoices'),
-        api.get('/company/plan-info')
+        api.get('/company/plan-info'),
+        api.get('/billing/plans')
       ]);
+      setPlans(plansRes.data);
+      setError('');
       setInvoices(invoicesRes.data);
       setPlanInfo(planRes.data);
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
+      setError(apiErrorMessage(error, 'Nao foi possivel carregar o faturamento.'));
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca assincrona: o estado so muda depois do await
     loadData();
   }, [loadData]);
 
@@ -90,6 +116,14 @@ export default function Billing() {
   return (
     <div className="h-full overflow-y-auto p-6">
       <h2 className="text-2xl font-bold mb-6">Faturamento</h2>
+      {error && <p role="alert" className="text-red-300 mb-4">{error} <button onClick={loadData}>Tentar novamente</button></p>}
+      <label className="block mb-4">E-mail do pagador <input type="email" value={payerEmail} onChange={event => setPayerEmail(event.target.value)} className="bg-gray-700 p-2 rounded" /></label>
+      <div className="flex gap-2 mb-4"><select aria-label="Plano para nova assinatura" value={planId} onChange={event => setPlanId(event.target.value)} className="bg-gray-700 p-2 rounded"><option value="">Selecionar plano para assinar novamente</option>{plans.map(plan => <option key={plan.id} value={plan.id}>{plan.name} - R$ {Number(plan.price).toFixed(2)}</option>)}</select><button disabled={busy || !planId} onClick={async () => {
+        setBusy(true); setError('');
+        try { await api.post('/billing/subscribe', { planId }); await loadData(); } catch (error) { setError(apiErrorMessage(error, 'Nao foi possivel criar a assinatura.')); } finally { setBusy(false); }
+      }}>Nova assinatura</button></div>
+      <button className="mb-4 text-red-300" onClick={cancel}>Cancelar renovacao</button>
+      {pix && <div className="mb-4"><img alt="QR Code Pix" className="w-56" src={'data:image/png;base64,' + pix.qr_code_base64} /><textarea aria-label="Pix copia e cola" readOnly value={pix.qr_code} className="bg-gray-700 w-full" /><button disabled={busy} onClick={confirm}>Verificar pagamento</button></div>}
 
       {planInfo && (
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6">
@@ -166,6 +200,7 @@ export default function Billing() {
                   </td>
                   <td className="px-4 py-3">{getStatusBadge(invoice.status)}</td>
                   <td className="px-4 py-3 text-right">
+                    {['pending', 'failed'].includes(invoice.status) && <button disabled={busy || !payerEmail} onClick={() => pay(invoice.id)} className="text-indigo-300">Gerar Pix</button>}
                     {invoice.status === 'pending' && invoice.mp_payment_url && (
                       <a
                         href={invoice.mp_payment_url}

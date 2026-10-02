@@ -7,7 +7,9 @@ async function getInstances(req, res) {
     const activeConns = whatsappService.getActiveConnections();
     const isManager = ['admin', 'supervisor'].includes(req.user.role);
 
-    const result = companyInstances.map(inst => {
+    const own = companyInstances.filter(inst => inst.user_id === req.user.id);
+    const visible = isManager ? companyInstances : own.length ? own : companyInstances.filter(inst => !inst.user_id);
+    const result = visible.map(inst => {
       const conn = activeConns[inst.id] || {};
       const canPair = isManager || (inst.user_id && inst.user_id === req.user.id);
       return {
@@ -45,7 +47,7 @@ async function createInstance(req, res) {
     const created = await Instance.create(newInst, req.user.company_id);
     res.json({ success: true, instance: created });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao criar conexão.' });
+    res.status(error.status || 500).json({ error: 'Erro ao criar conexão.' });
   }
 }
 
@@ -106,9 +108,12 @@ async function assignInstance(req, res) {
       return res.status(404).json({ error: 'Conexão não encontrada.' });
     }
     const updated = await Instance.updateUser(req.params.id, user_id, req.user.company_id);
+    const { disconnectUser } = require('../config/socket');
+    if (inst.user_id) disconnectUser(inst.user_id);
+    if (user_id) disconnectUser(user_id);
     res.json({ success: true, instance: updated });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao vincular conexão ao atendente.' });
+    res.status(error.status || 500).json({ error: 'Erro ao vincular conexão ao atendente.' });
   }
 }
 

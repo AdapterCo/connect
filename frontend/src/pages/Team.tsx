@@ -66,7 +66,7 @@ export default function Team() {
     }
   };
 
-  const canEditSector = (_user?: User) => currentUser?.role === 'admin' || currentUser?.role === 'supervisor';
+  const canEditSector = () => currentUser?.role === 'admin' || currentUser?.role === 'supervisor';
   const handleSector = async (user: User) => {
     const newSector = prompt(`Setor de ${user.name} (sales = Vendas, support = Suporte, finance = Financeiro):`, user.sector || (user.role === 'seller' ? 'sales' : (user.role === 'support' ? 'support' : 'finance')));
     if (!newSector || !['sales', 'support', 'finance'].includes(newSector.trim())) return;
@@ -255,7 +255,7 @@ export default function Team() {
                   </button>
                 </td>
                 <td className="px-4 py-3 text-right space-x-3">
-                  {canEditSector(user) && (
+                  {canEditSector() && (
                     <button onClick={() => handleSector(user)} className="text-amber-400 hover:text-amber-300 text-sm">
                       Setor
                     </button>

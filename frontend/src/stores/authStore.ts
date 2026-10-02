@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { create } from 'zustand';
 import api from '../services/api';
 import type { User } from '../types';
@@ -11,6 +12,7 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  sessionError: string | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateStatus: (status: 'online' | 'offline') => Promise<void>;
@@ -26,21 +28,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
+  sessionError: null,
 
   initialize: async () => {
     // Remove o token salvo por versoes anteriores.
     localStorage.removeItem('crm_token');
+    set({ isLoading: true, sessionError: null });
 
-    if (!localStorage.getItem(USER_KEY)) {
-      set({ isLoading: false });
-      return;
-    }
 
     try {
       const response = await api.get('/auth/me');
       storeUser(response.data.user);
-      set({ user: response.data.user, isAuthenticated: true, isLoading: false });
-    } catch {
+      set({ user: response.data.user, isAuthenticated: true, isLoading: false, sessionError: null });
+    } catch (error) {
+      if (!axios.isAxiosError(error) || ![401, 403].includes(error.response?.status || 0)) {
+        set({ isLoading: false, sessionError: 'Nao foi possivel verificar sua sessao. Tente novamente.' });
+        return;
+      }
       storeUser(null);
       set({ user: null, isAuthenticated: false, isLoading: false });
     }

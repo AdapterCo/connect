@@ -13,7 +13,7 @@ model Plan {
   max_instances Int       @default(1)
   max_users     Int       @default(2)
   max_products  Int       @default(30)
-  price         Float     @default(0)
+  price         Decimal   @default(0) @db.Decimal(12, 2)
   is_active     Boolean   @default(true)
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
@@ -194,9 +194,16 @@ model Message {
 
   @@index([chat_id])
   @@index([payment_id])
+  @@index([chat_id, timestamp])
 }
 
 model ScheduledMessage {
+  status        String   @default("pending")
+  attempts      Int      @default(0)
+  next_attempt_at DateTime @default(now())
+  locked_at     DateTime?
+  last_error    String?
+  sent_at       DateTime?
   id            String   @id @default(uuid())
   chat_id       String
   client_name   String
@@ -211,7 +218,7 @@ model ScheduledMessage {
   company       Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
 
   @@index([company_id])
-  @@index([scheduledTime])
+  @@index([status, next_attempt_at, scheduledTime])
 }
 
 model Log {
@@ -222,6 +229,7 @@ model Log {
   company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
 
   @@index([company_id])
+  @@index([company_id, timestamp])
 }
 
 model Metric {
@@ -262,7 +270,7 @@ model Invoice {
   id              String        @id @default(uuid())
   company_id      String
   subscription_id String?
-  amount          Float
+  amount          Decimal @db.Decimal(12, 2)
   status          String        @default("pending")
   mp_payment_id   String?
   mp_payment_url  String?
@@ -285,7 +293,7 @@ model SignupCheckout {
   admin_password     String
   payer_email        String
   plan_id            String
-  amount             Float
+  amount             Decimal @db.Decimal(12, 2)
   status             String   @default("pending")
   mp_payment_id      String?
   mp_payment_url     String?
@@ -325,6 +333,7 @@ model AuditLog {
   company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
 
   @@index([company_id])
+  @@index([company_id, timestamp])
 }
 
 model Category {
@@ -481,6 +490,7 @@ model Flow {
 
 // Execucao do fluxo em uma conversa: no atual e respostas captadas (variables).
 model FlowSession {
+  graph_snapshot  Json?
   id              String    @id @default(uuid())
   chat_id         String    @unique
   company_id      String
@@ -497,4 +507,24 @@ model FlowSession {
   flow            Flow?     @relation(fields: [flow_id], references: [id], onDelete: SetNull)
 
   @@index([company_id, status])
+}
+
+// Uma tentativa permanece vinculada a cobranca, mesmo apos novas tentativas.
+model PaymentAttempt {
+  id String @id @default(uuid())
+  charge_id String
+  charge_type String
+  idempotency_key String @unique
+  mp_payment_id String? @unique
+  status String @default("creating")
+  created_at DateTime @default(now())
+  checked_at DateTime?
+  @@index([status, checked_at])
+  @@index([charge_id])
+}
+model MediaDeletion {
+  url String @id
+  created_at DateTime @default(now())
+  attempts Int @default(0)
+  @@index([created_at])
 }
