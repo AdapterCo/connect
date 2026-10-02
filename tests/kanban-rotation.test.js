@@ -41,7 +41,11 @@ const prisma = {
   },
   chat: {
     findUnique: async ({ where }) => copy(db.chats.find(row => matches(row, where))),
-    findFirst: async ({ where }) => copy(db.chats.find(row => matches(row, where))),
+    findFirst: async ({ where, include }) => {
+      const row = copy(db.chats.find(row => matches(row, where)));
+      if (row && include?.messages) row.messages = copy(db.messages.filter(message => message.chat_id === row.id));
+      return row;
+    },
     findMany: async ({ where }) => copy(db.chats.filter(row => matches(row, where))),
     update: async ({ where, data }) => {
       const row = db.chats.find(row => matches(row, where));
@@ -245,11 +249,11 @@ test('human handoff keeps AI active and assigns a seller even when AI status sta
   assert.equal(result.instance_id, 'store');
   assert.equal(result.sector, 'sales');
   assert.deepEqual(result.sales_reply_due_at, after(60000));
-  assert.equal(db.messages.length, 1);
+  assert.equal(db.messages.length, 2);
   const repeated = await rotation.handoffToHuman('chat1', 'c1', after(1000));
   assert.equal(repeated.assigned_to, 's1');
   assert.deepEqual(repeated.sales_reply_due_at, after(60000));
-  assert.equal(db.messages.length, 1);
+  assert.equal(db.messages.length, 2);
 });
 test('human handoff routes an interest lead that still has no owner', async () => {
   Object.assign(db.chats[0], { ai_active: true, assigned_to: null, status: rotation.INTEREST });

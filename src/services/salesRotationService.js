@@ -95,6 +95,10 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
       if (!updates.sales_reply_due_at && !chat.sales_reply_due_at) updates.sales_reply_due_at = new Date(now.getTime() + REPLY_WINDOW_MS);
       const owner = updates.assigned_to !== undefined ? updates.assigned_to : chat.assigned_to;
       await tx.message.create({ data: { chat_id: id, sender: 'system', text: owner ? 'Atendimento encaminhado ao vendedor responsavel. IA permanece ativa.' : 'Atendimento na fila aguardando vendedor online. IA permanece ativa.' } });
+      const context = await tx.chat.findFirst({ where: { id, company_id: companyId }, include: messages });
+      const qualification = require('./leadQualificationService').previousQualification(context || chat);
+      if (!qualification.context) qualification.context = (context?.messages || []).filter(message => message.sender === 'client' && !message.is_note).slice(-6).map(message => String(message.text || '').slice(0, 500)).join('\n').slice(0, 2000);
+      await tx.message.create({ data: { chat_id: id, sender: 'system', is_note: true, text: 'Resumo para o vendedor:\n' + require('./leadQualificationService').sellerBrief(qualification) } });
     }
     return tx.chat.update({ where: { id }, data: updates, include: messages });
   });

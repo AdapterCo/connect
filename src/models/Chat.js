@@ -79,12 +79,12 @@ async function findByRemoteJid(remoteJid, companyId, instanceId) {
   });
 }
 
-async function create(chat, companyId) {
+async function create(chat, companyId, database = prisma) {
   const instanceId = chat.instance_id || 'inst_default';
   const remoteJid = chat.remote_jid || chat.id;
   const id = chat.id || createChatId(companyId, instanceId, remoteJid);
 
-  return prisma.chat.create({
+  return database.chat.create({
     data: {
       id,
       remote_jid: remoteJid,

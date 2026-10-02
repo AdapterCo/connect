@@ -27,8 +27,9 @@ async function notifySeller(chat, sellerId) {
     if (chat.id) {
       const fresh = await prisma.chat.findUnique({
         where: { id: chat.id },
-        select: { client_phone: true, company_id: true }
+        select: { client_phone: true, company_id: true, messages: { where: { sender: 'system', is_note: true }, orderBy: { timestamp: 'desc' }, take: 30 } }
       });
+      if (fresh?.company_id === chat.company_id && fresh.messages) chat = { ...chat, messages: [...fresh.messages].reverse() };
       if (fresh && fresh.client_phone) {
         clientDigits = normalizeDigits(fresh.client_phone) || fresh.client_phone;
       }
@@ -47,11 +48,14 @@ async function notifySeller(chat, sellerId) {
     }
 
     const clientName = chat.client_name || 'Cliente';
+    const { previousQualification, sellerBrief } = require('./leadQualificationService');
+    const brief = sellerBrief(previousQualification(chat));
 
     const text = `🚨 *Novo Lead Atribuído!*\n\n` +
       `👤 *Cliente:* ${clientName}\n` +
       `📱 *Telefone:* +${clientDigits}\n\n` +
       `👉 *Iniciar conversa:* https://wa.me/${clientDigits}\n\n` +
+      `*Triagem e contexto:*\n${brief}\n\n` +
       `*Para confirmar e pausar o rodízio:* responda "CONFIRMAR ${chat.id}" aqui ou atenda pelo painel do Connect.`;
 
     const whatsappService = require('./whatsappService');

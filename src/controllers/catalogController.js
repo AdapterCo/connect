@@ -378,7 +378,7 @@ async function getCatalogForAI(companyId) {
     where: { company_id: companyId, is_active: true },
     include: {
       products: {
-        where: { is_active: true },
+        where: { is_active: true, status: 'stock' },
         include: { variants: true, addons: true },
         orderBy: { sort_order: 'asc' }
       }
@@ -403,6 +403,8 @@ function formatCatalogForPrompt(categories) {
       if (product.description) {
         catalog += ` - ${product.description}`;
       }
+      const details = [product.memory, product.color, product.condition].filter(Boolean);
+      if (details.length) catalog += ` - ${details.join(', ')}`;
       catalog += '\n';
       
       if (product.variants.length > 0) {

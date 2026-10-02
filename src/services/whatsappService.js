@@ -46,7 +46,11 @@ async function sendMessage(instanceId, jid, content) {
     throw new Error('WhatsApp desconectado.');
   }
 
-  const result = await conn.sock.sendMessage(jid, content);
+  const { generateMessageIDV2 } = await getBaileys();
+  const messageId = generateMessageIDV2(conn.sock.user?.id);
+  // Register before sending: the echo can arrive before sendMessage resolves.
+  registerSentMessageId(messageId);
+  const result = await conn.sock.sendMessage(jid, content, { messageId });
   if (result?.key?.id) {
     registerSentMessageId(result.key.id);
   }
@@ -483,7 +487,6 @@ async function startInstance(instanceId, companyId) {
             }
 
             if (msg.key?.id && recentServerSentIds.has(msg.key.id)) {
-              recentServerSentIds.delete(msg.key.id);
               continue;
             }
 
@@ -955,7 +958,7 @@ async function startInstance(instanceId, companyId) {
                   company_id: companyId,
                   instance_id: instanceId
                 };
-                chat = await Chat.create(newChatData, companyId);
+                chat = (await require('./chatIdentityService').findOrCreate(companyId, instanceId, senderJid, senderJidAlt, newChatData)).chat;
               } else {
                 const updates = {
                   sales_reply_due_at: null,
@@ -1244,7 +1247,7 @@ async function handleIncomingWhatsAppMessage(
     let chat =
       await Chat.findByRemoteJid(senderJid, companyId, instanceId);
 
-    const isNewChat = !chat;
+    let isNewChat = !chat;
 
     let cleanPhone = senderJid.split('@')[0];
     if (senderJid.endsWith('@lid') && senderJidAlt && senderJidAlt.includes('@s.whatsapp.net')) {
@@ -1335,11 +1338,9 @@ async function handleIncomingWhatsAppMessage(
           instanceId
       };
 
-      chat =
-        await Chat.create(
-          newChatData,
-          companyId
-        );
+      const resolved = await require('./chatIdentityService').findOrCreate(companyId, instanceId, senderJid, senderJidAlt, newChatData);
+      chat = resolved.chat;
+      isNewChat = resolved.created;
 
       await Log.add(
         `Novo chat iniciado para o cliente ${chat.client_name} (${cleanPhone}).`,
@@ -1545,7 +1546,8 @@ async function handleIncomingWhatsAppMessage(
         const beforeSend = await prisma.chat.findFirst({ where: { id: chat.id, company_id: companyId } });
         const activeCompany = await prisma.company.findUnique({ where: { id: companyId } });
         if (!beforeSend?.ai_active || beforeSend.is_blocked || beforeSend.is_archived || !require('./accessService').companyActive(activeCompany)) return beforeSend;
-        const handoffRequested = aiResponse.disable_ai === true || aiResponse.status === 'transbordo' || aiResponse.status === 'interesse em compra';
+        await require('./leadQualificationService').saveQualification(freshChat, aiResponse.qualification);
+        const handoffRequested = aiResponse.handoff_requested === true;
         if (handoffRequested) {
           const handedOff = await require('./salesRotationService').handoffToHuman(chat.id, companyId);
           if (!handedOff) {
