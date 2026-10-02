@@ -5,7 +5,7 @@ import api, { apiErrorMessage } from '../services/api';
 const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 const VALID_OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-mini', 'o1'];
-const VALID_GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+const VALID_GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
 const VALID_GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'];
 
 function safeModel(value: string | undefined, validList: string[], fallback: string): string {
@@ -180,6 +180,7 @@ export default function SettingsAI() {
                   onChange={(e) => updateFormData({ gemini_model: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
                 >
+                  <option value="gemini-3.8-flash">gemini-3.8-flash</option>
                   <option value="gemini-2.5-flash">gemini-2.5-flash (recomendado)</option>
                   <option value="gemini-2.5-pro">gemini-2.5-pro</option>
                   <option value="gemini-2.0-flash">gemini-2.0-flash</option>

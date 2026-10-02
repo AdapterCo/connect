@@ -10,7 +10,7 @@ const MAX_SYSTEM_PROMPT = 8000;
 const AI_PROVIDERS = new Set(['mock', 'gemini', 'openai', 'groq']);
 
 const VALID_OPENAI_MODELS = new Set(['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-mini', 'o1']);
-const VALID_GEMINI_MODELS = new Set(['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']);
+const VALID_GEMINI_MODELS = new Set(['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']);
 const VALID_GROQ_MODELS = new Set(['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it']);
 
 function normalizeProvider(provider) {
