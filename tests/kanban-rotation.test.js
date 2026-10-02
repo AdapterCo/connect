@@ -14,6 +14,8 @@ function matches(row, where = {}) {
     if (key === 'AND') return value.every(part => matches(row, part));
     if (key === 'chat') return matches(db.chats.find(chat => chat.id === row.chat_id), value);
     if (value && typeof value === 'object' && !(value instanceof Date)) {
+      if (value.in !== undefined) return value.in.includes(row?.[key]);
+      if (value.not !== undefined) return (row?.[key] ?? null) !== value.not;
       if (value.lte !== undefined) return row[key] && new Date(row[key]) <= value.lte;
       return matches(row[key], value);
     }
@@ -104,7 +106,7 @@ test.beforeEach(() => {
       { id: 'a2', name: 'Supervisor', role: 'supervisor', status: 'online', company_id: 'c1' },
       { id: 'x1', name: 'Other company', role: 'seller', status: 'online', company_id: 'c2' }
     ],
-    chats: [{ id: 'chat1', company_id: 'c1', status: 'iniciada', assigned_to: 's1', claimed_at: null, sales_reply_due_at: null, is_archived: false, is_blocked: false }],
+    chats: [{ id: 'chat1', company_id: 'c1', client_phone: '5521985080634', status: 'iniciada', assigned_to: 's1', claimed_at: null, sales_reply_due_at: null, is_archived: false, is_blocked: false }],
     columns: [], cards: [], messages: [], audit: [], metrics: []
   };
 });
@@ -289,4 +291,69 @@ test('repeat handoff after seller reply preserves ownership and does not restart
   assert.equal(db.companies[0].sales_rotation_cursor, cursor);
   assert.equal(db.messages.length, 0);
   assert.equal(db.audit.length, 0);
+});
+
+test('reply from seller chip pauses the original store lead without changing its AI or connection', async () => {
+  await enter();
+  Object.assign(db.chats[0], { ai_active: true, instance_id: 'store' });
+  db.chats.push({ ...copy(db.chats[0]), id: 'seller-chat', instance_id: 'seller-chip', ai_active: false, sales_reply_due_at: null });
+  await rotation.recordMessage('seller-chat', { chat_id: 'seller-chat', sender: 'attendant', sender_id: 's1', text: 'Bom dia', timestamp: after(1000), is_ai: false }, after(1000));
+  assert.equal(db.chats[0].sales_reply_due_at, null);
+  assert.equal(db.chats[0].ai_active, true);
+  assert.equal(db.chats[0].instance_id, 'store');
+  assert.equal(await rotation.rotateExpiredChat('chat1', 'c1', after(60000)), null);
+});
+
+test('plain confirmation captures a single client across both connections and is idempotent', async () => {
+  await enter();
+  db.chats.push({ ...copy(db.chats[0]), id: 'seller-chat', instance_id: 'seller-chip' });
+  const result = await rotation.confirmAttendance('c1', 's1', null, after(1000));
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.chats.length, 2);
+  assert.ok(db.chats.every(chat => chat.sales_reply_due_at === null));
+  assert.equal((await rotation.confirmAttendance('c1', 's1', 'chat1', after(2000))).status, 'confirmed');
+  assert.equal(await rotation.rotateExpiredChat('chat1', 'c1', after(60000)), null);
+});
+
+test('plain confirmation with distinct clients requires an explicit selection', async () => {
+  await enter();
+  db.chats.push({ ...copy(db.chats[0]), id: 'another-client', client_phone: '5511988888888' });
+  const result = await rotation.confirmAttendance('c1', 's1', null, after(1000));
+  assert.equal(result.status, 'ambiguous');
+  assert.ok(db.chats.every(chat => chat.sales_reply_due_at !== null));
+});
+
+test('a previous seller cannot confirm or stop rotation after ownership changes', async () => {
+  await enter();
+  await rotation.updateChat('chat1', { assigned_to: 's2' }, 'c1', null, after(1000));
+  assert.equal((await rotation.confirmAttendance('c1', 's1', 'chat1', after(2000))).status, 'unavailable');
+  db.chats.push({ ...copy(db.chats[0]), id: 'old-seller-chat', assigned_to: 's1', sales_reply_due_at: null });
+  await rotation.recordMessage('old-seller-chat', { chat_id: 'old-seller-chat', sender: 'attendant', sender_id: 's1', text: 'Oi', timestamp: after(3000) }, after(3000));
+  assert.deepEqual(db.chats[0].sales_reply_due_at, after(61000));
+});
+
+test('AI replies, internal notes and old messages on another connection do not capture the lead', async () => {
+  await enter();
+  db.chats.push({ ...copy(db.chats[0]), id: 'seller-chat', sales_reply_due_at: null });
+  for (const extra of [{ is_ai: true }, { is_note: true }, { timestamp: new Date(now.getTime() - 1000) }]) {
+    await rotation.recordMessage('seller-chat', { chat_id: 'seller-chat', sender: 'attendant', sender_id: 's1', text: 'Oi', timestamp: after(1000), ...extra }, after(1000));
+  }
+  assert.deepEqual(db.chats[0].sales_reply_due_at, after(60000));
+});
+
+test('worker repairs a legacy store deadline when a seller reply was recorded on another connection', async () => {
+  await enter();
+  db.chats.push({ ...copy(db.chats[0]), id: 'seller-chat', sales_reply_due_at: null });
+  prisma.message.findFirst = async ({ where }) => {
+    assert.equal(where.sender_id, 's1');
+    assert.equal(where.chat.company_id, 'c1');
+    assert.deepEqual(where.timestamp.gte, now);
+    return { chat_id: 'seller-chat', sender_id: 's1', timestamp: after(1000) };
+  };
+  try {
+    const result = await rotation.rotateExpiredChat('chat1', 'c1', after(60000));
+    assert.equal(result.sales_reply_due_at, null);
+    assert.equal(result.assigned_to, 's1');
+    assert.equal(db.audit.filter(row => row.action === 'sales_rotation_timeout').length, 0);
+  } finally { delete prisma.message.findFirst; }
 });

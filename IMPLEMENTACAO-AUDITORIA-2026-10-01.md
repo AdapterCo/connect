@@ -106,3 +106,13 @@ Validacao: 113 testes passaram, incluindo triagem, notificacao, identidade e con
 A coincidencia exata com o cadastro deixou de ser requisito para registrar o modelo desejado. A frase real "iPhone 13 Pro Max no boleto" agora identifica diretamente aparelho e pagamento, mesmo se a IA omitir seus campos de extracao ou o catalogo nao contiver esse modelo. O sistema preserva Pro Max, sem substituir por iPhone 13 basico. Produto sem correspondencia no catalogo segue no resumo como preferencia do cliente, com disponibilidade/preco pendentes de confirmacao; nao e anunciado como estoque confirmado. Pagamento e escolhas anteriores permanecem entre mensagens.
 
 Ha no maximo uma pergunta por campo faltante (aparelho ou pagamento). Se a qualificacao continuar incompleta apos essa pergunta, o atendimento segue ao vendedor com os dados disponiveis. Consultas ao catalogo/preco continuam sem repasse automatico. Testes locais cobrem a sequencia relatada e o limite de perguntas; 117 testes passaram. Nao houve teste com WhatsApp ou provedor real, nem alteracao no banco de producao.
+
+## Captura do lead entre loja e chip do vendedor — 02/10/2026
+
+A resposta humana no chip conectado do vendedor agora interrompe os prazos dos registros do mesmo cliente que continuam atribuidos a esse vendedor, na mesma empresa, sem mover a conexao original ou desativar sua IA. As mutacoes usam o mesmo lock do worker; vendedor anterior, notas internas, IA, agendamentos e respostas anteriores a atribuicao nao capturam o lead atual. O worker tambem verifica respostas humanas ja persistidas para reparar prazos deixados por versoes anteriores.
+
+Confirmacoes de vendedores sao processadas antes de ignorar contatos que tambem representam conexoes da empresa. "Confirmar" sem ID aceita um unico cliente pendente, incluindo seus registros em varias conexoes. Com varios clientes, o bot pede selecao explicita; responder a notificacao citada identifica seu ID. Confirmacao com ID continua suportada e pode ser repetida sem reiniciar prazo. O bot responde com sucesso ou motivo da impossibilidade, em vez de ignorar o comando.
+
+O Kanban apresenta um unico card para mesmo telefone, empresa, etapa e responsavel, preferindo a conversa de origem da loja. Historicos das conexoes continuam separados e preservados em Chats/Funil. Captura apresenta rodizio pausado, sem contagem regressiva. Nao houve exclusao/mesclagem de conversas nem migracao nova.
+
+Validacao: 126 testes passaram, sintaxe valida em 86 arquivos, lint e build frontend passaram. Casos incluem resposta no chip, confirmacao sem ID, clientes ambiguos, vendedor anterior, worker e agrupamento do Kanban. Sem teste com WhatsApp real ou acesso a producao.

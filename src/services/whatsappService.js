@@ -560,10 +560,6 @@ async function startInstance(instanceId, companyId) {
                 phone: { in: phonesList }
               }
             });
-            if (isCompanyInstance) {
-              continue;
-            }
-
             const teamMember = await prisma.user.findFirst({
               where: {
                 company_id: companyId,
@@ -573,35 +569,22 @@ async function startInstance(instanceId, companyId) {
 
             if (teamMember) {
               const confirmation = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-              const matched = /^CONFIRMAR (chat_[a-zA-Z0-9_-]+)$/i.exec(confirmation.trim());
-              if (!matched) continue;
-              const pendingChat = await prisma.chat.findFirst({
-                where: {
-                  company_id: companyId,
-                  id: matched[1],
-                  assigned_to: teamMember.id,
-                  status: 'interesse em compra',
-                  sales_reply_due_at: { not: null }
-                },
-                orderBy: { updated_at: 'desc' }
-              });
-
-              if (pendingChat) {
-                await Chat.update(pendingChat.id, { sales_reply_due_at: null }, companyId);
-                await Chat.addMessage(pendingChat.id, {
-                  sender: 'system',
-                  text: `Vendedor ${teamMember.name} confirmou atendimento via WhatsApp. Rodízio pausado.`,
-                  timestamp: new Date()
-                });
-                const updated = await Chat.findById(pendingChat.id, companyId);
-                emitToCompany(companyId, 'chat_updated', updated);
-
-                await sendMessage(instanceId, senderJid, {
-                  text: `✅ Atendimento confirmado para o cliente *${pendingChat.client_name}* (+${pendingChat.client_phone})!\nO rodízio foi pausado para este lead.`
-                });
-              }
+              const matched = /^CONFIRMAR(?:\s+(chat_[a-zA-Z0-9_-]+))?$/i.exec(confirmation.trim());
+              if (!matched || msg.key?.fromMe) continue;
+              const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+              const quotedText = quoted?.conversation || quoted?.extendedTextMessage?.text || '';
+              const quotedId = /CONFIRMAR\s+(chat_[a-zA-Z0-9_-]+)/i.exec(quotedText)?.[1];
+              const result = await require('./salesRotationService').confirmAttendance(companyId, teamMember.id, matched[1] || quotedId || null);
+              const reply = result.status === 'confirmed'
+                ? 'Atendimento confirmado para ' + result.chat.client_name + '. O rodizio foi pausado para este cliente.'
+                : result.status === 'ambiguous'
+                  ? 'Voce tem mais de um cliente aguardando. Responda a notificacao desejada com CONFIRMAR ou envie o comando com o ID:\n' + result.chats.map(lead => lead.client_name + ': CONFIRMAR ' + lead.id).join('\n')
+                  : 'Nao ha lead pendente atribuido a voce para essa confirmacao. Ele pode ter sido encaminhado a outro vendedor.';
+              await sendMessage(instanceId, senderJid, { text: reply });
               continue;
             }
+
+            if (isCompanyInstance) continue;
 
             const name =
               msg.pushName ||

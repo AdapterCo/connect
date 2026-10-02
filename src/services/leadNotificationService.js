@@ -56,7 +56,7 @@ async function notifySeller(chat, sellerId) {
       `📱 *Telefone:* +${clientDigits}\n\n` +
       `👉 *Iniciar conversa:* https://wa.me/${clientDigits}\n\n` +
       `*Triagem e contexto:*\n${brief}\n\n` +
-      `*Para confirmar e pausar o rodízio:* responda "CONFIRMAR ${chat.id}" aqui ou atenda pelo painel do Connect.`;
+      `*Para confirmar e pausar o rodízio:* responda a esta mensagem com "CONFIRMAR", envie "CONFIRMAR ${chat.id}" ou responda ao cliente pelo seu chip conectado/painel do Connect.`;
 
     const whatsappService = require('./whatsappService');
     const connections = whatsappService.getActiveConnections();

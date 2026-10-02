@@ -112,10 +112,56 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
   return result;
 }
 
+function phoneCandidates(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length < 10 || digits.length > 15) return [];
+  return [...new Set([digits, ...(digits.startsWith('55') ? [digits.slice(2)] : digits.length <= 11 ? ['55' + digits] : [])])];
+}
+
+async function captureRelated(tx, chat, sellerId, now, reason) {
+  const phones = phoneCandidates(chat.client_phone);
+  if (!phones.length) return [];
+  const related = await tx.chat.findMany({ where: {
+    company_id: chat.company_id, client_phone: { in: phones }, assigned_to: sellerId,
+    status: INTEREST, is_archived: false, is_blocked: false
+  } });
+  const changed = [];
+  for (const lead of related) {
+    if (!lead.sales_reply_due_at || (lead.claimed_at && new Date(lead.claimed_at) > now)) continue;
+    changed.push(await tx.chat.update({ where: { id: lead.id }, data: { sales_reply_due_at: null }, include: messages }));
+    await tx.message.create({ data: { chat_id: lead.id, sender: 'system', text: reason } });
+  }
+  return changed;
+}
+
+function emitCaptured(chats) {
+  for (const chat of chats) require('../config/socket').emitToCompany(chat.company_id, 'chat_updated', chat);
+}
+
+async function confirmAttendance(companyId, sellerId, chatId = null, now = new Date()) {
+  const result = await withCompanyLock(companyId, async tx => {
+    const seller = await tx.user.findFirst({ where: { id: sellerId, company_id: companyId, role: 'seller' } });
+    if (!seller) return { status: 'unavailable', chats: [] };
+    const leads = await tx.chat.findMany({ where: {
+      company_id: companyId, assigned_to: sellerId, status: INTEREST,
+      is_archived: false, is_blocked: false, ...(chatId ? { id: chatId } : { sales_reply_due_at: { not: null } })
+    }, orderBy: { updated_at: 'desc' } });
+    if (!leads.length) return { status: 'unavailable', chats: [] };
+    const groups = new Set(leads.map(lead => phoneCandidates(lead.client_phone).sort().join('|') || lead.id));
+    if (!chatId && groups.size > 1) return { status: 'ambiguous', chats: leads };
+    const lead = leads[0];
+    const captured = await captureRelated(tx, lead, sellerId, now, `Vendedor ${seller.name} confirmou atendimento via WhatsApp. Rodizio pausado em todas as conexoes deste lead.`);
+    return { status: 'confirmed', chat: lead, chats: captured };
+  });
+  if (result.status === 'confirmed') emitCaptured(result.chats);
+  return result;
+}
+
 async function recordMessage(chatId, data, now = new Date()) {
   const existing = await prisma.chat.findUnique({ where: { id: chatId }, select: { company_id: true } });
   if (!existing) throw new Error('Conversa não encontrada.');
-  return withCompanyLock(existing.company_id, async tx => {
+  let captured = [];
+  const message = await withCompanyLock(existing.company_id, async tx => {
     const chat = await tx.chat.findFirst({ where: { id: chatId, company_id: existing.company_id } });
     if (!chat) throw new Error('Conversa não encontrada.');
     const result = await tx.message.create({ data });
@@ -143,10 +189,12 @@ async function recordMessage(chatId, data, now = new Date()) {
         data.sender_id && data.sender_id === chat.assigned_to &&
         (!chat.claimed_at || new Date(data.timestamp) >= new Date(chat.claimed_at))) {
       const seller = await tx.user.findFirst({ where: { id: data.sender_id, company_id: chat.company_id, role: 'seller' }, select: { id: true } });
-      if (seller) await tx.chat.update({ where: { id: chatId }, data: { sales_reply_due_at: null } });
+      if (seller) captured = await captureRelated(tx, chat, seller.id, new Date(data.timestamp), 'Resposta humana recebida. Rodizio pausado em todas as conexoes deste lead.');
     }
     return result;
   });
+  emitCaptured(captured);
+  return message;
 }
 
 async function rotateExpiredChat(id, companyId, now = new Date()) {
@@ -155,6 +203,18 @@ async function rotateExpiredChat(id, companyId, now = new Date()) {
     const chat = await tx.chat.findFirst({ where: { id, company_id: companyId } });
     if (!chat || chat.status !== INTEREST || chat.is_archived || chat.is_blocked ||
         !chat.sales_reply_due_at || new Date(chat.sales_reply_due_at) > now) return null;
+    // Repair deadlines left behind by older versions after a seller-chip reply.
+    if (chat.assigned_to && tx.message.findFirst && phoneCandidates(chat.client_phone).length) {
+      const proof = await tx.message.findFirst({ where: {
+        sender: 'attendant', sender_id: chat.assigned_to, is_ai: false, is_note: false, is_scheduled: false,
+        timestamp: { gte: chat.claimed_at || chat.created_at, lte: now },
+        chat: { company_id: companyId, client_phone: { in: phoneCandidates(chat.client_phone) }, assigned_to: chat.assigned_to, is_archived: false, is_blocked: false }
+      } });
+      if (proof) {
+        await captureRelated(tx, chat, chat.assigned_to, now, 'Resposta humana ja registrada em outra conexao. Rodizio pausado.');
+        return tx.chat.findFirst({ where: { id, company_id: companyId }, include: messages });
+      }
+    }
     const assignment = await assignNext(tx, chat, now, !chat.assigned_to);
     if (assignment) {
       assignedSellerId = assignment.assigned_to;
@@ -187,7 +247,7 @@ async function checkSalesRotation(now = new Date()) {
   }
 }
 
-module.exports = { INTEREST, REPLY_WINDOW_MS, nextSeller, withCompanyLock, updateChat, recordMessage, rotateExpiredChat, checkSalesRotation };
+module.exports = { INTEREST, REPLY_WINDOW_MS, nextSeller, withCompanyLock, updateChat, recordMessage, rotateExpiredChat, checkSalesRotation, confirmAttendance };
 
 async function handoffToHuman(id, companyId, now = new Date()) {
   const result = await updateChat(id, { status: INTEREST, sector: 'sales' }, companyId, null, now, { source: 'handoff' });
