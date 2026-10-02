@@ -82,3 +82,13 @@ Esta implementação usa a auditoria `AUDITORIA-PROJETO-2026-10-01.md` (título 
 9. Completar QA visual/acessibilidade/E2E, paginação de listagens, alertas de workers, teste de carga, backups automáticos, restauração, RPO/RTO, usuário de banco com menor privilégio, proteção de volumes, versão de imagem e validação Docker/Traefik. MFA e verificação de e-mail/recuperação são melhorias de conta ainda pendentes, não implementadas nesta rodada.
 
 A implementação reduz os problemas confirmados, mas os itens parciais e dependências operacionais acima continuam abertos. Este documento complementa o relatório original; não muda retroativamente os resultados daquela auditoria.
+
+## Ajuste solicitado em 02/10/2026
+
+Conforme a orientacao final do usuario, pedidos de atendimento humano ou interesse em compra acionam o rodizio mantendo a IA ativa. A conexao de origem permanece preservada. Sem vendedor online, o atendimento fica em interesse em compra com prazo para nova tentativa do worker; a confirmacao ao cliente informa a espera. O repasse e persistido antes do envio da confirmacao pelo WhatsApp. Conversas finalizadas, bloqueadas, arquivadas ou cuja IA foi pausada manualmente durante a chamada nao sao reabertas por resposta atrasada.
+
+A IA recebe o estado atual de encaminhamento para continuar respondendo duvidas gerais. Pedidos repetidos de transferencia ou compra informam que o atendimento ja esta encaminhado ou na fila, sem trocar vendedor, reiniciar prazo ou duplicar notas de repasse. A classificacao da mensagem atual e separada da etapa persistida, permitindo responder outras duvidas sem remover o lead do interesse. Novas mensagens apos resposta humana nao reiniciam o rodizio. Transferencias pelo fluxo tambem preservam a IA ativa.
+
+A opcao Excluir dados do cliente foi retirada do painel e as rotas de exclusao direta de conversa e de privacidade retornam 403 para todos os perfis. Exportacao, anonimizacao, arquivamento, etiquetas, agendamentos e demais recursos permanecem. Nao foi encontrada opcao/rota de exclusao individual de mensagens. Retencao automatica e exclusao administrativa de empresa/conexao continuam conforme a configuracao existente.
+
+Validacao: 98 testes passaram, sintaxe backend valida; lint e build frontend passaram na verificacao anterior, sem nova alteracao frontend nesta revisao. Conversas que ja ficaram com IA desativada na versao anterior precisam ter a IA reativada pelo painel; nao foi feita alteracao automatica desses dados existentes para preservar pausas manuais. Alteracoes locais, sem deploy ou teste com WhatsApp real.

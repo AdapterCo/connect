@@ -177,13 +177,13 @@ test('a successfully recorded assigned seller response stops rotation', async ()
   assert.equal(db.chats[0].sales_reply_due_at, null);
   assert.equal(await rotation.rotateExpiredChat('chat1', 'c1', after(60000)), null);
 });
-test('repeated customer messages do not postpone the deadline; a new conversation turn starts it again', async () => {
+test('customer messages do not postpone a pending deadline or restart routing after seller reply', async () => {
   await enter();
   await reply({ sender: 'client', sender_id: null });
   assert.equal(db.chats[0].sales_reply_due_at.getTime(), after(60000).getTime());
   await reply({});
   await rotation.recordMessage('chat1', { chat_id: 'chat1', sender: 'client', timestamp: after(80000), text: 'Another question' }, after(80000));
-  assert.equal(db.chats[0].sales_reply_due_at.getTime(), after(140000).getTime());
+  assert.equal(db.chats[0].sales_reply_due_at, null);
 });
 test('late replies by a previous owner cannot stop the new seller deadline', async () => {
   await enter(); await rotation.rotateExpiredChat('chat1', 'c1', after(60000));
@@ -234,4 +234,55 @@ test('an asynchronous AI status cannot cancel rotation or reopen a completed sal
   await rotation.updateChat('chat1', { status: rotation.INTEREST }, 'c1', null, after(3000), { source: 'ai' });
   assert.equal(db.chats[0].status, 'finalizada');
   assert.equal(db.chats[0].sales_reply_due_at, null);
+});
+
+test('human handoff keeps AI active and assigns a seller even when AI status stayed initiated', async () => {
+  Object.assign(db.chats[0], { ai_active: true, assigned_to: null, instance_id: 'store' });
+  const result = await rotation.handoffToHuman('chat1', 'c1', now);
+  assert.equal(result.status, rotation.INTEREST);
+  assert.equal(result.ai_active, true);
+  assert.equal(result.assigned_to, 's1');
+  assert.equal(result.instance_id, 'store');
+  assert.equal(result.sector, 'sales');
+  assert.deepEqual(result.sales_reply_due_at, after(60000));
+  assert.equal(db.messages.length, 1);
+  const repeated = await rotation.handoffToHuman('chat1', 'c1', after(1000));
+  assert.equal(repeated.assigned_to, 's1');
+  assert.deepEqual(repeated.sales_reply_due_at, after(60000));
+  assert.equal(db.messages.length, 1);
+});
+test('human handoff routes an interest lead that still has no owner', async () => {
+  Object.assign(db.chats[0], { ai_active: true, assigned_to: null, status: rotation.INTEREST });
+  const result = await rotation.handoffToHuman('chat1', 'c1', now);
+  assert.equal(result.assigned_to, 's1');
+  assert.deepEqual(result.sales_reply_due_at, after(60000));
+});
+test('human handoff waits without online sellers and worker assigns when one returns', async () => {
+  Object.assign(db.chats[0], { ai_active: true, assigned_to: null });
+  db.users.filter(user => user.company_id === 'c1').forEach(user => { user.status = 'offline'; });
+  const result = await rotation.handoffToHuman('chat1', 'c1', now);
+  assert.equal(result.assigned_to, null);
+  assert.equal(result.ai_active, true);
+  assert.match(db.messages[0].text, /aguardando/);
+  db.users.find(user => user.id === 's2').status = 'online';
+  assert.equal((await rotation.rotateExpiredChat('chat1', 'c1', after(60000))).assigned_to, 's2');
+});
+test('human handoff does not reopen closed, blocked or manually paused chats', async () => {
+  for (const overrides of [{ ai_active: false }, { ai_active: true, status: 'finalizada' }, { ai_active: true, is_blocked: true }, { ai_active: true, is_archived: true }]) {
+    Object.assign(db.chats[0], { status: 'iniciada', ai_active: true, is_blocked: false, is_archived: false }, overrides);
+    assert.equal(await rotation.handoffToHuman('chat1', 'c1', now), null);
+  }
+  assert.equal(db.messages.length, 0);
+});
+
+test('repeat handoff after seller reply preserves ownership and does not restart rotation', async () => {
+  Object.assign(db.chats[0], { ai_active: true, status: rotation.INTEREST, assigned_to: 's1', sales_reply_due_at: null });
+  const cursor = db.companies[0].sales_rotation_cursor;
+  const result = await rotation.handoffToHuman('chat1', 'c1', now);
+  assert.equal(result.ai_active, true);
+  assert.equal(result.assigned_to, 's1');
+  assert.equal(result.sales_reply_due_at, null);
+  assert.equal(db.companies[0].sales_rotation_cursor, cursor);
+  assert.equal(db.messages.length, 0);
+  assert.equal(db.audit.length, 0);
 });

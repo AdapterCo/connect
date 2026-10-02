@@ -38,7 +38,6 @@ export default function ChatTools({ chatId, text, onText }: { chatId: string; te
     {user?.role === 'admin' && <>
       <button disabled={busy} onClick={() => run(async () => { const response = await api.get(`/privacy/clients/${chatId}/export`); downloadFile('cliente.json', JSON.stringify(response.data, null, 2), 'application/json'); })}>Exportar dados</button>
       <button disabled={busy} onClick={() => { if (window.confirm('Anonimizar este cliente? Esta acao remove seus dados pessoais.')) run(async () => { await api.post(`/privacy/clients/${chatId}/anonymize`); await useAppStore.getState().fetchChats(); setNotice('Cliente anonimizado.'); }); }}>Anonimizar</button>
-      <button disabled={busy} className="text-red-300" onClick={() => { if (window.confirm('Excluir permanentemente os dados deste cliente?')) run(async () => { await api.delete('/privacy/clients/' + chatId); useAppStore.getState().removeChat(chatId); }); }}>Excluir dados do cliente</button>
     </>}
     {error && <p role="alert" className="w-full text-red-300">{error}</p>}{notice && <p role="status" className="w-full text-green-300">{notice}</p>}
   </div>;

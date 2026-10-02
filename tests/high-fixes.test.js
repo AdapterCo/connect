@@ -12,7 +12,7 @@ require.cache[require.resolve('../src/services/whatsappService')] = {
 
 const { generateToken } = require('../src/config/auth');
 const { passwordError } = require('../src/middleware/validationMiddleware');
-const { normalizePaymentCopy, conversationHistory } = require('../src/services/aiService');
+const { normalizePaymentCopy, conversationHistory, humanAttendanceContext } = require('../src/services/aiService');
 const app = require('../app');
 
 let server, base;
@@ -123,6 +123,19 @@ test('AI status defaults to the first stage and handoff flag is kept', () => {
   assert.equal(normalizePaymentCopy({ message: 'Oi', status: 'interesse em compra' }).status, 'interesse em compra');
   assert.equal(normalizePaymentCopy({ message: 'Vou chamar alguem', disable_ai: true }).disable_ai, true);
   assert.equal(normalizePaymentCopy({ message: 'Ok', status: 'transbordo' }).disable_ai, true);
+  assert.equal(normalizePaymentCopy({ message: 'Vou encaminhar', request_human: true }).disable_ai, true);
+});
+
+test('AI receives attendance state and instructions to keep answering without repeating a transfer', () => {
+  assert.equal(humanAttendanceContext({ status: 'iniciada' }), '');
+  const assigned = humanAttendanceContext({ status: 'interesse em compra', assigned_to: 's1' });
+  assert.match(assigned, /JA foi encaminhado/);
+  assert.match(assigned, /Continue respondendo duvidas gerais/);
+  assert.match(assigned, /nao troque o vendedor/);
+  assert.match(assigned, /IA permanece ativa/);
+  const waiting = humanAttendanceContext({ status: 'interesse em compra', assigned_to: null });
+  assert.match(waiting, /JA esta na fila/);
+  assert.match(waiting, /peca para aguardar/);
 });
 
 test('AI history excludes internal notes and does not repeat the last message', () => {

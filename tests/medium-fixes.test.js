@@ -51,9 +51,12 @@ test('users without an open connection are marked offline', async () => {
   assert.equal(db.user.find(u => u.id === 's1').status, 'offline');
 });
 
-test('only managers can permanently delete a conversation', async () => {
+test('no profile can permanently delete a conversation through chat or privacy APIs', async () => {
   seed();
-  assert.equal((await call('s1', '/api/chats/chat1', 'DELETE')).status, 403);
+  for (const user of ['s1', 'a1']) {
+    assert.equal((await call(user, '/api/chats/chat1', 'DELETE')).status, 403);
+    assert.equal((await call(user, '/api/privacy/clients/chat1', 'DELETE')).status, 403);
+  }
   assert.equal(db.chat.length, 1);
 });
 

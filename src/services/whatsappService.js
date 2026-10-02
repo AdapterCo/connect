@@ -1215,7 +1215,8 @@ async function runFlow(chat, message, isNewChat, instanceId, companyId) {
       send: text => sendBotMessage(chat, instanceId, text),
       transfer: async ({ toSales }) => {
         transferred = true;
-        await Chat.update(chat.id, { ai_active: false, waiting_since: new Date(), ...(toSales ? { status: 'interesse em compra' } : {}) }, companyId);
+        if (toSales) await require('./salesRotationService').handoffToHuman(chat.id, companyId);
+        else await Chat.update(chat.id, { waiting_since: new Date() }, companyId);
         await Chat.addMessage(chat.id, { sender: 'system', text: 'Fluxo concluído: atendimento transferido para um atendente humano.', timestamp: new Date() });
         await Log.add(`Fluxo transferiu ${chat.client_name} para atendimento humano.`, companyId);
       }
@@ -1544,7 +1545,17 @@ async function handleIncomingWhatsAppMessage(
         const beforeSend = await prisma.chat.findFirst({ where: { id: chat.id, company_id: companyId } });
         const activeCompany = await prisma.company.findUnique({ where: { id: companyId } });
         if (!beforeSend?.ai_active || beforeSend.is_blocked || beforeSend.is_archived || !require('./accessService').companyActive(activeCompany)) return beforeSend;
-        await sendMessage(instanceId, Chat.getRemoteJid(beforeSend), { text: aiResponse.message });
+        const handoffRequested = aiResponse.disable_ai === true || aiResponse.status === 'transbordo' || aiResponse.status === 'interesse em compra';
+        if (handoffRequested) {
+          const handedOff = await require('./salesRotationService').handoffToHuman(chat.id, companyId);
+          if (!handedOff) {
+            const current = await prisma.chat.findFirst({ where: { id: chat.id, company_id: companyId } });
+            const currentCompany = await prisma.company.findUnique({ where: { id: companyId } });
+            if (!current?.ai_active || current.is_blocked || current.is_archived || !require('./accessService').companyActive(currentCompany)) return current;
+            aiMsg.text = 'Posso continuar ajudando com suas duvidas por aqui. Para retomar o atendimento com o vendedor, aguarde a confirmacao da equipe.';
+          } else aiMsg.text = handedOff.assigned_to ? 'Seu atendimento ja esta encaminhado para um vendedor. Aguarde um momento, por favor. Enquanto isso, posso ajudar com outras duvidas.' : 'Seu atendimento esta na fila para falar com um vendedor. No momento nao ha vendedor online; assim que houver disponibilidade, seu atendimento sera encaminhado.';
+        }
+        await sendMessage(instanceId, Chat.getRemoteJid(beforeSend), { text: aiMsg.text });
         await Chat.addMessage(chat.id, aiMsg);
 
         /*
@@ -1594,106 +1605,6 @@ async function handleIncomingWhatsAppMessage(
                 null
             },
             companyId
-          );
-        }
-
-
-        /*
-         * Alterações automáticas da conversa.
-         */
-        const updates = {};
-
-
-        const oldStatus =
-          chat.status;
-
-
-        if (
-          oldStatus === 'iniciada' &&
-          aiResponse.status ===
-            'interesse em compra'
-        ) {
-          updates.status =
-            aiResponse.status;
-
-
-          if (
-            oldStatus !==
-            aiResponse.status
-          ) {
-            await Log.add(
-              `Status do cliente ${chat.client_name} alterado automaticamente pela IA de '${oldStatus}' para '${aiResponse.status}'.`,
-              companyId
-            );
-          }
-        }
-
-
-        /*
-         * Handoff para atendente humano.
-         */
-        if (
-          aiResponse.disable_ai === true ||
-          aiResponse.status ===
-            'transbordo' ||
-          (
-            aiResponse.message &&
-            (
-              aiResponse.message
-                .toLowerCase()
-                .includes(
-                  'atendente humano'
-                ) ||
-
-              aiResponse.message
-                .toLowerCase()
-                .includes(
-                  'transferir para um atendente'
-                )
-            )
-          )
-        ) {
-          updates.ai_active =
-            false;
-
-
-          await Chat.addMessage(
-            chat.id,
-            {
-              sender:
-                'system',
-
-              text:
-                '🚨 Atendimento transferido para atendente humano. IA desativada nesta conversa.',
-
-              timestamp:
-                new Date()
-            }
-          );
-
-
-          await Log.add(
-            `Handoff automático acionado para ${chat.client_name}. IA desativada nesta conversa.`,
-            companyId
-          );
-        }
-
-
-        /*
-         * Salva atualizações.
-         */
-        if (
-          Object.keys(updates).length > 0
-        ) {
-          await Chat.update(
-            chat.id,
-            updates,
-            companyId,
-            undefined,
-            {
-              source:
-                'ai'
-            }
           );
         }
 

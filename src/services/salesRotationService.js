@@ -59,6 +59,11 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
         throw Object.assign(new Error('Conversa transferida para outro vendedor.'), { status: 403 });
       }
     }
+    if (options.source === 'handoff' && (!chat.ai_active || chat.status === 'finalizada' || chat.is_archived || chat.is_blocked)) return null;
+    if (options.source === 'handoff' && !require('./accessService').companyActive(await tx.company.findUnique({ where: { id: companyId } }), now)) return null;
+    if (options.source === 'handoff' && chat.status === INTEREST && (chat.assigned_to || chat.sales_reply_due_at)) {
+      return tx.chat.findFirst({ where: { id, company_id: companyId }, include: messages });
+    }
     const updates = { ...data };
     if (options.source === 'ai' && (chat.status !== 'iniciada' || updates.status !== INTEREST)) delete updates.status;
     const status = updates.status ?? chat.status;
@@ -74,7 +79,7 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
       updates.claimed_at = null;
     }
     if (status !== INTEREST || inactive) updates.sales_reply_due_at = null;
-    else if (entering) {
+    else if (entering || (options.source === 'handoff' && !chat.assigned_to)) {
       Object.assign(updates, await assignNext(tx, chat, now, true) || { assigned_to: null, claimed_at: null });
       updates.sales_reply_due_at = new Date(now.getTime() + REPLY_WINDOW_MS);
     } else if (reassigned || (chat.is_archived && data.is_archived === false) || (chat.is_blocked && data.is_blocked === false)) {
@@ -85,6 +90,11 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
     }
     if (status !== chat.status || (updates.assigned_to !== undefined && updates.assigned_to !== chat.assigned_to)) {
       await tx.kanbanCard.deleteMany({ where: { chat_id: id, company_id: companyId } });
+    }
+    if (options.source === 'handoff') {
+      if (!updates.sales_reply_due_at && !chat.sales_reply_due_at) updates.sales_reply_due_at = new Date(now.getTime() + REPLY_WINDOW_MS);
+      const owner = updates.assigned_to !== undefined ? updates.assigned_to : chat.assigned_to;
+      await tx.message.create({ data: { chat_id: id, sender: 'system', text: owner ? 'Atendimento encaminhado ao vendedor responsavel. IA permanece ativa.' : 'Atendimento na fila aguardando vendedor online. IA permanece ativa.' } });
     }
     return tx.chat.update({ where: { id }, data: updates, include: messages });
   });
@@ -106,7 +116,7 @@ async function recordMessage(chatId, data, now = new Date()) {
     if (!chat) throw new Error('Conversa não encontrada.');
     const result = await tx.message.create({ data });
     if (chat.status !== INTEREST || chat.is_archived || chat.is_blocked) return result;
-    if (data.sender === 'client' && !chat.sales_reply_due_at) {
+    if (data.sender === 'client' && !chat.sales_reply_due_at && !chat.assigned_to) {
       if (tx.instance) {
         const sellerChat = await tx.chat.findFirst({
           where: {
@@ -174,3 +184,10 @@ async function checkSalesRotation(now = new Date()) {
 }
 
 module.exports = { INTEREST, REPLY_WINDOW_MS, nextSeller, withCompanyLock, updateChat, recordMessage, rotateExpiredChat, checkSalesRotation };
+
+async function handoffToHuman(id, companyId, now = new Date()) {
+  const result = await updateChat(id, { status: INTEREST, sector: 'sales' }, companyId, null, now, { source: 'handoff' });
+  if (result) require('../config/socket').emitToCompany(companyId, 'chat_updated', result);
+  return result;
+}
+module.exports.handoffToHuman = handoffToHuman;

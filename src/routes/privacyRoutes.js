@@ -9,6 +9,6 @@ const router = express.Router();
 
 router.get('/clients/:chatId/export', authenticateToken, checkCompanyActive, requireMinimumRole('admin'), audit('privacy', 'export'), privacyController.exportClientData);
 router.post('/clients/:chatId/anonymize', authenticateToken, checkCompanyActive, requireMinimumRole('admin'), audit('privacy', 'anonymize'), privacyController.anonymizeClientData);
-router.delete('/clients/:chatId', authenticateToken, checkCompanyActive, requireMinimumRole('admin'), audit('privacy', 'delete'), privacyController.deleteClientData);
+router.delete('/clients/:chatId', authenticateToken, (req, res) => res.status(403).json({ error: 'Exclusao de conversas desativada.' }));
 
 module.exports = router;

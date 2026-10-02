@@ -333,7 +333,7 @@ model AuditLog {
   company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
 
   @@index([company_id])
-  @@index([company_id, timestamp])
+  @@index([company_id, timestamp(sort: Desc)])
 }
 
 model Category {

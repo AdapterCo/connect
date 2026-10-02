@@ -31,7 +31,7 @@ CREATE TABLE "MediaDeletion" (url TEXT NOT NULL PRIMARY KEY, created_at TIMESTAM
 CREATE INDEX "MediaDeletion_created_at_idx" ON "MediaDeletion"("created_at");
 CREATE INDEX "Message_chat_id_timestamp_idx" ON "Message"(chat_id, timestamp);
 CREATE INDEX "Log_company_id_timestamp_idx" ON "Log"(company_id, timestamp);
-CREATE INDEX "AuditLog_company_id_timestamp_idx" ON "AuditLog"(company_id, timestamp);
+-- Ja criado em 20260612000000_add_audit_logs (company_id, timestamp DESC).
 -- Nao altera conversas historicas: o criterio de telefone nao prova duplicidade.
 -- Apenas impede novos vinculos de instancia a usuario de outra empresa.
 DO $$ BEGIN
