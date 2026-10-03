@@ -7,11 +7,15 @@ Esta implementação entrega as oito funções propostas: vínculo entre lead/ch
 1. Abra **Gestão Comercial → Leads**. Conversas elegíveis são relacionadas pelo telefone normalizado, dentro da empresa. Também é possível cadastrar um lead manualmente.
 2. Edite aparelho, variação e forma de pagamento. Esses campos são a memória comercial da IA; o histórico de mensagens da loja continua restrito aos gestores.
 3. Em **Produtos e vendas**, abra **Reservar / vender**, selecione o lead e reserve por 5 a 120 minutos. Reservas ativas retiram a unidade das opções disponíveis para a IA. A expiração libera sua disponibilidade sem depender de um job de limpeza.
-4. Confirme a venda, informando vencimento e garantia quando aplicáveis. A venda grava valores e comissão do momento da operação, vincula o lead e conclui tarefas de retorno pendentes. Venda presencial sem lead ainda é permitida.
-5. Em **Gestão Comercial → Recebíveis e comissões**, registre o dinheiro efetivamente recebido. Gestores podem registrar recebimentos e estornos. Vendedores consultam suas vendas e comissões, sem custo de aquisição ou margem.
+4. Confirme a venda, informando vencimento e garantia quando aplicáveis. Toda nova venda exige cliente com nome e telefone válido, inclusive vendas presenciais. É possível cadastrar e vincular o cliente diretamente no formulário de venda. Vendas antigas sem cliente são preservadas.
+5. Em **Gestão Comercial → Recebíveis e comissões**, admin e supervisor registram o dinheiro efetivamente recebido. Métricas, conversão, valores financeiros e comissões são restritos a esses perfis, inclusive quando a venda pertence ao vendedor. Vendedores mantêm acesso operacional ao pós-venda, sem valores financeiros.
 6. Em **Retornos**, crie tarefas com data e hora e marque sua conclusão. Marcar um lead perdido exige motivo, encerra tarefas pendentes e libera reservas. Se houver interesse explícito novamente, a qualificação pode reabrir o lead.
 7. Em **Pós-venda**, registre garantia, suporte ou solicitação de devolução. Gestores podem aprovar devoluções; o item fica aguardando revisão, sem voltar automaticamente ao estoque. Reembolso bancário não é executado: registre o estorno efetivo no histórico financeiro.
 8. Gestores mantêm a biblioteca em **Respostas compartilhadas**. A equipe utiliza essa biblioteca no chat pelo seletor ou filtro `/`. As respostas pessoais existentes continuam disponíveis.
+
+## Kanban
+
+Todas as colunas podem ser recolhidas e expandidas. A preferência é salva neste navegador por usuário e empresa; recolher não altera a etapa nem pausa o rodízio. Filtros por etiqueta, vendedor e período são exibidos e aplicados somente para admin e supervisor.
 
 ## Regras financeiras
 
@@ -67,7 +71,7 @@ O container gera o Prisma Client durante o build e executa `prisma migrate deplo
 
 Foram acrescentados testes HTTP de autorização, reserva, venda concorrente, idempotência, saldo, devolução, tarefas e biblioteca, além de casos de correção e persistência da qualificação.
 
-Na validação desta entrega passaram 156 testes da suíte principal e 5 testes SQL separados. Também passaram lint, build do frontend, validação do schema e verificação de sintaxe JavaScript.
+Na validação desta entrega passaram 158 testes da suíte principal e 5 testes SQL separados. Também passaram lint, build do frontend, validação do schema e verificação de sintaxe JavaScript.
 
 A cadeia SQL de migrations e constraints comerciais é verificada em um PostgreSQL isolado via [PGlite](https://pglite.dev/docs/). Isso valida SQL e integridade; não reproduz a concorrência de várias conexões do PostgreSQL 14 de produção nem o deployment do Docker.
 

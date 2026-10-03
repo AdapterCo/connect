@@ -167,10 +167,12 @@ async function sell(user, productId, body, now = new Date()) {
     const product = await tx.product.findFirst({ where: { ...require('./productService').scope(user), id: productId, status: 'stock' } });
     if (!product || !product.seller_id || !product.serial || !['pix', 'cash', 'card', 'boleto'].includes(product.payment_method) || !Number.isFinite(product.price) || product.price <= 0) throw fail('Produto vendido ou cadastro incompleto.', 409);
     const leadId = body.opportunity_id || (product.reserved_until > now ? product.reserved_lead_id : null);
-    const lead = leadId ? await getLead(tx, user, leadId, true) : null;
+    if (!leadId) throw fail('Vincule a venda a um cliente antes de confirmar.');
+    const lead = await getLead(tx, user, leadId, true);
+    if (!phoneKey(lead.phone) || !lead.client_name?.trim()) throw fail('Cliente sem nome ou telefone válido. Complete o cadastro.');
     if (lead && lead.seller_id && lead.seller_id !== product.seller_id) throw fail('Lead e produto pertencem a vendedores diferentes.', 409);
     if (product.reserved_until > now && (product.reserved_lead_id !== leadId || (!managers(user) && product.reserved_by !== user.id))) throw fail('Venda não corresponde à reserva ativa.', 409);
-    const sale = await tx.sale.create({ data: { company_id: user.company_id, product_id: product.id, opportunity_id: lead?.id || null,
+    const sale = await tx.sale.create({ data: { company_id: user.company_id, product_id: product.id, opportunity_id: lead.id,
       seller_id: product.seller_id, total: product.price.toFixed(2), cost: product.cost, commission_rate: product.commission_rate,
       payment_method: product.payment_method, due_at: due, warranty_until: warranty, created_at: now } });
     await tx.product.update({ where: { id: product.id }, data: { status: 'sold', sold_at: now, is_active: false, reserved_by: null, reserved_until: null, reserved_lead_id: null } });

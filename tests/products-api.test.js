@@ -22,6 +22,8 @@ const prisma = {
   $transaction: fn => { const result = queue.then(() => fn(prisma)); queue = result.catch(() => {}); return result; },
   $queryRaw: async () => [{ id: 'c1' }],
   sale: { create: async ({ data }) => ({ id: 'sale-1', ...data }) },
+  opportunity: { findFirst: async ({ where }) => { const lead = { id: 'l1', seller_id: 's1', company_id: 'c1', status: 'open', client_name: 'Client', phone: '5521999990001' }; return match(lead, where) ? lead : null; }, update: async ({ data }) => data },
+  followUpTask: { updateMany: async () => ({ count: 0 }) },
   auditLog: { create: async ({ data }) => data },
   user: { findFirst: async ({ where }) => users.find(u => match(u, where)), findMany: async ({ where }) => users.filter(u => match(u, where)).map(({ id, name }) => ({ id, name })) },
   product: {
@@ -56,17 +58,20 @@ test('HTTP tenant, ownership, sale lifecycle and aggregate isolation', async () 
   await call('s2', '', 'POST', product('s2')); await call('s3', '', 'POST', product('s3'));
   assert.equal((await call('s1')).data.length, 1); assert.equal((await call('a1')).data.length, 2); assert.equal((await call('m1')).data.length, 2);
   assert.equal((await call('s2', '/' + p1.data.id + '/sell', 'POST')).status, 409);
-  const results = await Promise.all([call('s1', '/' + p1.data.id + '/sell', 'POST'), call('s1', '/' + p1.data.id + '/sell', 'POST')]);
+  assert.equal((await call('s1', '/' + p1.data.id + '/sell', 'POST')).status, 400);
+  const results = await Promise.all([call('s1', '/' + p1.data.id + '/sell', 'POST', { opportunity_id: 'l1' }), call('s1', '/' + p1.data.id + '/sell', 'POST', { opportunity_id: 'l1' })]);
   assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
   assert.equal((await call('s1', '/' + p1.data.id, 'PUT', product('s1'))).status, 409);
-  const own = (await call('s1', '/metrics')).data; assert.equal(own.length, 1); assert.equal(own[0].total, 100.5); assert.equal(own[0].count, 1);
-  const other = (await call('s2', '/metrics')).data; assert.equal(other.length, 1); assert.equal(other[0].count, 0);
+  assert.equal((await call('s1', '/metrics')).status, 403);
+  assert.equal((await call('s2', '/metrics')).status, 403);
+  const admin = (await call('a1', '/metrics')).data; assert.equal(admin.reduce((n, row) => n + row.total, 0), 100.5);
   const all = (await call('m1', '/metrics')).data; assert.equal(all.length, 2); assert.equal(all.reduce((n, row) => n + row.total, 0), 100.5);
   const sellers = (await call('s1', '/sellers')).data; assert.deepEqual(sellers.map(s => s.id), ['s1', 's2']); assert.ok(sellers.every(s => !('password' in s)));
 });
 test('HTTP ignores forged JWT role and deleted accounts', async () => {
   const forged = generateToken({ ...users[0], role: 'admin' });
   const res = await fetch(base, { headers: { Authorization: 'Bearer ' + forged } }); assert.equal((await res.json()).length, 1);
+  assert.equal((await fetch(base + '/metrics', { headers: { Authorization: 'Bearer ' + forged } })).status, 403);
   const removed = generateToken({ id: 'deleted', company_id: 'c1', role: 'admin' });
   assert.equal((await fetch(base, { headers: { Authorization: 'Bearer ' + removed } })).status, 401);
 });

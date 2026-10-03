@@ -16,6 +16,7 @@ router.get('/leads', wrap(async (req, res) => {
   res.json(await prisma.opportunity.findMany({ where: service.scope(req.user), orderBy: { updated_at: 'desc' }, take: 200 }));
 }));
 router.get('/summary', wrap(async (req, res) => {
+  if (!service.managers(req.user)) throw service.fail('Indicadores comerciais são restritos a admin e supervisor.', 403);
   const where = service.scope(req.user);
   const [total, open, lost, converted] = await Promise.all([
     prisma.opportunity.count({ where }), prisma.opportunity.count({ where: { ...where, status: 'open' } }),
@@ -104,7 +105,17 @@ router.delete('/replies/:id', wrap(async (req, res) => {
 }));
 const saleInclude = { product: { select: { id: true, name: true, serial: true } }, opportunity: { select: { client_name: true, phone: true } },
   receipts: { orderBy: { created_at: 'asc' } }, after_sales: { orderBy: { created_at: 'desc' } } };
+// Operational post-sale data does not include financial values or metrics.
+router.get('/sales/operations', wrap(async (req, res) => {
+  res.json(await prisma.sale.findMany({ where: service.scope(req.user), orderBy: { created_at: 'desc' }, take: 200,
+    select: { id: true, created_at: true, status: true, warranty_until: true,
+      product: { select: { id: true, name: true, serial: true } },
+      opportunity: { select: { client_name: true, phone: true } },
+      after_sales: { orderBy: { created_at: 'desc' } }
+    } }));
+}));
 router.get('/sales', wrap(async (req, res) => {
+  if (!service.managers(req.user)) throw service.fail('Dados financeiros são restritos a admin e supervisor.', 403);
   const dates = require('../services/productService').period(req.query).sold_at;
   const sales = await prisma.sale.findMany({ where: { ...service.scope(req.user), ...(dates ? { created_at: dates } : {}) }, include: saleInclude, orderBy: { created_at: 'desc' }, take: 200 });
   res.json(sales.map(sale => {

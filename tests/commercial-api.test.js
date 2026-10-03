@@ -81,7 +81,7 @@ test.after(() => new Promise(resolve => server.close(resolve)));
 test.beforeEach(() => {
   db = Object.fromEntries(names.map(name => [name, []]));
   db.company = ['c1', 'c2'].map(id => ({ id, is_active: true }));
-  db.user = [{ id: 'a1', company_id: 'c1', role: 'admin', name: 'Admin' }, { id: 's1', company_id: 'c1', role: 'seller', name: 'One' }, { id: 's2', company_id: 'c1', role: 'seller' }, { id: 's3', company_id: 'c2', role: 'seller' }, { id: 'support', company_id: 'c1', role: 'support' }];
+  db.user = [{ id: 'a1', company_id: 'c1', role: 'admin', name: 'Admin' }, { id: 's1', company_id: 'c1', role: 'seller', name: 'One' }, { id: 's2', company_id: 'c1', role: 'seller' }, { id: 's3', company_id: 'c2', role: 'seller' }, { id: 'support', company_id: 'c1', role: 'support' }, { id: 'm1', company_id: 'c1', role: 'supervisor' }];
   db.opportunity = [{ id: 'l1', company_id: 'c1', phone: '5521999990001', client_name: 'Client one', seller_id: 's1', status: 'open', product: 'iPhone 13', payment: 'Pix' }, { id: 'l2', company_id: 'c1', phone: '5521999990002', client_name: 'Client two', seller_id: 's2', status: 'open' }, { id: 'l3', company_id: 'c2', phone: '5521999990003', seller_id: 's3', status: 'open' }];
   db.product = ['s1', 's2', 's3'].map((seller_id, index) => ({ id: 'p' + (index + 1), company_id: index === 2 ? 'c2' : 'c1', seller_id, name: 'iPhone 13', price: 100.50, cost: '60.00', supplier_name: 'Supplier secret', serial: 'SERIAL-' + index, payment_method: 'pix', status: 'stock', commission_rate: '10.00', reserved_until: null, is_active: true }));
   db.instance = [{ id: 'shop', company_id: 'c1', user_id: null }, { id: 'private', company_id: 'c1', user_id: 's1' }];
@@ -146,16 +146,21 @@ test('concurrent sale attempts create exactly one sale and complete lead tasks',
 });
 test('snapshots are fixed at sale time and costs are not exposed to sellers', async () => {
   await service.sell(db.user[1], 'p1', { opportunity_id: 'l1' }); db.product[0].cost = '1';
-  const own = (await call('s1', '/commercial/sales')).data[0]; assert.equal(own.cost, undefined); assert.equal(own.margin, undefined); assert.equal(Number(own.total), 100.5);
+  assert.equal((await call('s1', '/commercial/sales')).status, 403);
+  const own = (await call('s1', '/commercial/sales/operations')).data[0];
+  assert.equal(own.opportunity.client_name, 'Client one');
+  for (const field of ['total', 'cost', 'margin', 'received', 'balance', 'refund_due', 'commission', 'commission_rate', 'commission_earned', 'receipts']) assert.equal(own[field], undefined);
+  assert.equal((await call('s2', '/commercial/sales/operations')).data.length, 0);
+  assert.equal((await call('s3', '/commercial/sales/operations')).data.length, 0);
   const all = (await call('a1', '/commercial/sales')).data[0]; assert.equal(all.cost, '60.00'); assert.equal(all.margin, 30.45);
-  const products = (await call('s1', '/products')).data; assert.equal(products[0].cost, undefined); assert.equal(products[0].supplier_name, undefined);
+  const products = (await call('s1', '/products')).data; assert.equal(products[0].cost, undefined); assert.equal(products[0].supplier_name, undefined); assert.equal(products[0].commission_rate, undefined);
 });
 test('conversion counts real linked sales, not finalized conversations or returned products', async () => {
   db.chat[0].status = 'finalizada';
   assert.equal((await call('a1', '/commercial/summary')).data.converted, 0);
   await service.sell(db.user[1], 'p1', { opportunity_id: 'l1' });
   const all = (await call('a1', '/commercial/summary')).data; assert.equal(all.total, 2); assert.equal(all.converted, 1); assert.equal(all.conversion_rate, 50);
-  assert.equal((await call('s2', '/commercial/summary')).data.converted, 0);
+  assert.equal((await call('s2', '/commercial/summary')).status, 403);
   db.sale[0].status = 'returned'; assert.equal((await call('a1', '/commercial/summary')).data.converted, 0);
 });
 test('dates and unresolved LIDs cannot silently create invalid commercial records', async () => {
@@ -182,7 +187,7 @@ test('financial amounts are validated, bounded and idempotent', async () => {
   assert.equal((await call('a1', `/commercial/sales/${sale.id}/receipts`, 'POST', { ...receipt, amount: '25' })).status, 409);
   for (const amount of ['-1', '1.001', 'Infinity', '0']) assert.equal((await call('a1', `/commercial/sales/${sale.id}/receipts`, 'POST', { ...receipt, amount, request_id: amount })).status, 400);
   assert.equal((await call('a1', `/commercial/sales/${sale.id}/receipts`, 'POST', { ...receipt, amount: '100', request_id: 'overpay' })).status, 409);
-  const financial = (await call('s1', '/commercial/sales')).data[0]; assert.equal(financial.received, 20.25); assert.equal(financial.balance, 80.25); assert.equal(financial.commission_earned, 2.03);
+  const financial = (await call('a1', '/commercial/sales')).data[0]; assert.equal(financial.received, 20.25); assert.equal(financial.balance, 80.25); assert.equal(financial.commission_earned, 2.03);
 });
 test('refunds cannot exceed receipts or modify another tenant sale', async () => {
   const sale = await service.sell(db.user[1], 'p1', { opportunity_id: 'l1' });
@@ -227,4 +232,32 @@ test('push subscription cannot be stolen by an active account', async () => {
   const result = await call('s2', '/push/subscriptions', 'POST', { endpoint: db.pushSubscription[0].endpoint, keys: { p256dh: 'A'.repeat(87), auth: 'B'.repeat(22) } });
   assert.equal(result.status, 409); assert.equal(db.pushSubscription[0].user_id, 's1');
   assert.equal((await call('s2', '/push/subscriptions', 'DELETE')).status, 200); assert.equal(db.pushSubscription.length, 1);
+});
+
+
+test('sales indicators require a stored manager role even for the sellers own sale', async () => {
+  await service.sell(db.user[1], 'p1', { opportunity_id: 'l1' });
+  for (const path of ['/commercial/sales', '/commercial/summary', '/products/metrics']) {
+    assert.equal((await call('s1', path)).status, 403);
+    if (path !== '/products/metrics') {
+      assert.equal((await call('a1', path)).status, 200);
+      assert.equal((await call('m1', path)).status, 200);
+    }
+    const forged = generateToken({ ...db.user[1], role: 'admin' });
+    assert.equal((await fetch(base + path, { headers: { Authorization: 'Bearer ' + forged } })).status, 403);
+  }
+});
+
+test('every new sale requires an accessible customer without partial stock changes', async () => {
+  for (const user of ['s1', 'a1']) assert.equal((await call(user, '/products/p1/sell', 'POST', {})).status, 400);
+  for (const lead of ['missing', 'l2', 'l3']) assert.equal((await call('s1', '/products/p1/sell', 'POST', { opportunity_id: lead })).status, 404);
+  const customer = db.opportunity[0];
+  for (const change of [{ client_name: '' }, { phone: 'invalid' }]) {
+    Object.assign(db.opportunity[0], change);
+    assert.equal((await call('s1', '/products/p1/sell', 'POST', { opportunity_id: 'l1' })).status, 400);
+    Object.assign(db.opportunity[0], { client_name: customer.client_name || 'Client one', phone: '5521999990001' });
+  }
+  assert.equal(db.sale.length, 0); assert.equal(db.product[0].status, 'stock'); assert.equal(db.opportunity[0].status, 'open');
+  const sold = await call('s1', '/products/p1/sell', 'POST', { opportunity_id: 'l1' });
+  assert.equal(sold.status, 200); assert.equal(db.sale[0].opportunity_id, 'l1');
 });

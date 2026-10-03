@@ -6,6 +6,7 @@ import { isAxiosError } from 'axios';
 import { useAppStore } from '../stores/appStore';
 import api from '../services/api';
 import type { Chat } from '../types';
+import { useAuthStore } from '../stores/authStore';
 import { kanbanLeads } from '../utils/kanbanLeads';
 
 interface Column { id: string; name: string; fixed: boolean }
@@ -16,7 +17,22 @@ const colors: Record<string, string> = {
 };
 const message = (error: unknown) => isAxiosError(error) ? error.response?.data?.error || 'Não foi possível atualizar o Kanban.' : 'Não foi possível atualizar o Kanban.';
 
+function readCollapsed(key: string): string[] {
+  try { const value: unknown = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []; }
+  catch { return []; }
+}
+
 export default function Kanban() {
+  const user = useAuthStore(state => state.user);
+  const manager = ['admin', 'supervisor'].includes(user?.role || '');
+  const storageKey = `crm_kanban_collapsed:${user?.company_id}:${user?.id}`;
+  const [collapsedState, setCollapsedState] = useState(() => ({ key: storageKey, ids: readCollapsed(storageKey) }));
+  const collapsedColumns = collapsedState.key === storageKey ? collapsedState.ids : readCollapsed(storageKey);
+  function toggleColumn(id: string) {
+    const ids = collapsedColumns.includes(id) ? collapsedColumns.filter(value => value !== id) : [...collapsedColumns, id];
+    setCollapsedState({ key: storageKey, ids });
+    try { localStorage.setItem(storageKey, JSON.stringify(ids)); } catch { /* The board remains usable without storage. */ }
+  }
   const { chats, users, fetchChats, fetchUsers, updateChat } = useAppStore();
   const [board, setBoard] = useState<Board>({ columns: [], placements: [] });
   const [tag, setTag] = useState('');
@@ -74,14 +90,14 @@ export default function Kanban() {
   return <div className="h-full min-h-0 flex flex-col p-4 md:p-6 gap-4">
     <header className="shrink-0 space-y-3">
       <h1 className="text-2xl font-bold">Meu Kanban</h1>
-      <p className="text-sm text-gray-400">As três etapas fixas são protegidas. Suas colunas extras organizam somente a sua visão.</p>
+      <p className="text-sm text-gray-400">As cinco etapas fixas são protegidas. Suas colunas extras organizam somente a sua visão.</p>
       <p className="text-sm text-amber-200">Em Interesse em Compra: rodízio entre vendedores online após 1 minuto sem resposta humana. Mover para uma coluna pessoal não pausa esse prazo.</p>
-      <div className="flex flex-wrap gap-2">
+      {manager && <div className="flex flex-wrap gap-2">
         <input aria-label="Filtrar por etiqueta" placeholder="Etiqueta" value={tag} onChange={event => setTag(event.target.value)} className="bg-gray-700 p-2 rounded" />
         <select aria-label="Filtrar por vendedor" value={sellerFilter} onChange={event => setSellerFilter(event.target.value)} className="bg-gray-700 p-2 rounded"><option value="">Todos vendedores</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select>
         <input aria-label="Criado a partir de" type="date" value={from} onChange={event => setFrom(event.target.value)} className="bg-gray-700 p-2 rounded" />
         <input aria-label="Criado ate" type="date" value={to} onChange={event => setTo(event.target.value)} className="bg-gray-700 p-2 rounded" />
-      </div>
+      </div>}
       <form onSubmit={createColumn} className="flex flex-wrap gap-2">
         <input aria-label="Nome da nova coluna" className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white max-w-full" placeholder="Ex.: Visita agendada" value={name} onChange={event => setName(event.target.value)} maxLength={60} required />
         <button className="bg-indigo-600 rounded-lg px-4 py-2 disabled:opacity-50" disabled={busy}>Criar minha coluna</button>
@@ -91,23 +107,25 @@ export default function Kanban() {
     <DragDropContext onDragEnd={handleDragEnd}>
       <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto pb-3" aria-label="Colunas do Kanban">
         {board.columns.map(column => {
-          const cards = leads.filter(chat => (!tag || chat.tags.some(t => t.toLowerCase().includes(tag.toLowerCase()))) && (!sellerFilter || chat.assigned_to === sellerFilter) && (!from || new Date(chat.created_at) >= new Date(from + 'T00:00:00')) && (!to || new Date(chat.created_at) <= new Date(to + 'T23:59:59')) && (placements.get(chat.id) || chat.status) === column.id);
-          return <section key={column.id} className="w-80 min-w-72 shrink-0 flex flex-col min-h-0 bg-gray-800 border border-gray-700 rounded-xl p-3">
+          const cards = leads.filter(chat => (!manager || ((!tag || chat.tags.some(t => t.toLowerCase().includes(tag.toLowerCase()))) && (!sellerFilter || chat.assigned_to === sellerFilter) && (!from || new Date(chat.created_at) >= new Date(from + 'T00:00:00')) && (!to || new Date(chat.created_at) <= new Date(to + 'T23:59:59')))) && (placements.get(chat.id) || chat.status) === column.id);
+          const collapsed = collapsedColumns.includes(column.id);
+          return <section key={column.id} className={`${collapsed ? 'w-16 min-w-16' : 'w-80 min-w-72'} shrink-0 flex flex-col min-h-0 bg-gray-800 border border-gray-700 rounded-xl p-3`}>
             <header className="shrink-0 pb-3 space-y-2">
-              <div className="flex gap-2 items-center">
+              <div className={`flex gap-2 items-center ${collapsed ? 'flex-col' : ''}`}>
+                <button aria-label={`${collapsed ? 'Expandir' : 'Recolher'} coluna ${column.name}`} aria-expanded={!collapsed} title={collapsed ? 'Expandir coluna' : 'Recolher coluna'} onClick={() => toggleColumn(column.id)} className="text-indigo-300 rounded px-1">{collapsed ? '+' : '−'}</button>
                 <span className={`w-2 h-2 rounded-full shrink-0 ${colors[column.id] || 'bg-violet-500'}`} />
-                <h2 className="font-bold flex-1 break-words">{column.name}</h2>
+                <h2 className={`font-bold ${collapsed ? '[writing-mode:vertical-rl]' : 'flex-1 break-words'}`}>{column.name}</h2>
                 <span className="text-xs bg-gray-700 rounded-full px-2 py-1">{cards.length}</span>
               </div>
-              {column.fixed ? <p className="text-xs text-gray-400">Coluna fixa · protegida</p> : <div className="flex items-center gap-3 text-xs">
+              {!collapsed && (column.fixed ? <p className="text-xs text-gray-400">Coluna fixa · protegida</p> : <div className="flex items-center gap-3 text-xs">
                 <span className="text-gray-400 mr-auto">Pessoal</span>
                 <button onClick={() => void renameColumn(column)} disabled={busy} className="text-indigo-300">Renomear</button>
                 <button onClick={() => void deleteColumn(column)} disabled={busy} className="text-red-300">Excluir</button>
-              </div>}
+              </div>)}
             </header>
             <Droppable droppableId={column.id}>
               {provided => <div ref={provided.innerRef} {...provided.droppableProps} className="flex-1 min-h-24 overflow-y-auto space-y-3 pr-1">
-                {cards.map((chat, index) => {
+                {!collapsed && cards.map((chat, index) => {
                   const seconds = chat.sales_reply_due_at ? Math.max(0, Math.ceil((Date.parse(chat.sales_reply_due_at) - now) / 1000)) : null;
                   const seller = users.find(user => user.id === chat.assigned_to);
                   return <Draggable key={chat.id} draggableId={chat.id} index={index} isDragDisabled={busy}>

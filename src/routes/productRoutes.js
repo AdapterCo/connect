@@ -17,6 +17,7 @@ router.get('/sellers', wrap(async (req, res) => {
   res.json(await prisma.user.findMany({ where: { company_id: req.user.company_id, role: 'seller' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }));
 }));
 router.get('/metrics', wrap(async (req, res) => {
+  if (!['admin', 'supervisor'].includes(req.user.role)) return res.status(403).json({ error: 'Métricas de vendas são restritas a admin e supervisor.' });
   let dates;
   try { dates = period(req.query); } catch (err) { return res.status(400).json({ error: err.message }); }
   const groups = await prisma.product.groupBy({ by: ['seller_id'], where: { ...scope(req.user), status: 'sold', ...dates }, _count: { _all: true }, _sum: { price: true, down_payment: true } });
@@ -30,7 +31,7 @@ router.get('/metrics', wrap(async (req, res) => {
 }));
 router.get('/', wrap(async (req, res) => {
   const products = await prisma.product.findMany({ where: scope(req.user), include: { seller: { select: { id: true, name: true } } }, orderBy: { created_at: 'desc' } });
-  res.json(products.map(({ cost, supplier_name, ...product }) => ({ ...product, ...(['admin', 'supervisor'].includes(req.user.role) ? { cost, supplier_name } : {}) })));
+  res.json(products.map(({ cost, supplier_name, commission_rate, ...product }) => ({ ...product, ...(['admin', 'supervisor'].includes(req.user.role) ? { cost, supplier_name, commission_rate } : {}) })));
 }));
 async function save(req, res) {
   let data;
