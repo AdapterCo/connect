@@ -2,6 +2,8 @@
 
 Esta implementação entrega as oito funções propostas: vínculo entre lead/chats/venda, qualificação persistente, reserva temporária, Web Push e SLA, motivos de perda e tarefas, respostas compartilhadas, recebíveis/comissões/margem e pós-venda.
 
+O fluxo de Produtos e vendas foi atualizado para separar modelos e unidades: veja [Catálogo e registro de vendas](CATALOGO-E-REGISTRO-DE-VENDAS.md). O formulário atual registra a venda a partir de um modelo; a reserva continua disponível para unidades existentes em estoque.
+
 ## Usar no painel
 
 1. Abra **Gestão Comercial → Leads**. Conversas elegíveis são relacionadas pelo telefone normalizado, dentro da empresa. Também é possível cadastrar um lead manualmente.

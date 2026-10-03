@@ -5,7 +5,7 @@ const { once } = require('node:events');
 process.env.JWT_SECRET = 'commercial-test-only-'.repeat(3);
 process.env.ENCRYPTION_KEY = 'commercial-test-key-'.repeat(3);
 process.env.DATABASE_URL = 'postgresql://test:test@localhost/test';
-const names = ['company', 'user', 'instance', 'chat', 'message', 'opportunity', 'product', 'sale', 'saleReceipt', 'afterSale', 'followUpTask', 'cannedReply', 'auditLog', 'pushSubscription', 'platformConfig'];
+const names = ['company', 'user', 'instance', 'chat', 'message', 'opportunity', 'product', 'productModel', 'category', 'sale', 'saleReceipt', 'afterSale', 'followUpTask', 'cannedReply', 'auditLog', 'pushSubscription', 'platformConfig'];
 let db, queue = Promise.resolve();
 function relation(row, key) {
   const links = { opportunity: ['opportunity', 'opportunity_id'], sale: ['sale', 'sale_id'], product: ['product', 'product_id'], instance: ['instance', 'instance_id'] };
@@ -80,7 +80,8 @@ test.before(async () => {
 test.after(() => new Promise(resolve => server.close(resolve)));
 test.beforeEach(() => {
   db = Object.fromEntries(names.map(name => [name, []]));
-  db.company = ['c1', 'c2'].map(id => ({ id, is_active: true }));
+  db.company = ['c1', 'c2'].map(id => ({ id, is_active: true, max_products: 100 }));
+  db.productModel = [{ id: 'model1', company_id: 'c1', name: 'iPhone 13', kind: 'phone', price: '100.50', cost: '60.00', commission_rate: '10.00', is_active: true }, { id: 'model2', company_id: 'c1', name: 'Moto X', kind: 'motorcycle', price: '2000.00', commission_rate: '0', is_active: true }, { id: 'model3', company_id: 'c2', name: 'Foreign', kind: 'phone', price: '200', is_active: true }];
   db.user = [{ id: 'a1', company_id: 'c1', role: 'admin', name: 'Admin' }, { id: 's1', company_id: 'c1', role: 'seller', name: 'One' }, { id: 's2', company_id: 'c1', role: 'seller' }, { id: 's3', company_id: 'c2', role: 'seller' }, { id: 'support', company_id: 'c1', role: 'support' }, { id: 'm1', company_id: 'c1', role: 'supervisor' }];
   db.opportunity = [{ id: 'l1', company_id: 'c1', phone: '5521999990001', client_name: 'Client one', seller_id: 's1', status: 'open', product: 'iPhone 13', payment: 'Pix' }, { id: 'l2', company_id: 'c1', phone: '5521999990002', client_name: 'Client two', seller_id: 's2', status: 'open' }, { id: 'l3', company_id: 'c2', phone: '5521999990003', seller_id: 's3', status: 'open' }];
   db.product = ['s1', 's2', 's3'].map((seller_id, index) => ({ id: 'p' + (index + 1), company_id: index === 2 ? 'c2' : 'c1', seller_id, name: 'iPhone 13', price: 100.50, cost: '60.00', supplier_name: 'Supplier secret', serial: 'SERIAL-' + index, payment_method: 'pix', status: 'stock', commission_rate: '10.00', reserved_until: null, is_active: true }));
@@ -153,7 +154,8 @@ test('snapshots are fixed at sale time and costs are not exposed to sellers', as
   assert.equal((await call('s2', '/commercial/sales/operations')).data.length, 0);
   assert.equal((await call('s3', '/commercial/sales/operations')).data.length, 0);
   const all = (await call('a1', '/commercial/sales')).data[0]; assert.equal(all.cost, '60.00'); assert.equal(all.margin, 30.45);
-  const products = (await call('s1', '/products')).data; assert.equal(products[0].cost, undefined); assert.equal(products[0].supplier_name, undefined); assert.equal(products[0].commission_rate, undefined);
+  assert.equal((await call('s1', '/products')).data.length, 0);
+  const products = (await call('s2', '/products')).data; assert.equal(products[0].cost, undefined); assert.equal(products[0].supplier_name, undefined); assert.equal(products[0].commission_rate, undefined);
 });
 test('conversion counts real linked sales, not finalized conversations or returned products', async () => {
   db.chat[0].status = 'finalizada';
@@ -260,4 +262,71 @@ test('every new sale requires an accessible customer without partial stock chang
   assert.equal(db.sale.length, 0); assert.equal(db.product[0].status, 'stock'); assert.equal(db.opportunity[0].status, 'open');
   const sold = await call('s1', '/products/p1/sell', 'POST', { opportunity_id: 'l1' });
   assert.equal(sold.status, 200); assert.equal(db.sale[0].opportunity_id, 'l1');
+});
+
+const catalogSale = (extra = {}) => ({ model_id: 'model1', seller_id: 's1', opportunity_id: 'l1', price: '150.25', down_payment: '10', payment_method: 'boleto', serial: '123456789012345', color: 'Azul', memory: '128 GB', condition: 'used', ...extra });
+test('catalog is shared within company, manager-only editing and no seller costs or commission', async () => {
+  const list = await call('s1', '/products/models');
+  assert.equal(list.status, 200); assert.equal(list.data.length, 2);
+  assert.ok(list.data.every(item => item.cost === undefined && item.commission_rate === undefined));
+  assert.equal((await call('s1', '/products/models', 'POST', {})).status, 403);
+  assert.equal((await call('s1', '/products/models/model1', 'PUT', {})).status, 403);
+  assert.equal((await call('a1', '/products/models/model3', 'PUT', { name: 'Other', kind: 'phone', price: '100' })).status, 404);
+  assert.equal((await call('m1', '/products/models', 'POST', { name: 'New', kind: 'phone', price: '100' })).status, 201);
+  db.productModel[0].is_active = false;
+  assert.equal((await call('s1', '/products/models')).data.length, 2);
+});
+test('one catalog product is reused across sales without consuming the product limit', async () => {
+  db.company[0].max_products = 2;
+  const result = await call('s1', '/products/sales', 'POST', catalogSale({ cost: '0', commission_rate: '100', company_id: 'c2' }));
+  assert.equal(result.status, 201); assert.deepEqual(Object.keys(result.data).sort(), ['sale_id', 'success']);
+  assert.equal(db.sale[0].total, '150.25'); assert.equal(db.sale[0].cost, '60.00'); assert.equal(db.sale[0].commission_rate, '10.00');
+  assert.equal(db.product[3].model_id, 'model1'); assert.equal(db.product[3].status, 'sold'); assert.equal(db.product[3].color, 'Azul');
+  db.opportunity[0].status = 'open';
+  assert.equal((await call('s1', '/products/sales', 'POST', catalogSale({ serial: '123456789012346' }))).status, 201);
+  assert.equal(db.productModel.length, 3); assert.equal(db.sale.length, 2);
+  assert.equal((await call('s1', '/products')).data.length, 1); // only original unsold stock, never sale prices
+  const operations = (await call('s1', '/commercial/sales/operations')).data;
+  assert.ok(operations.every(sale => sale.total === undefined && sale.product.price === undefined));
+});
+test('phone validation, customer ownership and tenant checks leave no orphan unit', async () => {
+  const before = db.product.length;
+  for (const extra of [{ serial: '123' }, { serial: 'ABCDEFGHIJKLMNO' }, { memory: '' }, { color: '' }, { condition: 'broken' }, { down_payment: '151' }, { price: '-1' }, { seller_id: 's2' }, { opportunity_id: '' }, { opportunity_id: 'l2' }, { model_id: 'model3' }]) {
+    const result = await call('s1', '/products/sales', 'POST', catalogSale(extra));
+    assert.ok(result.status >= 400 && result.status < 500, JSON.stringify(extra));
+    assert.equal(db.product.length, before); assert.equal(db.sale.length, 0);
+  }
+  assert.equal((await call('s1', '/products/sales', 'POST', catalogSale({ warranty_until: '2020-01-01T00:00:00Z' }))).status, 400);
+  assert.equal(db.product.length, before);
+});
+test('motorcycles accept chassis and omit memory; duplicate serial cannot create two sales', async () => {
+  const input = catalogSale({ model_id: 'model2', serial: 'MOTO-CHASSIS-123', memory: '' });
+  const outcomes = await Promise.all([call('s1', '/products/sales', 'POST', input), call('s1', '/products/sales', 'POST', input)]);
+  assert.deepEqual(outcomes.map(result => result.status).sort(), [201, 409]);
+  assert.equal(db.sale.length, 1); assert.equal(db.product[3].memory, null);
+  db.opportunity[0].status = 'open';
+  assert.equal((await call('s1', '/products/sales', 'POST', input)).status, 409);
+});
+test('existing physical stock and reservations remain usable without recreating the unit', async () => {
+  Object.assign(db.product[0], { model_id: 'model1', serial: '123456789012345' });
+  await service.reserve(db.user[1], 'p1', { opportunity_id: 'l1' });
+  const result = await call('s1', '/products/sales', 'POST', catalogSale());
+  assert.equal(result.status, 201); assert.equal(db.product.length, 3); assert.equal(db.sale[0].product_id, 'p1');
+});
+test('catalog limits count models and inactive or foreign selections cannot record sales', async () => {
+  db.company[0].max_products = 2;
+  assert.equal((await call('a1', '/products/models', 'POST', { name: 'More', kind: 'phone', price: '100' })).status, 403);
+  db.productModel[0].is_active = false;
+  assert.equal((await call('s1', '/products/sales', 'POST', catalogSale())).status, 404);
+  assert.equal(db.sale.length, 0);
+  assert.equal((await call('support', '/products/sales', 'POST', catalogSale())).status, 403);
+});
+test('AI receives active catalog models as reference, without implying confirmed physical stock', async () => {
+  const catalog = require('../src/controllers/catalogController');
+  const categories = await catalog.getCatalogForAI('c1');
+  const prompt = catalog.formatCatalogForPrompt(categories);
+  assert.match(prompt, /iPhone 13/); assert.match(prompt, /Moto X/); assert.doesNotMatch(prompt, /Foreign/);
+  assert.match(prompt, /Confirme disponibilidade, unidade e valor final/);
+  db.productModel[0].is_active = false;
+  assert.doesNotMatch(catalog.formatCatalogForPrompt(await catalog.getCatalogForAI('c1')), /iPhone 13/);
 });

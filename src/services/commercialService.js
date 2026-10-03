@@ -160,12 +160,16 @@ async function release(user, productId) {
     await audit(tx, user, 'reservation_released', 'product', productId);
   });
 }
-async function sell(user, productId, body, now = new Date()) {
+async function sell(user, productId, body, now = new Date(), existingTransaction = null) {
   const due = date(body.due_at), warranty = date(body.warranty_until);
   if (warranty && warranty < now) throw fail('Garantia não pode terminar no passado.');
-  return transaction(user, async tx => {
+  const work = async tx => {
     const product = await tx.product.findFirst({ where: { ...require('./productService').scope(user), id: productId, status: 'stock' } });
     if (!product || !product.seller_id || !product.serial || !['pix', 'cash', 'card', 'boleto'].includes(product.payment_method) || !Number.isFinite(product.price) || product.price <= 0) throw fail('Produto vendido ou cadastro incompleto.', 409);
+    if (product.model_id) {
+      const model = await tx.productModel.findFirst({ where: { id: product.model_id, company_id: user.company_id } });
+      if (model?.kind === 'phone' && (!/^\d{15}$/.test(product.serial) || !product.memory)) throw fail('Celular exige IMEI com 15 dígitos e memória.');
+    }
     const leadId = body.opportunity_id || (product.reserved_until > now ? product.reserved_lead_id : null);
     if (!leadId) throw fail('Vincule a venda a um cliente antes de confirmar.');
     const lead = await getLead(tx, user, leadId, true);
@@ -182,7 +186,8 @@ async function sell(user, productId, body, now = new Date()) {
     }
     await audit(tx, user, 'sale_created', 'sale', sale.id, { product_id: product.id, opportunity_id: lead?.id || null });
     return sale;
-  });
+  };
+  return existingTransaction ? work(existingTransaction) : transaction(user, work);
 }
 function financials(sale, manager = false) {
   const total = Math.round(Number(sale.total) * 100);

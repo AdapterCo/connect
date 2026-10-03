@@ -55,6 +55,7 @@ model Company {
   auditLogs       AuditLog[]
   categories      Category[]
   products        Product[]
+  product_models  ProductModel[]
   orders          Order[]
   printers        Printer[]
   flows           Flow[]
@@ -372,6 +373,8 @@ model Category {
 }
 
 model Product {
+  model_id String?
+  model ProductModel? @relation(fields: [model_id, company_id], references: [id, company_id], onDelete: Restrict)
   cost Decimal? @db.Decimal(12, 2)
   supplier_name String?
   commission_rate Decimal @default(0) @db.Decimal(5, 2)
@@ -415,6 +418,24 @@ model Product {
   @@unique([company_id, slug])
   @@unique([id, company_id])
   @@index([company_id, reserved_until])
+}
+
+model ProductModel {
+  id String @id @default(uuid())
+  company_id String
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  name String
+  kind String
+  price Decimal @db.Decimal(12, 2)
+  cost Decimal? @db.Decimal(12, 2)
+  commission_rate Decimal @default(0) @db.Decimal(5, 2)
+  is_active Boolean @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  units Product[]
+  @@unique([id, company_id])
+  @@unique([company_id, name])
+  @@index([company_id, is_active])
 }
 
 model ProductVariant {

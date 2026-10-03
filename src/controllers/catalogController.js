@@ -378,7 +378,7 @@ async function getCatalogForAI(companyId) {
     where: { company_id: companyId, is_active: true },
     include: {
       products: {
-        where: { is_active: true, status: 'stock', OR: [{ reserved_until: null }, { reserved_until: { lte: new Date() } }] },
+        where: { model_id: null, is_active: true, status: 'stock', OR: [{ reserved_until: null }, { reserved_until: { lte: new Date() } }] },
         include: { variants: true, addons: true },
         orderBy: { sort_order: 'asc' }
       }
@@ -386,7 +386,13 @@ async function getCatalogForAI(companyId) {
     orderBy: { sort_order: 'asc' }
   });
 
-  return categories.filter(c => c.products.length > 0);
+  const models = await prisma.productModel.findMany({ where: { company_id: companyId, is_active: true }, orderBy: { name: 'asc' } });
+  // Models are catalog references, not confirmed physical stock.
+  const modeledNames = new Set(models.map(model => model.name));
+  const legacy = categories.map(category => ({ ...category, products: category.products.filter(product => !modeledNames.has(product.name)) })).filter(category => category.products.length > 0);
+  if (models.length) legacy.push({ name: 'Modelos — disponibilidade a confirmar', products: models.map(model => ({ id: model.id, name: model.name,
+    price: Number(model.price), description: 'Preço de referência. Confirme disponibilidade, unidade e valor final com o vendedor.', variants: [], addons: [] })) });
+  return legacy;
 }
 
 function formatCatalogForPrompt(categories) {

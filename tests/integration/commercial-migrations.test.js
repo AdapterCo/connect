@@ -43,3 +43,12 @@ test('new relations preserve company cascading deletion', async () => {
   assert.equal((await db.query('SELECT * FROM "Sale" WHERE company_id=\'c1\'')).rows.length, 0);
   await db.exec('ROLLBACK;');
 });
+test('catalog migration preserves legacy sales and groups their product model', async () => {
+  const result = await db.query('SELECT p.model_id,m.name,m.kind FROM "Product" p JOIN "ProductModel" m ON p.model_id=m.id WHERE p.id=$1', ['old-sale']);
+  assert.equal(result.rows.length, 1); assert.equal(result.rows[0].name, 'Legacy phone'); assert.equal(result.rows[0].kind, 'phone');
+});
+test('catalog foreign keys prohibit linking physical units to another tenant model', async () => {
+  await db.exec(`INSERT INTO "ProductModel" (id,company_id,name,kind,price,updated_at) VALUES ('foreign-model','c2','Other phone','phone',200,now());`);
+  await assert.rejects(db.exec(`UPDATE "Product" SET model_id='foreign-model' WHERE id='old-sale';`), /foreign key/i);
+  await assert.rejects(db.exec(`INSERT INTO "ProductModel" (id,company_id,name,kind,price,updated_at) VALUES ('bad-kind','c1','Invalid','invalid',200,now());`), /check constraint/i);
+});

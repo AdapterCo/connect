@@ -51,17 +51,19 @@ async function call(userId, url = '', method = 'GET', body) {
 const product = seller_id => ({ name: 'Phone', serial: seller_id, color: 'Black', condition: 'new', price: '100.50', down_payment: '20.00', payment_method: 'pix', seller_id });
 test('HTTP rejects anonymous and non-sales roles', async () => { assert.equal((await call(null)).status, 401); assert.equal((await call('x1')).status, 403); });
 test('HTTP tenant, ownership, sale lifecycle and aggregate isolation', async () => {
-  assert.equal((await call('s1', '', 'POST', product('s2'))).status, 400);
+  assert.equal((await call('s1', '', 'POST', product('s2'))).status, 403);
   assert.equal((await call('a1', '', 'POST', product('s3'))).status, 400);
-  const p1 = await call('s1', '', 'POST', product('s1')); assert.equal(p1.status, 201);
-  assert.equal((await call('s1', '', 'POST', product('s1'))).status, 409);
-  await call('s2', '', 'POST', product('s2')); await call('s3', '', 'POST', product('s3'));
+  const p1 = await call('a1', '', 'POST', product('s1')); assert.equal(p1.status, 201);
+  assert.equal((await call('a1', '', 'POST', product('s1'))).status, 409);
+  await call('a1', '', 'POST', product('s2'));
   assert.equal((await call('s1')).data.length, 1); assert.equal((await call('a1')).data.length, 2); assert.equal((await call('m1')).data.length, 2);
   assert.equal((await call('s2', '/' + p1.data.id + '/sell', 'POST')).status, 409);
   assert.equal((await call('s1', '/' + p1.data.id + '/sell', 'POST')).status, 400);
   const results = await Promise.all([call('s1', '/' + p1.data.id + '/sell', 'POST', { opportunity_id: 'l1' }), call('s1', '/' + p1.data.id + '/sell', 'POST', { opportunity_id: 'l1' })]);
   assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
-  assert.equal((await call('s1', '/' + p1.data.id, 'PUT', product('s1'))).status, 409);
+  assert.equal((await call('s1', '/' + p1.data.id, 'PUT', product('s1'))).status, 403);
+  assert.equal((await call('a1', '/' + p1.data.id, 'PUT', product('s1'))).status, 409);
+  assert.equal((await call('s1')).data.length, 0);
   assert.equal((await call('s1', '/metrics')).status, 403);
   assert.equal((await call('s2', '/metrics')).status, 403);
   const admin = (await call('a1', '/metrics')).data; assert.equal(admin.reduce((n, row) => n + row.total, 0), 100.5);
@@ -70,7 +72,7 @@ test('HTTP tenant, ownership, sale lifecycle and aggregate isolation', async () 
 });
 test('HTTP ignores forged JWT role and deleted accounts', async () => {
   const forged = generateToken({ ...users[0], role: 'admin' });
-  const res = await fetch(base, { headers: { Authorization: 'Bearer ' + forged } }); assert.equal((await res.json()).length, 1);
+  const res = await fetch(base, { headers: { Authorization: 'Bearer ' + forged } }); assert.equal((await res.json()).length, 0);
   assert.equal((await fetch(base + '/metrics', { headers: { Authorization: 'Bearer ' + forged } })).status, 403);
   const removed = generateToken({ id: 'deleted', company_id: 'c1', role: 'admin' });
   assert.equal((await fetch(base, { headers: { Authorization: 'Bearer ' + removed } })).status, 401);

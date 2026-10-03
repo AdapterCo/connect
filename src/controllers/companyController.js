@@ -13,7 +13,7 @@ async function getPlanInfo(req, res) {
             users: true,
             instances: true,
             chats: true,
-            products: true
+            product_models: true
           }
         }
       }
@@ -36,7 +36,7 @@ async function getPlanInfo(req, res) {
       usage: {
         users: company._count.users,
         instances: company._count.instances,
-        products: company._count.products,
+        products: company._count.product_models,
         chats: company._count.chats
       },
       is_active: company.is_active && !isExpired,
