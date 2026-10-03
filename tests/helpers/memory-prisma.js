@@ -2,7 +2,8 @@
 // install() substitui @prisma/client, entao o src/config/database.js real
 // (inclusive o seed) roda contra este banco.
 const TABLES = ['plan', 'company', 'settings', 'user', 'instance', 'invoice', 'subscription',
-  'signupCheckout', 'paymentAttempt', 'mediaDeletion', 'scheduledMessage', 'order', 'log', 'auditLog', 'passwordResetToken', 'chat', 'message', 'flow', 'flowSession'];
+  'signupCheckout', 'paymentAttempt', 'mediaDeletion', 'scheduledMessage', 'order', 'log', 'auditLog', 'passwordResetToken', 'chat', 'message', 'flow', 'flowSession',
+  'opportunity', 'sale', 'product', 'category', 'followUpTask', 'cannedReply', 'saleReceipt', 'afterSale', 'pushSubscription', 'platformConfig'];
 
 const db = {};
 const reset = () => Object.assign(db, Object.fromEntries(TABLES.map(name => [name, []])));
@@ -18,6 +19,7 @@ const matches = (row, where = {}) => Object.entries(where).every(([key, value]) 
     if ('lte' in value) return row[key] != null && row[key] <= value.lte;
     if ('gt' in value) return row[key] > value.gt;
     if ('gte' in value) return row[key] >= value.gte;
+    if (key === 'company_id_phone') return matches(row, value);
     return true;
   }
   return (row[key] ?? null) === value;

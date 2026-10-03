@@ -8,6 +8,27 @@ const catalog = [{ products: [
 const response = { message: 'Vou encaminhar voce.', status: 'interesse em compra', disable_ai: false };
 const saved = qualification => ({ sender: 'system', is_note: true, text: 'Triagem do lead: ' + JSON.stringify(qualification) });
 
+test('structured preferences survive missing history and cannot be reverted by old client selections', () => {
+  const result = qualify({ messages: [{ sender: 'client', text: 'quero iPhone 13 no boleto' }], qualification_memory: { product: 'iPhone 15', payment: 'Pix', variant: '256 GB', purchase_confirmed: true } }, 'qual o horário?', { message: 'Abrimos às 9h.', intent: 'question' }, catalog);
+  assert.equal(result.qualification.product, 'iPhone 15'); assert.equal(result.qualification.payment, 'Pix');
+});
+test('customer may change a device and payment without restarting qualification', () => {
+  const result = qualify({ messages: [saved({ product: 'iPhone 13', payment: 'Pix', purchase_confirmed: true })] }, 'quero iPhone 15 no boleto', response, catalog);
+  assert.equal(result.qualification.product, 'iPhone 15'); assert.equal(result.qualification.payment, 'Boleto'); assert.equal(result.handoff_requested, true);
+});
+test('payment correction with negation does not retain the rejected method', () => {
+  const result = qualify({ messages: [saved({ product: 'iPhone 13', payment: 'Pix', purchase_confirmed: true })] }, 'não quero Pix, prefiro boleto', { message: 'Certo.', intent: 'question' }, catalog);
+  assert.equal(result.qualification.payment, 'Boleto'); assert.equal(result.qualification.purchase_confirmed, true);
+});
+test('rejecting the previous device and selecting another preserves the new choice', () => {
+  const result = qualify({ messages: [saved({ product: 'iPhone 13', payment: 'Pix', purchase_confirmed: true })] }, 'não quero mais iPhone 13, quero iPhone 15 no boleto', { message: 'Certo.', intent: 'question' }, catalog);
+  assert.equal(result.qualification.product, 'iPhone 15'); assert.equal(result.qualification.payment, 'Boleto'); assert.equal(result.handoff_requested, true);
+});
+test('withdrawal clears purchase choices and does not hand off', () => {
+  const result = qualify({ messages: [saved({ product: 'iPhone 13', payment: 'Pix', purchase_confirmed: true })] }, 'desisti de comprar', { message: 'Certo.', intent: 'question' }, catalog);
+  assert.equal(result.qualification.product, null); assert.equal(result.qualification.payment, null); assert.equal(result.handoff_requested, false);
+});
+
 test('viewing iPhones shows catalog even if AI incorrectly asks for a handoff', () => {
   const result = qualify({ messages: [] }, 'quero ver os iphones', { ...response, disable_ai: true, intent: 'purchase' }, catalog);
   assert.equal(result.handoff_requested, false);

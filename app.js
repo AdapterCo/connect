@@ -189,6 +189,8 @@ app.use('/api/instances', apiLimiter, instanceRoutes);
 app.use('/api/settings', apiLimiter, settingsRoutes);
 app.use('/api/users', apiLimiter, userRoutes);
 app.use('/api/products', apiLimiter, productRoutes);
+app.use('/api/commercial', apiLimiter, require('./src/routes/commercialRoutes'));
+app.use('/api/push', apiLimiter, require('./src/routes/pushRoutes'));
 app.use('/api/kanban', apiLimiter, require('./src/routes/kanbanRoutes'));
 app.use('/api/flows', apiLimiter, require('./src/routes/flowRoutes'));
 app.use('/api', reportRoutes);

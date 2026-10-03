@@ -38,6 +38,7 @@ function every(ms, name, task) {
 
 function startWorkers() {
   every(5000, 'Sales rotation', () => salesRotationService.checkSalesRotation());
+  every(5000, 'Commercial reminders', () => require('./src/services/pushService').reminders());
   every(60000, 'Media cleanup', () => require('./src/services/mediaCleanupService').cleanPending());
   every(10000, 'Scheduler', () => schedulerService.checkScheduledMessages());
   every(60000, 'Payment reconciliation', () => billingService.reconcilePayments());

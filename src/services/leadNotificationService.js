@@ -12,6 +12,7 @@ function normalizeDigits(phone) {
 
 async function notifySeller(chat, sellerId) {
   if (!sellerId || !chat) return;
+  await require('./pushService').send(sellerId, chat.company_id, 'Novo lead atribuído. Confirme o atendimento.', `lead-${chat.id}`).catch(error => console.error('Lead push failed:', error.code || error.name));
   try {
     const seller = await prisma.user.findFirst({
       where: { id: sellerId, company_id: chat.company_id },
@@ -27,9 +28,10 @@ async function notifySeller(chat, sellerId) {
     if (chat.id) {
       const fresh = await prisma.chat.findUnique({
         where: { id: chat.id },
-        select: { client_phone: true, company_id: true, messages: { where: { sender: 'system', is_note: true }, orderBy: { timestamp: 'desc' }, take: 30 } }
+        select: { client_phone: true, company_id: true, opportunity: { select: { product: true, variant: true, payment: true, purchase_confirmed: true } }, messages: { where: { sender: 'system', is_note: true }, orderBy: { timestamp: 'desc' }, take: 30 } }
       });
       if (fresh?.company_id === chat.company_id && fresh.messages) chat = { ...chat, messages: [...fresh.messages].reverse() };
+      if (fresh?.company_id === chat.company_id && fresh.opportunity) chat = { ...chat, qualification_memory: fresh.opportunity };
       if (fresh && fresh.client_phone) {
         clientDigits = normalizeDigits(fresh.client_phone) || fresh.client_phone;
       }

@@ -24,6 +24,12 @@ function matches(row, where = {}) {
 }
 const copy = value => value ? structuredClone(value) : value;
 const prisma = {
+  followUpTask: { updateMany: async () => ({ count: 0 }) },
+  opportunity: {
+    findUnique: async ({ where }) => copy((db.opportunities || []).find(row => matches(row, where.company_id_phone))),
+    create: async ({ data }) => { const row = { id: 'lead-' + (db.opportunities || []).length, ...data }; (db.opportunities ||= []).push(row); return copy(row); },
+    update: async ({ where, data }) => Object.assign(db.opportunities.find(row => matches(row, where)), data)
+  },
   $transaction: work => {
     const result = queue.then(() => work(prisma));
     queue = result.catch(() => {});
@@ -46,6 +52,7 @@ const prisma = {
     findFirst: async ({ where }) => copy(db.instances.find(row => matches(row, where)))
   },
   chat: {
+    updateMany: async ({ where, data }) => { const rows = db.chats.filter(row => matches(row, where)); rows.forEach(row => Object.assign(row, data)); return { count: rows.length }; },
     findUnique: async ({ where }) => copy(db.chats.find(row => matches(row, where))),
     findFirst: async ({ where, include }) => {
       const row = copy(db.chats.find(row => matches(row, where)));

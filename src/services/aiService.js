@@ -68,6 +68,13 @@ function withTimeout(promise, ms, label) {
 async function runAiAttendant(chat, clientMessage, settings) {
   const provider = normalizeProvider(settings.ai_provider);
   const companyId = chat.company_id || 'comp_default';
+  const { prisma } = require('../config/database');
+  const phone = require('./commercialService').phoneKey(chat.client_phone);
+  if (phone) {
+    const memory = await prisma.opportunity.findUnique({ where: { company_id_phone: { company_id: companyId, phone } },
+      select: { product: true, variant: true, payment: true, purchase_confirmed: true } });
+    if (memory) chat = { ...chat, qualification_memory: memory };
+  }
 
   const catalogCategories = await catalogController.getCatalogForAI(companyId);
   const catalogText = catalogController.formatCatalogForPrompt(catalogCategories);

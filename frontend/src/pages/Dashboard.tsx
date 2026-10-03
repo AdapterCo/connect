@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { useAuthStore } from '../stores/authStore';
+import { kanbanLeads } from '../utils/kanbanLeads';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function Dashboard() {
@@ -14,13 +15,18 @@ export default function Dashboard() {
   }, [fetchChats, fetchLogs, isManager]);
 
   const totalChats = chats.length;
-  const iniciadaCount = chats.filter(c => c.status === 'iniciada').length;
-  const interesseCount = chats.filter(c => c.status === 'interesse em compra').length;
-  const finalizadaCount = chats.filter(c => c.status === 'finalizada').length;
+  const activeChats = kanbanLeads(chats);
+  const iniciadaCount = activeChats.filter(c => c.status === 'iniciada').length;
+  const interesseCount = activeChats.filter(c => c.status === 'interesse em compra').length;
+  const finalizadaCount = activeChats.filter(c => c.status === 'finalizada').length;
+  const encaminhadosCount = activeChats.filter(c => c.status === 'encaminhados').length;
+  const atendimentoCount = activeChats.filter(c => c.status === 'em atendimento').length;
 
   const chartData = [
     { name: 'Iniciada', value: iniciadaCount, fill: '#6366f1' },
     { name: 'Interesse', value: interesseCount, fill: '#f59e0b' },
+    { name: 'Encaminhados', value: encaminhadosCount, fill: '#a78bfa' },
+    { name: 'Em atendimento', value: atendimentoCount, fill: '#38bdf8' },
     { name: 'Finalizada', value: finalizadaCount, fill: '#10b981' },
   ];
 
@@ -34,12 +40,14 @@ export default function Dashboard() {
         <StatCard icon="💬" label="Total de Chats" value={totalChats} color="indigo" />
         <StatCard icon="➕" label="Status: Iniciada" value={iniciadaCount} color="blue" />
         <StatCard icon="🛒" label="Interesse de Compra" value={interesseCount} color="amber" />
-        <StatCard icon="✅" label="Compras Finalizadas" value={finalizadaCount} color="green" />
+        <StatCard icon="E" label="Encaminhados" value={encaminhadosCount} color="indigo" />
+        <StatCard icon="A" label="Em atendimento" value={atendimentoCount} color="blue" />
+        <StatCard icon="✅" label="Conversas finalizadas" value={finalizadaCount} color="green" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-          <h3 className="text-lg font-semibold mb-4">Funil de Vendas Recentes</h3>
+          <h3 className="text-lg font-semibold mb-4">Etapas das conversas</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>

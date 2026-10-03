@@ -22,6 +22,7 @@ interface PlanInfo {
 }
 
 const navItems = [
+  { to: '/commercial', icon: 'C', label: 'Gestão Comercial', roles: ['admin', 'supervisor', 'seller'] },
   { to: '/dashboard', icon: '📊', label: 'Dashboard', end: true },
   { to: '/chats', icon: '💬', label: 'Chats / Funil' },
   { to: '/kanban', icon: '📋', label: 'Pipeline (Kanban)' },

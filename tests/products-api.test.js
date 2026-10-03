@@ -14,13 +14,19 @@ const users = [
   { id: 'x1', name: 'Support', company_id: 'c1', role: 'support' }
 ];
 let products = [];
+let queue = Promise.resolve();
 const match = (row, where) => Object.entries(where).every(([key, value]) => typeof value === 'object' && value !== null ? (value.not === null ? row[key] != null : true) && (value.equals ? row[key] === value.equals : true) : row[key] === value);
 const prisma = {
   company: { findUnique: async () => ({ is_active: true, max_products: 100 }) },
   category: { upsert: async () => ({ id: 'category' }) },
-  $transaction: async fn => fn(prisma),
+  $transaction: fn => { const result = queue.then(() => fn(prisma)); queue = result.catch(() => {}); return result; },
+  $queryRaw: async () => [{ id: 'c1' }],
+  sale: { create: async ({ data }) => ({ id: 'sale-1', ...data }) },
+  auditLog: { create: async ({ data }) => data },
   user: { findFirst: async ({ where }) => users.find(u => match(u, where)), findMany: async ({ where }) => users.filter(u => match(u, where)).map(({ id, name }) => ({ id, name })) },
   product: {
+    findFirst: async ({ where }) => products.find(p => match(p, where)),
+    update: async ({ where, data }) => Object.assign(products.find(p => match(p, where)), data),
     count: async ({ where }) => products.filter(p => match(p, where)).length,
     findMany: async ({ where }) => products.filter(p => match(p, where)),
     create: async ({ data }) => { if (products.some(p => p.company_id === data.company_id && p.serial === data.serial)) throw Object.assign(new Error(), { code: 'P2002' }); const p = { ...data, id: String(products.length + 1), status: 'stock', sold_at: null }; products.push(p); return p; },

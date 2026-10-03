@@ -17,14 +17,15 @@ function choiceEvidenceInText(text, value, payment = false) {
 }
 
 function previousQualification(chat) {
+  const memory = chat.qualification_memory || {};
   for (const message of [...(chat.messages || [])].reverse()) {
     if (message.sender !== 'system' || !message.is_note || !message.text?.startsWith(PREFIX)) continue;
     try {
       const parsed = JSON.parse(message.text.slice(PREFIX.length));
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { ...parsed, ...memory };
     } catch (_) { /* Ignore old invalid notes. */ }
   }
-  return {};
+  return { ...memory };
 }
 
 function qualify(chat, currentMessage, response, categories) {
@@ -37,8 +38,12 @@ function qualify(chat, currentMessage, response, categories) {
   const products = (categories || []).flatMap(category => category.products || []);
   const requested = response.qualification || {};
   const choiceEvidence = value => clientTexts.some(text => choiceEvidenceInText(text, value));
-  const customerDevice = [...clientTexts].reverse().map(statedDevice).find(name => name && choiceEvidence(name));
-  const namedProduct = [...products].sort((a, b) => b.name.length - a.name.length).find(item => choiceEvidence(item.name));
+  const recentSelection = (prior.product ? [currentMessage] : [...clientTexts].reverse()).flatMap(text => String(text).split(/[,;]|\bmas\b/i).reverse()).find(text => {
+    const device = statedDevice(text);
+    return (device && choiceEvidenceInText(text, device)) || products.some(item => choiceEvidenceInText(text, item.name));
+  });
+  const customerDevice = recentSelection ? statedDevice(recentSelection) : null;
+  const namedProduct = [...products].sort((a, b) => b.name.length - a.name.length).find(item => recentSelection && choiceEvidenceInText(recentSelection, item.name));
   const modelProduct = typeof requested.product === 'string' && choiceEvidence(requested.product) ? requested.product : null;
   // The customer's stated model is useful even if the catalog has no exact entry.
   // Never silently replace a Pro Max with a base iPhone of the same generation.
@@ -54,9 +59,10 @@ function qualify(chat, currentMessage, response, categories) {
   const chosen = product || priorProduct;
   const variants = [...(chosen?.variants || []), ...[chosen?.memory, chosen?.color].filter(Boolean).map(name => ({ name }))];
   const variant = variants.find(item => fold(item.name) === fold(requested.variant) && evidence.includes(fold(item.name)));
-  qualification.variant = variant?.name || (chosen?.name === prior.product ? prior.variant || null : null);
+  qualification.variant = variant?.name || (qualification.product === prior.product ? prior.variant || null : null);
   const payments = ['Pix', 'Dinheiro', 'Cartao', 'Boleto'];
-  const payment = [...clientTexts].reverse().map(text => payments.find(item => new RegExp(`\\b${escaped(fold(item))}\\b`).test(fold(text)) && choiceEvidenceInText(text, item, true))).find(Boolean);
+  const paymentTexts = prior.payment ? [currentMessage] : [...clientTexts].reverse();
+  const payment = paymentTexts.flatMap(text => String(text).split(/[,;]|\bmas\b/i).reverse()).map(text => payments.find(item => new RegExp(`\\b${escaped(fold(item))}\\b`).test(fold(text)) && choiceEvidenceInText(text, item, true))).find(Boolean);
   if (payment) qualification.payment = payment;
 
   const asksHuman = !/(?:nao quero|nao precisa).{0,20}(?:falar|transferir|atendente|vendedor)/.test(current) && /(?:falar|conversar|chamar|transferir|passar|atendimento).{0,35}(?:alguem|humano|vendedor|atendente|pessoa)/.test(current);
@@ -64,10 +70,12 @@ function qualify(chat, currentMessage, response, categories) {
   const purchase = /(?:quero|vou|gostaria|decidi).{0,20}(?:comprar|levar|fechar|ficar com)|(?:fechar|confirmar).{0,15}(?:compra|negocio|pedido)|(?:pode|vamos).{0,12}fechar/.test(current);
   const intent = asksHuman ? 'human' : browsing && !purchase ? 'browse' : response.intent;
   const explicitHuman = asksHuman || (!browsing && response.intent === 'human' && response.disable_ai === true);
-  const currentSelection = !!qualification.product && choiceEvidenceInText(currentMessage, qualification.product);
+  const currentSelection = !!qualification.product && (choiceEvidenceInText(currentMessage, qualification.product) ||
+    (!!recentSelection && currentMessage.includes(recentSelection) && choiceEvidenceInText(recentSelection, qualification.product)));
   const purchaseIntent = purchase || intent === 'purchase' || (!browsing && currentSelection);
-  const cancelled = /(?:nao quero|desisti|cancelar|so estou olhando)/.test(current);
-  if (cancelled) qualification.payment = null;
+  const cancelled = !currentSelection && /(?:desisti|cancelar|so estou olhando|nao quero (?:mais|comprar|fechar))/.test(current);
+  if (cancelled) { qualification.payment = null; qualification.product = null; qualification.variant = null; }
+  if (/(?:nao quero|nao vou|nao pago).{0,20}(?:pix|boleto|cartao|dinheiro)/.test(current) && !payment) qualification.payment = null;
   qualification.purchase_confirmed = !cancelled && (purchaseIntent || prior.purchase_confirmed === true);
   const ready = !!qualification.product && !!qualification.payment;
   const completesQualification = !alreadyRouted && !!(statedProduct || payment || variant);
@@ -105,7 +113,13 @@ async function saveQualification(chat, qualification) {
   const previous = previousQualification(chat);
   if (JSON.stringify(previous) === JSON.stringify(qualification)) return;
   const { prisma } = require('../config/database');
-  await prisma.message.create({ data: { chat_id: chat.id, sender: 'system', is_note: true, text: PREFIX + JSON.stringify(qualification) } });
+  await prisma.$transaction(async tx => {
+    await require('./commercialService').lock(tx, chat.company_id);
+    const fresh = await tx.chat.findFirst({ where: { id: chat.id, company_id: chat.company_id } });
+    if (!fresh || fresh.is_blocked || fresh.is_archived || !fresh.ai_active) return;
+    await require('./commercialService').syncChat(tx, fresh, qualification);
+    await tx.message.create({ data: { chat_id: chat.id, sender: 'system', is_note: true, text: PREFIX + JSON.stringify(qualification) } });
+  });
 }
 
 module.exports = { qualify, previousQualification, saveQualification, sellerBrief };

@@ -13,6 +13,7 @@ async function getChatForPrivacy(companyId, chatId) {
     include: {
       messages: { orderBy: { timestamp: 'asc' } },
       flow_session: true,
+      opportunity: { include: { tasks: true, sales: { include: { receipts: true, after_sales: true } } } },
       orders: {
         include: {
           items: {
@@ -58,6 +59,17 @@ async function anonymizeClientData({ companyId, chatId, actor }) {
   const removedMedia = urls.length;
 
   await prisma.$transaction(async (tx) => {
+    if (chat.opportunity_id) {
+      await require('./commercialService').lock(tx, companyId);
+      await tx.opportunity.updateMany({ where: { id: chat.opportunity_id, company_id: companyId }, data: {
+        client_name: 'Cliente anonimizado', phone: label, product: null, variant: null, payment: null,
+        purchase_confirmed: false, lost_reason: null, seller_id: null, status: 'lost'
+      } });
+      await tx.followUpTask.updateMany({ where: { opportunity_id: chat.opportunity_id, company_id: companyId }, data: { title: '[tarefa anonimizada]', completed_at: new Date() } });
+      await tx.product.updateMany({ where: { reserved_lead_id: chat.opportunity_id, company_id: companyId }, data: { reserved_lead_id: null, reserved_by: null, reserved_until: null } });
+      await tx.saleReceipt.updateMany({ where: { company_id: companyId, sale: { opportunity_id: chat.opportunity_id } }, data: { reference: null } });
+      await tx.afterSale.updateMany({ where: { company_id: companyId, sale: { opportunity_id: chat.opportunity_id } }, data: { description: '[solicitação anonimizada]', resolution: null } });
+    }
     await cleanup.enqueue(tx, urls);
     await tx.scheduledMessage.deleteMany({ where: { chat_id: chatId, company_id: companyId } });
     await tx.message.updateMany({

@@ -58,6 +58,13 @@ model Company {
   orders          Order[]
   printers        Printer[]
   flows           Flow[]
+  opportunities   Opportunity[]
+  sales           Sale[]
+  followUpTasks   FollowUpTask[]
+  cannedReplies   CannedReply[]
+  pushSubscriptions PushSubscription[]
+  receipts        SaleReceipt[]
+  afterSales      AfterSale[]
 }
 
 model User {
@@ -77,7 +84,14 @@ model User {
   updated_at      DateTime             @updatedAt
   company         Company              @relation(fields: [company_id], references: [id], onDelete: Cascade)
   resetTokens     PasswordResetToken[]
-  soldProducts    Product[]
+  soldProducts    Product[] @relation("ProductSeller")
+  opportunities   Opportunity[]
+  sales           Sale[]
+  tasks           FollowUpTask[]
+  pushSubscriptions PushSubscription[]
+  reservations    Product[] @relation("ProductReservation")
+  saleReceipts    SaleReceipt[]
+  afterSales      AfterSale[]
   instances       Instance[]
 
   @@unique([id, company_id])
@@ -115,6 +129,9 @@ model Instance {
 }
 
 model Chat {
+  sales_alerted_at DateTime?
+  opportunity_id String?
+  opportunity Opportunity? @relation(fields: [opportunity_id, company_id], references: [id, company_id], onDelete: Restrict)
   sales_reply_due_at DateTime?
   kanban_cards KanbanCard[]
   id            String    @id
@@ -355,8 +372,17 @@ model Category {
 }
 
 model Product {
+  cost Decimal? @db.Decimal(12, 2)
+  supplier_name String?
+  commission_rate Decimal @default(0) @db.Decimal(5, 2)
+  reserved_by String?
+  reserved_user User? @relation("ProductReservation", fields: [reserved_by, company_id], references: [id, company_id], onDelete: Restrict)
+  reserved_until DateTime?
+  reserved_lead_id String?
+  reserved_lead Opportunity? @relation(fields: [reserved_lead_id, company_id], references: [id, company_id], onDelete: Restrict)
+  sale Sale?
   seller_id    String?
-  seller       User? @relation(fields: [seller_id, company_id], references: [id, company_id], onDelete: Restrict)
+  seller       User? @relation("ProductSeller", fields: [seller_id, company_id], references: [id, company_id], onDelete: Restrict)
   down_payment Decimal @default(0) @db.Decimal(12, 2)
   payment_method String?
   serial       String?
@@ -387,6 +413,8 @@ model Product {
   orderItems   OrderItem[]
 
   @@unique([company_id, slug])
+  @@unique([id, company_id])
+  @@index([company_id, reserved_until])
 }
 
 model ProductVariant {
@@ -527,4 +555,135 @@ model MediaDeletion {
   created_at DateTime @default(now())
   attempts Int @default(0)
   @@index([created_at])
+}
+
+// Business preferences only: never store the shop's conversation in this record.
+model Opportunity {
+  id String @id @default(uuid())
+  company_id String
+  client_name String
+  phone String
+  seller_id String?
+  seller User? @relation(fields: [seller_id, company_id], references: [id, company_id], onDelete: Restrict)
+  status String @default("open")
+  product String?
+  variant String?
+  payment String?
+  purchase_confirmed Boolean @default(false)
+  lost_reason String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  chats Chat[]
+  reservations Product[]
+  sales Sale[]
+  tasks FollowUpTask[]
+  @@unique([company_id, phone])
+  @@unique([id, company_id])
+  @@index([company_id, seller_id, status])
+}
+
+model FollowUpTask {
+  id String @id @default(uuid())
+  company_id String
+  opportunity_id String
+  owner_id String
+  owner User @relation(fields: [owner_id, company_id], references: [id, company_id], onDelete: Restrict)
+  title String
+  due_at DateTime
+  completed_at DateTime?
+  reminded_at DateTime?
+  created_at DateTime @default(now())
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  opportunity Opportunity @relation(fields: [opportunity_id, company_id], references: [id, company_id], onDelete: Cascade)
+  @@index([company_id, owner_id, due_at])
+  @@index([completed_at, reminded_at, due_at])
+}
+
+model CannedReply {
+  id String @id @default(uuid())
+  company_id String
+  title String
+  text String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  @@index([company_id])
+}
+
+model Sale {
+  id String @id @default(uuid())
+  company_id String
+  opportunity_id String?
+  product_id String @unique
+  @@unique([product_id, company_id])
+  seller_id String
+  seller User @relation(fields: [seller_id, company_id], references: [id, company_id], onDelete: Restrict)
+  total Decimal @db.Decimal(12, 2)
+  cost Decimal? @db.Decimal(12, 2)
+  commission_rate Decimal @default(0) @db.Decimal(5, 2)
+  payment_method String
+  due_at DateTime?
+  warranty_until DateTime?
+  status String @default("sold")
+  created_at DateTime @default(now())
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id, company_id], references: [id, company_id], onDelete: Restrict)
+  opportunity Opportunity? @relation(fields: [opportunity_id, company_id], references: [id, company_id], onDelete: Restrict)
+  receipts SaleReceipt[]
+  after_sales AfterSale[]
+  @@unique([id, company_id])
+  @@index([company_id, seller_id, created_at])
+}
+
+model SaleReceipt {
+  id String @id @default(uuid())
+  company_id String
+  sale_id String
+  created_by String
+  author User @relation(fields: [created_by, company_id], references: [id, company_id], onDelete: Restrict)
+  amount Decimal @db.Decimal(12, 2)
+  kind String @default("payment")
+  method String
+  reference String?
+  request_id String @unique
+  created_at DateTime @default(now())
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  sale Sale @relation(fields: [sale_id, company_id], references: [id, company_id], onDelete: Cascade)
+  @@index([company_id, sale_id])
+}
+
+model AfterSale {
+  id String @id @default(uuid())
+  company_id String
+  sale_id String
+  created_by String
+  author User @relation(fields: [created_by, company_id], references: [id, company_id], onDelete: Restrict)
+  type String
+  description String
+  status String @default("open")
+  resolution String?
+  resolved_at DateTime?
+  created_at DateTime @default(now())
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  sale Sale @relation(fields: [sale_id, company_id], references: [id, company_id], onDelete: Cascade)
+  @@index([company_id, status, created_at])
+}
+
+model PushSubscription {
+  id String @id @default(uuid())
+  company_id String
+  user_id String
+  user User @relation(fields: [user_id, company_id], references: [id, company_id], onDelete: Cascade)
+  session_version Int
+  endpoint String @unique
+  keys Json
+  created_at DateTime @default(now())
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  @@index([company_id, user_id])
+}
+
+model PlatformConfig {
+  name String @id
+  value Json
 }

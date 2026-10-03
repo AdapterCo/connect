@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import api, { apiErrorMessage } from '../services/api';
 import { downloadFile } from '../services/download';
 import { useAuthStore } from '../stores/authStore';
@@ -8,6 +8,14 @@ export default function ChatTools({ chatId, text, onText }: { chatId: string; te
   const user = useAuthStore(state => state.user);
   const key = `crm_replies:${user?.company_id}:${user?.id}`;
   const [replies, setReplies] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; } });
+  const [shared, setShared] = useState<{ id: string; title: string; text: string }[]>([]);
+  useEffect(() => {
+    if (!['admin', 'supervisor', 'seller'].includes(user?.role || '')) return;
+    let active = true;
+    const refresh = () => api.get('/commercial/replies').then(response => { if (active) setShared(response.data); }).catch(() => {});
+    void refresh(); window.addEventListener('focus', refresh);
+    return () => { active = false; window.removeEventListener('focus', refresh); };
+  }, [user?.id, user?.role]);
   const [time, setTime] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -26,6 +34,7 @@ export default function ChatTools({ chatId, text, onText }: { chatId: string; te
   return <div className="flex flex-wrap gap-2 text-xs mb-2">
     <select aria-label="Respostas prontas" value="" onChange={event => onText(event.target.value)} className="bg-gray-700 p-2 rounded">
       <option value="">{text.startsWith("/") ? "Selecione uma resposta (/)" : "Respostas prontas"}</option>{replies.filter(reply => !text.startsWith("/") || reply.toLowerCase().includes(text.slice(1).toLowerCase())).map(reply => <option key={reply} value={reply}>{reply.slice(0, 70)}</option>)}
+      <optgroup label="Biblioteca da empresa">{shared.filter(reply => !text.startsWith('/') || `${reply.title} ${reply.text}`.toLowerCase().includes(text.slice(1).toLowerCase())).map(reply => <option key={reply.id} value={reply.text}>{reply.title}</option>)}</optgroup>
     </select>
     <button disabled={busy} onClick={save}>Salvar resposta</button>
     <button onClick={() => { localStorage.removeItem(key); setReplies([]); }}>Limpar respostas</button>

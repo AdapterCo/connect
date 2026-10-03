@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import api from '../services/api';
 import type { User } from '../types';
 import { useAppStore } from './appStore';
+import { disableWebPush } from '../services/webPush';
 
 // A sessao fica num cookie HttpOnly definido pelo backend: o token nunca e
 // acessivel ao JavaScript. Aqui guardamos apenas os dados do usuario.
@@ -63,6 +64,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     try {
+      await disableWebPush().catch(() => {});
       await api.post('/auth/logout');
     } catch {
       // ignore

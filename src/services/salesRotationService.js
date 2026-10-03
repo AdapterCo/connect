@@ -47,7 +47,8 @@ async function assignNext(tx, chat, now, initial = false) {
   } });
 
   // Preserva a conexao de origem enquanto muda o responsavel.
-  return { assigned_to: seller.id, claimed_at: now };
+  await require('./commercialService').syncChat(tx, { ...chat, assigned_to: seller.id }, undefined, true);
+  return { assigned_to: seller.id, claimed_at: now, sales_alerted_at: null };
 }
 
 async function updateChat(id, data, companyId, actor, now = new Date(), options = {}) {
@@ -110,7 +111,12 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
       if (!qualification.context) qualification.context = (context?.messages || []).filter(message => message.sender === 'client' && !message.is_note).slice(-6).map(message => String(message.text || '').slice(0, 500)).join('\n').slice(0, 2000);
       await tx.message.create({ data: { chat_id: id, sender: 'system', is_note: true, text: 'Resumo para o vendedor:\n' + require('./leadQualificationService').sellerBrief(qualification) } });
     }
-    return tx.chat.update({ where: { id }, data: updates, include: messages });
+    const updated = await tx.chat.update({ where: { id }, data: updates, include: messages });
+    if (updates.assigned_to !== undefined || updates.status !== undefined) {
+      const origin = updates.assigned_to !== undefined ? await tx.instance.findFirst({ where: { id: chat.instance_id, company_id: companyId } }) : null;
+      await require('./commercialService').syncChat(tx, updated, undefined, !!origin && !origin.user_id);
+    }
+    return updated;
   });
 
   if (assignedSellerId) {
@@ -131,6 +137,7 @@ function phoneCandidates(phone) {
 async function captureRelated(tx, chat, sellerId, now, reason) {
   const phones = phoneCandidates(chat.client_phone);
   if (!phones.length) return [];
+  await require('./commercialService').syncChat(tx, { ...chat, assigned_to: sellerId });
   const related = await tx.chat.findMany({ where: {
     company_id: chat.company_id, client_phone: { in: phones }, assigned_to: sellerId,
     status: { in: HUMAN_STAGES }, is_archived: false, is_blocked: false
@@ -207,6 +214,11 @@ async function recordMessage(chatId, data, now = new Date()) {
     return result;
   });
   emitCaptured(captured);
+  if (data.sender === 'client' && !data.is_note) {
+    const chat = await prisma.chat.findUnique({ where: { id: chatId }, include: { instance: { select: { user_id: true } } } });
+    if (chat?.instance?.user_id && !chat.is_blocked && !chat.is_archived)
+      require('./pushService').send(chat.instance.user_id, chat.company_id, 'Cliente respondeu na sua conexão.', `message-${chat.id}`).catch(error => console.error('Message push failed:', error.code || error.name));
+  }
   return message;
 }
 

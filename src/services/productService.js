@@ -38,4 +38,4 @@ function period(query) {
   if (range.gte && range.lt && range.gte >= range.lt) throw new Error('Período invertido.');
   return Object.keys(range).length ? { sold_at: range } : {};
 }
-module.exports = { managers, scope, validate, period };
+module.exports = { managers, scope, validate, period, money };

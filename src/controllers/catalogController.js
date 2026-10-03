@@ -378,7 +378,7 @@ async function getCatalogForAI(companyId) {
     where: { company_id: companyId, is_active: true },
     include: {
       products: {
-        where: { is_active: true, status: 'stock' },
+        where: { is_active: true, status: 'stock', OR: [{ reserved_until: null }, { reserved_until: { lte: new Date() } }] },
         include: { variants: true, addons: true },
         orderBy: { sort_order: 'asc' }
       }
