@@ -7,7 +7,7 @@ interface Seller { id: string; name: string }
 interface Lead { id: string; client_name: string; phone: string; seller_id: string | null; status: string }
 interface Unit { id: string; model_id: string | null; name: string; serial: string; color: string; memory: string | null; condition: string; price: number; down_payment: string; status: string; seller_id: string | null; seller: Seller | null; reserved_lead_id: string | null }
 interface Metric extends Seller { count: number; total: number; average: number }
-const freshSale = { model_id: '', seller_id: '', opportunity_id: '', price: '', down_payment: '0', payment_method: 'pix', serial: '', color: '', memory: '', condition: 'new', due_at: '', warranty_until: '' };
+const freshSale = { model_id: '', seller_id: '', opportunity_id: '', price: '', down_payment: '0', payment_method: 'pix', serial: '', color: '', memory: '', condition: 'new' };
 const freshModel = { id: '', name: '', kind: 'phone' as 'phone' | 'motorcycle', price: '', cost: '', commission_rate: '0', is_active: true };
 const field = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white disabled:opacity-60';
 const button = 'bg-indigo-600 rounded-lg px-4 py-2 disabled:opacity-50';
@@ -43,7 +43,7 @@ export default function SalesCatalog() {
     event.preventDefault();
     if (!selected || !sellerId || !sale.opportunity_id) return;
     if (!window.confirm(`Registrar a venda de ${selected.name} por ${money(sale.price)} para ${leads.find(lead => lead.id === sale.opportunity_id)?.client_name}?`)) return;
-    await run(async () => { await api.post('/products/sales', { ...sale, seller_id: sellerId, due_at: sale.due_at ? new Date(sale.due_at).toISOString() : undefined, warranty_until: sale.warranty_until ? new Date(sale.warranty_until).toISOString() : undefined }); setSale(freshSale); }, 'Venda salva e vinculada ao cliente.');
+    await run(async () => { await api.post('/products/sales', { ...sale, seller_id: sellerId }); setSale(freshSale); }, 'Venda salva e vinculada ao cliente.');
   }
   async function createClient(event: FormEvent) {
     event.preventDefault();
@@ -82,7 +82,6 @@ export default function SalesCatalog() {
         <label>Cor<input className={field} value={sale.color} required maxLength={60} onChange={e => setSale({ ...sale, color: e.target.value })} /></label>
         {selected?.kind !== 'motorcycle' && <label>Memória<input className={field} value={sale.memory} required maxLength={60} placeholder="Ex.: 128 GB" onChange={e => setSale({ ...sale, memory: e.target.value })} /></label>}
         <label>Estado da moto / aparelho<select className={field} value={sale.condition} onChange={e => setSale({ ...sale, condition: e.target.value })}>{Object.entries(conditions).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
-        <label>Vencimento<input className={field} type="datetime-local" value={sale.due_at} onChange={e => setSale({ ...sale, due_at: e.target.value })} /></label><label>Garantia até<input className={field} type="datetime-local" value={sale.warranty_until} onChange={e => setSale({ ...sale, warranty_until: e.target.value })} /></label>
         <div className="flex gap-4"><button className={button} disabled={busy || !selected || !sale.opportunity_id}>Salvar venda</button><button type="button" disabled={busy} onClick={() => setSale(freshSale)}>Limpar</button><button type="button" className="text-indigo-300" disabled={busy || !sellerId} onClick={() => setNewClient(previous => !previous)}>Cadastrar cliente</button></div>
       </form>
       {newClient && <form onSubmit={createClient} className="grid md:grid-cols-3 gap-3 border-t border-gray-700 pt-4"><label>Nome do cliente<input className={field} value={clientName} onChange={e => setClientName(e.target.value)} required maxLength={160} /></label><label>Telefone com DDI<input className={field} value={clientPhone} onChange={e => setClientPhone(e.target.value)} required maxLength={20} /></label><button className={button} disabled={busy}>Cadastrar e vincular</button></form>}

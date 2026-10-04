@@ -7,6 +7,8 @@ O catálogo contém os modelos reutilizáveis (por exemplo, iPhone 15 e Moto X).
 1. Admin ou supervisor cadastra o produto, tipo (celular/moto), preço sugerido e, opcionalmente, custo de referência e comissão. Pode editar ou inativar o modelo.
 2. O vendedor abre **Produtos e vendas → Cadastrar venda**, escolhe o produto e o cliente. Seu nome é preenchido automaticamente; gestores podem escolher outro vendedor da empresa.
 3. Informe valor efetivo, forma de pagamento, entrada, identificação, cor e estado. Celulares exigem IMEI com exatamente 15 dígitos e memória; motos exigem chassi/série e não usam memória. A validação ocorre na interface e no servidor.
+
+O cadastro da venda não solicita vencimento nem data/hora de garantia. Essas informações também não são exibidas no resumo da venda. Dados antigos no banco são preservados.
 4. **Salvar venda** registra a unidade e a venda na mesma transação, vincula o cliente e conclui suas tarefas pendentes. Um erro não deixa uma unidade avulsa. A identificação não pode ser reutilizada para vender novamente a mesma unidade.
 5. Uma unidade antiga em estoque pode ser selecionada para aproveitar seus dados. Reservas de unidades existentes continuam disponíveis por 30 minutos na tela; as APIs mantêm a faixa de 5 a 120 minutos. A venda respeita a reserva ativa.
 
