@@ -62,6 +62,16 @@ test('catalog keyword does not override an explicit request for a human', () => 
   const result = qualify({ messages: [] }, 'quero falar com um vendedor sobre os celulares', response, catalog);
   assert.equal(result.handoff_requested, true);
 });
+test('real AI catalog replies retain the full configured list and payment conditions even with partial CRM catalog', () => {
+  const complete = 'iPhone 12: R$ 2100, entrada R$ 1000, boleto 12x R$ 155, garantia 90 dias\niPhone 13: R$ 3190\nMoto Honda: R$ 9000';
+  for (const term of ['catálogo', 'catalogo', 'produtos', 'motos', 'celulares', 'listas', 'iphones', 'telefones', 'lista de aparelhos']) {
+    for (const dbCatalog of [catalog, []]) {
+      const result = qualify({ messages: [] }, term, { ...response, intent: 'browse', message: complete }, dbCatalog, { preserveCatalogResponse: true });
+      assert.equal(result.message, complete, term);
+      assert.equal(result.handoff_requested, false); assert.equal(result.disable_ai, false);
+    }
+  }
+});
 test('purchase gathers device then payment before routing', () => {
   const initial = qualify({ messages: [] }, 'quero comprar um iphone', { ...response, intent: 'purchase' }, catalog);
   assert.equal(initial.handoff_requested, false);

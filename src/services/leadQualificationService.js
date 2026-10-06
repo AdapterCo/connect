@@ -28,7 +28,7 @@ function previousQualification(chat) {
   return { ...memory };
 }
 
-function qualify(chat, currentMessage, response, categories) {
+function qualify(chat, currentMessage, response, categories, options = {}) {
   const prior = previousQualification(chat);
   const alreadyRouted = ['interesse em compra', 'encaminhados', 'em atendimento'].includes(chat.status);
   const clientTexts = (chat.messages || []).filter(m => m.sender === 'client' && !m.is_note).slice(-20).map(m => m.text || '');
@@ -92,7 +92,7 @@ function qualify(chat, currentMessage, response, categories) {
       ? 'Qual aparelho e modelo voce escolheu? Posso ajudar a comparar as opcoes do catalogo antes de encaminhar ao vendedor.'
       : `Voce escolheu ${qualification.product}. Como prefere pagar: Pix, dinheiro, cartao ou boleto?`;
   }
-  if (intent === 'browse' && (catalogRequest || /(?:ver|mostr|catalogo|opcoes|modelos)/.test(current))) {
+  if (!options.preserveCatalogResponse && intent === 'browse' && (catalogRequest || /(?:ver|mostr|catalogo|opcoes|modelos)/.test(current))) {
     const listed = products.map(item => `${item.name}: R$ ${Number(item.price).toFixed(2)}${[item.memory, item.color, item.condition, item.description].filter(Boolean).length ? ' — ' + clip([item.memory, item.color, item.condition, item.description].filter(Boolean).join(', ')) : ''}`).join('\n');
     message = listed ? `Estas sao as opcoes cadastradas:\n${listed}\n\nQual modelo voce gostaria de conhecer melhor?` : 'Nao encontrei esses aparelhos no catalogo cadastrado. Qual modelo voce procura? Posso registrar sua preferencia; um vendedor precisa confirmar a disponibilidade.';
   }
