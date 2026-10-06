@@ -66,7 +66,7 @@ function qualify(chat, currentMessage, response, categories) {
   if (payment) qualification.payment = payment;
 
   const asksHuman = !/(?:nao quero|nao precisa).{0,20}(?:falar|transferir|atendente|vendedor)/.test(current) && /(?:falar|conversar|chamar|transferir|passar|atendimento).{0,35}(?:alguem|humano|vendedor|atendente|pessoa)/.test(current);
-  const catalogRequest = /\b(?:catalogo|produtos|motos|celulares|listas|iphones|telefones)\b/.test(current);
+  const catalogRequest = /\b(?:catalogos?|produtos|motos|celulares|listas?|iphones|telefones|aparelhos)\b/.test(current);
   const browsing = catalogRequest || /(?:quero|gostaria|posso).{0,15}(?:ver|conhecer|olhar)|(?:mostr|catalogo|quais|opcoes|modelos|quanto custa|qual.{0,8}preco|\btem\b|disponiv|funciona|diferenca)/.test(current);
   const purchase = /(?:quero|vou|gostaria|decidi).{0,20}(?:comprar|levar|fechar|ficar com)|(?:fechar|confirmar).{0,15}(?:compra|negocio|pedido)|(?:pode|vamos).{0,12}fechar/.test(current);
   const intent = asksHuman ? 'human' : browsing && !purchase ? 'browse' : response.intent;

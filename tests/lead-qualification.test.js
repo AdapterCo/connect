@@ -43,11 +43,20 @@ test('empty catalog is explained without inventing products or transferring', ()
 });
 test('catalog keywords always show the entire store catalog beyond eight items and across categories', () => {
   const products = Array.from({ length: 12 }, (_, index) => ({ name: index === 11 ? 'Moto Honda' : `Celular modelo ${index + 1}`, price: 100 + index, variants: [] }));
-  for (const term of ['catálogo', 'catalogo', 'produtos', 'motos', 'celulares', 'listas', 'iphones', 'telefones', 'Quero ver os IPHONES', 'Me envie a lista de produtos']) {
+  for (const term of ['catálogo', 'catalogo', 'catálogos', 'produtos', 'motos', 'celulares', 'lista', 'listas', 'aparelhos', 'lista de aparelhos', 'iphones', 'telefones', 'Quero ver os IPHONES', 'Me envie a lista de produtos']) {
     const result = qualify({ messages: [] }, term, { ...response, intent: 'purchase', disable_ai: true }, [{ products }]);
     assert.equal(result.handoff_requested, false, term); assert.equal(result.disable_ai, false, term);
     for (const product of products) assert.ok(result.message.includes(product.name + ':'), `${term}: ${product.name}`);
   }
+});
+test('lista de aparelhos replaces an invented catalog from AI or previous messages with database items only', () => {
+  const previousCatalog = 'iPhone 12 - R$ 2100, entrada R$ 1000, 12x R$ 155, garantia 90 dias';
+  const result = qualify({ messages: [{ sender: 'ai', text: previousCatalog }] }, 'lista de aparelhos', { ...response, intent: 'question', message: previousCatalog }, [{ products: [{ name: 'Iphone 15', price: 3000, variants: [] }] }]);
+  assert.match(result.message, /Iphone 15: R\$ 3000.00/);
+  assert.doesNotMatch(result.message, /iPhone 12|2100|entrada|12x|garantia/);
+  assert.equal(result.handoff_requested, false);
+  const empty = qualify({ messages: [] }, 'lista de aparelhos', { ...response, message: previousCatalog }, []);
+  assert.match(empty.message, /Nao encontrei/); assert.doesNotMatch(empty.message, /iPhone 12/);
 });
 test('catalog keyword does not override an explicit request for a human', () => {
   const result = qualify({ messages: [] }, 'quero falar com um vendedor sobre os celulares', response, catalog);
