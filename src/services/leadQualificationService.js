@@ -66,7 +66,8 @@ function qualify(chat, currentMessage, response, categories) {
   if (payment) qualification.payment = payment;
 
   const asksHuman = !/(?:nao quero|nao precisa).{0,20}(?:falar|transferir|atendente|vendedor)/.test(current) && /(?:falar|conversar|chamar|transferir|passar|atendimento).{0,35}(?:alguem|humano|vendedor|atendente|pessoa)/.test(current);
-  const browsing = /(?:quero|gostaria|posso).{0,15}(?:ver|conhecer|olhar)|(?:mostr|catalogo|quais|opcoes|modelos|quanto custa|qual.{0,8}preco|\btem\b|disponiv|funciona|diferenca)/.test(current);
+  const catalogRequest = /\b(?:catalogo|produtos|motos|celulares|listas|iphones|telefones)\b/.test(current);
+  const browsing = catalogRequest || /(?:quero|gostaria|posso).{0,15}(?:ver|conhecer|olhar)|(?:mostr|catalogo|quais|opcoes|modelos|quanto custa|qual.{0,8}preco|\btem\b|disponiv|funciona|diferenca)/.test(current);
   const purchase = /(?:quero|vou|gostaria|decidi).{0,20}(?:comprar|levar|fechar|ficar com)|(?:fechar|confirmar).{0,15}(?:compra|negocio|pedido)|(?:pode|vamos).{0,12}fechar/.test(current);
   const intent = asksHuman ? 'human' : browsing && !purchase ? 'browse' : response.intent;
   const explicitHuman = asksHuman || (!browsing && response.intent === 'human' && response.disable_ai === true);
@@ -91,9 +92,8 @@ function qualify(chat, currentMessage, response, categories) {
       ? 'Qual aparelho e modelo voce escolheu? Posso ajudar a comparar as opcoes do catalogo antes de encaminhar ao vendedor.'
       : `Voce escolheu ${qualification.product}. Como prefere pagar: Pix, dinheiro, cartao ou boleto?`;
   }
-  if (intent === 'browse' && /(?:ver|mostr|catalogo|opcoes|modelos)/.test(current)) {
-    const relevant = current.includes('iphone') ? products.filter(item => fold(item.name).includes('iphone')) : products;
-    const listed = relevant.slice(0, 8).map(item => `${item.name}: R$ ${Number(item.price).toFixed(2)}${[item.memory, item.color, item.condition, item.description].filter(Boolean).length ? ' — ' + clip([item.memory, item.color, item.condition, item.description].filter(Boolean).join(', ')) : ''}`).join('\n');
+  if (intent === 'browse' && (catalogRequest || /(?:ver|mostr|catalogo|opcoes|modelos)/.test(current))) {
+    const listed = products.map(item => `${item.name}: R$ ${Number(item.price).toFixed(2)}${[item.memory, item.color, item.condition, item.description].filter(Boolean).length ? ' — ' + clip([item.memory, item.color, item.condition, item.description].filter(Boolean).join(', ')) : ''}`).join('\n');
     message = listed ? `Estas sao as opcoes cadastradas:\n${listed}\n\nQual modelo voce gostaria de conhecer melhor?` : 'Nao encontrei esses aparelhos no catalogo cadastrado. Qual modelo voce procura? Posso registrar sua preferencia; um vendedor precisa confirmar a disponibilidade.';
   }
   qualification.context = clientTexts.slice(-6).map(clip).join('\n').slice(0, 2000);

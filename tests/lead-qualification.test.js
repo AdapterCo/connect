@@ -41,6 +41,18 @@ test('empty catalog is explained without inventing products or transferring', ()
   assert.equal(result.handoff_requested, false);
   assert.match(result.message, /Nao encontrei/);
 });
+test('catalog keywords always show the entire store catalog beyond eight items and across categories', () => {
+  const products = Array.from({ length: 12 }, (_, index) => ({ name: index === 11 ? 'Moto Honda' : `Celular modelo ${index + 1}`, price: 100 + index, variants: [] }));
+  for (const term of ['catálogo', 'catalogo', 'produtos', 'motos', 'celulares', 'listas', 'iphones', 'telefones', 'Quero ver os IPHONES', 'Me envie a lista de produtos']) {
+    const result = qualify({ messages: [] }, term, { ...response, intent: 'purchase', disable_ai: true }, [{ products }]);
+    assert.equal(result.handoff_requested, false, term); assert.equal(result.disable_ai, false, term);
+    for (const product of products) assert.ok(result.message.includes(product.name + ':'), `${term}: ${product.name}`);
+  }
+});
+test('catalog keyword does not override an explicit request for a human', () => {
+  const result = qualify({ messages: [] }, 'quero falar com um vendedor sobre os celulares', response, catalog);
+  assert.equal(result.handoff_requested, true);
+});
 test('purchase gathers device then payment before routing', () => {
   const initial = qualify({ messages: [] }, 'quero comprar um iphone', { ...response, intent: 'purchase' }, catalog);
   assert.equal(initial.handoff_requested, false);
