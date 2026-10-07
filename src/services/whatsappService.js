@@ -69,14 +69,21 @@ function getActiveConnections() {
  * Inicia uma instância do WhatsApp.
  */
 const startingInstances = new Map();
+const lifecycle = require('./whatsappLifecycleService').createLifecycle();
 async function startWhatsAppInstance(instanceId, companyId) {
-  if (startingInstances.has(instanceId)) return startingInstances.get(instanceId);
-  const task = Promise.resolve().then(() => startInstance(instanceId, companyId));
+  const pending = startingInstances.get(instanceId);
+  if (pending && lifecycle.current(instanceId, pending.lifecycleToken)) return pending;
+  const existing = activeConnections[instanceId];
+  if (existing && !existing.stopped && ['connecting', 'qr', 'open'].includes(existing.connectionStatus)) return;
+  const token = lifecycle.renew(instanceId);
+  const task = lifecycle.run(instanceId, () => lifecycle.current(instanceId, token) && startInstance(instanceId, companyId, token));
+  task.lifecycleToken = token;
   startingInstances.set(instanceId, task);
-  try { return await task; } finally { startingInstances.delete(instanceId); }
+  try { return await task; } finally { if (startingInstances.get(instanceId) === task) startingInstances.delete(instanceId); }
 }
-async function startInstance(instanceId, companyId) {
+async function startInstance(instanceId, companyId, token) {
   await require('./accessService').assertCompanyActive(companyId);
+  if (!lifecycle.current(instanceId, token)) return;
   /*
    * Baileys 7 é ESM.
    *
@@ -101,7 +108,7 @@ async function startInstance(instanceId, companyId) {
   const existing = activeConnections[instanceId];
 
   if (
-    existing &&
+    existing && !existing.stopped &&
     ['connecting', 'qr', 'open'].includes(existing.connectionStatus)
   ) {
     return;
@@ -120,10 +127,9 @@ async function startInstance(instanceId, companyId) {
   /*
    * Diretório persistente das credenciais.
    */
-  const authFolder = path.join(
-    __dirname,
-    `../../auth_info_baileys/${instanceId}`
-  );
+  const authFolder = sessionFolder(instanceId);
+  if (existing?.authFence) await existing.authFence.close();
+  if (!lifecycle.current(instanceId, token)) return;
 
 
   /*
@@ -136,12 +142,14 @@ async function startInstance(instanceId, companyId) {
   } = await useMultiFileAuthState(authFolder);
 
 
-  if (!activeConnections[instanceId]) {
-    activeConnections[instanceId] = {};
-  }
-
-
-  const connectionState = activeConnections[instanceId];
+  if (!lifecycle.current(instanceId, token)) return;
+  const connectionState = { phoneAliases: existing?.phoneAliases || new Map(), sentMessages: existing?.sentMessages || new Map(), reconnectAttempts: existing?.reconnectAttempts || 0 };
+  activeConnections[instanceId] = connectionState;
+  const isCurrent = () => lifecycle.current(instanceId, token) && activeConnections[instanceId] === connectionState && !connectionState.stopped;
+  const authFence = require('./whatsappLifecycleService').writeFence(isCurrent);
+  connectionState.authFence = authFence;
+  const originalSet = state.keys.set.bind(state.keys);
+  state.keys.set = data => authFence.write(() => originalSet(data));
 
   connectionState.connectionStatus = 'connecting';
   connectionState.qrCodeImage = null;
@@ -166,7 +174,8 @@ async function startInstance(instanceId, companyId) {
     /*
      * Busca versão atual do protocolo WhatsApp.
      */
-    const { version } = await fetchLatestBaileysVersion();
+    const { version } = await fetchLatestBaileysVersion({ timeout: 8000 });
+    if (!isCurrent()) return;
 
 
     /*
@@ -203,6 +212,7 @@ async function startInstance(instanceId, companyId) {
     connectionState.sock = sock;
     connectionState.phoneAliases = connectionState.phoneAliases || new Map();
     const rememberPhone = async (lid, jid) => {
+      if (!isCurrent() || connectionState.sock !== sock) return;
       const phone = require('./chatIdentityService').identity(lid, jid).phone;
       if (!lid?.endsWith('@lid') || !phone || !/^\d{8,15}$/.test(phone)) return;
       connectionState.phoneAliases.set(lid, `${phone}@s.whatsapp.net`);
@@ -224,7 +234,7 @@ async function startInstance(instanceId, companyId) {
      */
     sock.ev.on(
       'creds.update',
-      saveCreds
+      () => { authFence.write(saveCreds).catch(error => console.error(`[WhatsApp:${instanceId}] Credential write failed:`, error.code || error.name)); }
     );
 
 
@@ -233,7 +243,9 @@ async function startInstance(instanceId, companyId) {
      */
     sock.ev.on(
       'connection.update',
-      async (update) => {
+      update => {
+        const handleUpdate = async () => {
+        if (!isCurrent() || connectionState.sock !== sock) return;
         const {
           connection,
           lastDisconnect,
@@ -304,8 +316,14 @@ async function startInstance(instanceId, companyId) {
             lastDisconnect?.error?.output?.statusCode;
 
 
-          const shouldReconnect =
-            statusCode !== DisconnectReason.loggedOut;
+          const policy = require('./whatsappLifecycleService').disconnectPolicy(statusCode, DisconnectReason);
+          const shouldReconnect = policy === 'retry';
+          console.info(`[WhatsApp:${instanceId}] Connection closed:`, statusCode, 'action:', policy);
+          if (policy === 'reset') {
+            await stopWhatsAppInstance(instanceId, true);
+            await Instance.updateStatus(instanceId, 'disconnected', null, companyId);
+            return;
+          }
 
 
           if (!activeConnections[instanceId]) {
@@ -358,7 +376,7 @@ async function startInstance(instanceId, companyId) {
            * Reconecta automaticamente,
            * exceto quando houve logout.
            */
-          if (shouldReconnect) {
+          if (shouldReconnect && isCurrent()) {
             if (
               activeConnections[instanceId].reconnectTimer
             ) {
@@ -371,6 +389,7 @@ async function startInstance(instanceId, companyId) {
             activeConnections[instanceId].reconnectTimer =
               setTimeout(
                 () => {
+                  if (!isCurrent()) return;
                   if (
                     activeConnections[instanceId]
                   ) {
@@ -465,6 +484,8 @@ async function startInstance(instanceId, companyId) {
             allLogs
           );
         }
+        };
+        handleUpdate().catch(error => console.error(`[WhatsApp:${instanceId}] Connection update failed:`, error.code || error.name));
       }
     );
 
@@ -473,6 +494,7 @@ async function startInstance(instanceId, companyId) {
      * RECEBIMENTO DE MENSAGENS
      */
     sock.ev.on('messages.upsert', async (m) => {
+        if (!isCurrent()) return;
         /*
          * Ignora eventos provenientes de socket antigo.
          */
@@ -493,6 +515,7 @@ async function startInstance(instanceId, companyId) {
 
         try { await require('./accessService').assertCompanyActive(companyId); } catch { return; }
         for (const msg of m.messages) {
+          if (!isCurrent() || connectionState.sock !== sock) return;
           if (!msg) {
             continue;
           }
@@ -986,6 +1009,7 @@ async function startInstance(instanceId, companyId) {
               continue;
             }
 
+            if (!isCurrent() || connectionState.sock !== sock) return;
             await handleIncomingWhatsAppMessage(senderJid,
               name,
               text,
@@ -1017,6 +1041,11 @@ async function startInstance(instanceId, companyId) {
     );
 
   } catch (err) {
+    if (!isCurrent()) return;
+    await authFence.close();
+    const failedSocket = connectionState.sock;
+    connectionState.sock = null;
+    if (failedSocket) { try { failedSocket.end(new Error('Instance startup failed')); } catch (_) {} }
     console.error(
       `[WhatsApp:${instanceId}] Erro ao iniciar instância:`,
       err
@@ -1062,6 +1091,7 @@ async function startInstance(instanceId, companyId) {
     activeConnections[instanceId].reconnectTimer =
       setTimeout(
         () => {
+          if (!isCurrent()) return;
           if (
             activeConnections[instanceId]
           ) {
@@ -1088,10 +1118,27 @@ async function startInstance(instanceId, companyId) {
 /**
  * Encerra uma instância WhatsApp.
  */
-async function stopWhatsAppInstance(
-  instanceId,
-  clearSession = false
-) {
+function sessionFolder(instanceId) {
+  if (typeof instanceId !== 'string' || !/^inst_[a-zA-Z0-9_-]+$/.test(instanceId)) throw new Error('Identificador de conexao invalido.');
+  const root = path.resolve(__dirname, '../../auth_info_baileys');
+  const folder = path.resolve(root, instanceId);
+  if (!folder.startsWith(root + path.sep)) throw new Error('Diretorio de sessao invalido.');
+  return folder;
+}
+
+async function stopWhatsAppInstance(instanceId, clearSession = false) {
+  sessionFolder(instanceId);
+  lifecycle.renew(instanceId); // Invalidate pending starts and late socket events immediately.
+  const old = activeConnections[instanceId];
+  if (old) {
+    old.stopped = true;
+    if (old.reconnectTimer) clearTimeout(old.reconnectTimer);
+    old.reconnectTimer = null;
+  }
+  return lifecycle.run(instanceId, () => stopInstance(instanceId, clearSession));
+}
+
+async function stopInstance(instanceId, clearSession) {
   const conn =
     activeConnections[instanceId];
 
@@ -1137,6 +1184,7 @@ async function stopWhatsAppInstance(
 
 
     if (sock) {
+      for (const event of ['connection.update', 'creds.update', 'messages.upsert', 'contacts.upsert', 'contacts.update', 'chats.phoneNumberShare']) sock.ev?.removeAllListeners?.(event);
       try {
         if (clearSession) {
           await sock.logout();
@@ -1145,9 +1193,12 @@ async function stopWhatsAppInstance(
         }
 
       } catch (err) {
-        console.error(err);
+        console.error(`[WhatsApp:${instanceId}] Socket shutdown failed:`, err.code || err.name);
+      } finally {
+        try { sock.end(new Error('Instance stopped')); } catch (_) {}
       }
     }
+    if (conn.authFence) await conn.authFence.close();
 
 
     emitToCompany(
@@ -1172,11 +1223,7 @@ async function stopWhatsAppInstance(
    * Remove arquivos da sessão somente quando solicitado.
    */
   if (clearSession) {
-    const authFolder =
-      path.join(
-        __dirname,
-        `../../auth_info_baileys/${instanceId}`
-      );
+    const authFolder = sessionFolder(instanceId);
 
 
     if (
