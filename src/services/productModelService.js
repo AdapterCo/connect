@@ -29,9 +29,13 @@ async function save(user, id, body, maxProducts) {
     return tx.productModel.create({ data: { ...data, company_id: user.company_id } });
   });
 }
-async function list(user) {
-  const rows = await prisma.productModel.findMany({ where: { company_id: user.company_id, ...(!commercial.managers(user) ? { is_active: true } : {}) }, orderBy: { name: 'asc' } });
-  return rows.map(({ cost, commission_rate, ...model }) => ({ ...model, ...(commercial.managers(user) ? { cost, commission_rate } : {}) }));
+async function list(user, query = {}) {
+  const paged = query.page !== undefined;
+  const p = require('./listPaginationService').pagination(query);
+  const where = { company_id: user.company_id, ...(!commercial.managers(user) ? { is_active: true } : {}), ...(p.search ? { name: { contains: p.search, mode: 'insensitive' } } : {}) };
+  const rows = await prisma.productModel.findMany({ where, orderBy: [{ name: 'asc' }, { id: 'asc' }], ...(paged ? { skip: p.skip, take: p.take } : {}) });
+  const items = rows.map(({ cost, commission_rate, ...model }) => ({ ...model, ...(commercial.managers(user) ? { cost, commission_rate } : {}) }));
+  return paged ? { items, total: await prisma.productModel.count({ where }), page: p.page } : items;
 }
 async function record(user, body) {
   return commercial.transaction(user, async tx => {

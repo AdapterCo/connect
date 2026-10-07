@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, useRef, type FormEvent } from 'react';
 import api, { apiErrorMessage } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 
@@ -16,11 +16,15 @@ const money = (value: number | string) => Number(value).toLocaleString('pt-BR', 
 const payments = { pix: 'Pix', cash: 'Dinheiro', card: 'Cartão', boleto: 'Boleto' };
 const conditions = { new: 'Novo', used: 'Usado', refurbished: 'Recondicionado' };
 
-export default function SalesCatalog() {
+export default function SalesCatalog({ mode = 'sales' }: { mode?: 'products' | 'sales' }) {
+  const catalog = mode === 'products';
   const user = useAuthStore(state => state.user);
   const manager = ['admin', 'supervisor'].includes(user?.role || '');
   const allowed = manager || user?.role === 'seller';
   const [models, setModels] = useState<Model[]>([]), [sellers, setSellers] = useState<Seller[]>([]), [leads, setLeads] = useState<Lead[]>([]), [units, setUnits] = useState<Unit[]>([]), [metrics, setMetrics] = useState<Metric[]>([]);
+  const loadVersion = useRef(0);
+  const [page, setPage] = useState(1), [search, setSearch] = useState(''), [total, setTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1), [historySearch, setHistorySearch] = useState(''), [historyTotal, setHistoryTotal] = useState(0), [history, setHistory] = useState<Unit[]>([]);
   const [sale, setSale] = useState(freshSale), [model, setModel] = useState(freshModel);
   const [busy, setBusy] = useState(false), [message, setMessage] = useState('');
   const [from, setFrom] = useState(''), [to, setTo] = useState('');
@@ -30,9 +34,26 @@ export default function SalesCatalog() {
   const selectedUnit = units.find(unit => unit.serial === sale.serial && unit.model_id === sale.model_id && unit.status === 'stock');
   const load = useCallback(async () => {
     if (!allowed) return;
-    const [a, b, c, d, e] = await Promise.all([api.get<Model[]>('/products/models'), api.get<Seller[]>('/products/sellers'), api.get<Lead[]>('/commercial/leads'), api.get<Unit[]>('/products'), manager ? api.get<Metric[]>('/products/metrics', { params: { from: from || undefined, to: to || undefined } }) : Promise.resolve({ data: [] as Metric[] })]);
-    setModels(a.data); setSellers(b.data); setLeads(c.data); setUnits(d.data); setMetrics(e.data);
-  }, [allowed, manager, from, to]);
+    const version = ++loadVersion.current;
+    const { data } = await api.get<{ items: Model[]; total: number }>('/products/models', { params: { page, search } });
+    if (version !== loadVersion.current) return;
+    setModels(data.items); setTotal(data.total);
+    if (catalog) return;
+    const [b, c, e] = await Promise.all([api.get<Seller[]>('/products/sellers'), api.get<Lead[]>('/commercial/leads'), manager ? api.get<Metric[]>('/products/metrics', { params: { from: from || undefined, to: to || undefined } }) : Promise.resolve({ data: [] as Metric[] })]);
+    if (version !== loadVersion.current) return;
+    setSellers(b.data); setLeads(c.data); setMetrics(e.data);
+    if (manager) {
+      const { data: sales } = await api.get<{ items: Unit[]; total: number }>('/products', { params: { page: historyPage, search: historySearch, status: 'sales' } });
+      if (version !== loadVersion.current) return;
+      setHistory(sales.items); setHistoryTotal(sales.total);
+    }
+  }, [allowed, manager, from, to, catalog, page, search, historyPage, historySearch]);
+  useEffect(() => {
+    if (catalog || !sale.model_id) return;
+    let disposed = false;
+    api.get<{ items: Unit[] }>('/products', { params: { page: 1, status: 'stock', model_id: sale.model_id, search: sale.serial } }).then(({ data }) => { if (!disposed) setUnits(data.items); }).catch(() => {});
+    return () => { disposed = true; };
+  }, [catalog, sale.model_id, sale.serial]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- State changes after the HTTP requests resolve.
   useEffect(() => { load().catch(error => setMessage(apiErrorMessage(error, 'Erro ao carregar produtos.'))); }, [load]);
   async function run(work: () => Promise<unknown>, success: string) {
@@ -56,9 +77,10 @@ export default function SalesCatalog() {
   }
   if (!allowed) return <p className="p-6">Acesso restrito à equipe de vendas.</p>;
   return <div className="h-full overflow-y-auto p-6 space-y-6 text-white">
-    <header><h1 className="text-2xl font-bold">Produtos e vendas</h1><p className="text-gray-400">Selecione um produto do catálogo e informe os dados da unidade ao registrar a venda.</p></header>
+    <header><h1 className="text-2xl font-bold">{catalog ? 'Produtos' : 'Vendas'}</h1><p className="text-gray-400">{catalog ? 'Gerencie os modelos, preços e fotos do catálogo.' : 'Registre uma venda vinculada ao cliente usando um produto cadastrado.'}</p></header>
     <p role="status" className="text-indigo-200">{message}</p>
-    {manager && <section className={section}><h2 className="text-xl font-semibold">{model.id ? 'Editar produto do catálogo' : 'Cadastrar produto no catálogo'}</h2>
+    <div className="flex flex-wrap items-end gap-3"><label>{catalog ? 'Buscar produto' : 'Buscar produto para vender'}<input className={field} value={search} maxLength={160} onChange={e => { setSearch(e.target.value); setPage(1); if (!catalog) setSale({ ...sale, model_id: '' }); }} /></label><button disabled={page === 1 || busy} onClick={() => setPage(page - 1)}>Anterior</button><span>Página {page} de {Math.max(1, Math.ceil(total / 25))}</span><button disabled={page * 25 >= total || busy} onClick={() => { setPage(page + 1); if (!catalog) setSale({ ...sale, model_id: '' }); }}>Próxima</button></div>
+    {catalog && manager && <section className={section}><h2 className="text-xl font-semibold">{model.id ? 'Editar produto do catálogo' : 'Cadastrar produto no catálogo'}</h2>
       <form className="grid md:grid-cols-3 gap-4" onSubmit={event => { event.preventDefault(); void run(async () => { if (model.id) await api.put(`/products/models/${model.id}`, model); else await api.post('/products/models', model); setModel(freshModel); }, 'Catálogo atualizado.'); }}>
         <label>Produto<input className={field} value={model.name} onChange={e => setModel({ ...model, name: e.target.value })} required maxLength={160} /></label>
         <label>Foto do produto (URL HTTPS)<input className={field} type="url" value={model.image_url || ''} maxLength={2048} placeholder="https://exemplo.com/foto.jpg" onChange={e => setModel({ ...model, image_url: e.target.value })} /></label>
@@ -71,7 +93,8 @@ export default function SalesCatalog() {
       </form><p className="text-sm text-gray-400">Cadastre cada modelo uma vez. Dados da unidade são informados na venda. Preço sugerido não confirma estoque.</p>
       <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead><tr>{['Produto', 'Tipo', 'Valor sugerido', 'Situação', 'Ações'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{models.map(item => <tr className="border-t border-gray-700" key={item.id}><td className="p-3">{item.name}</td><td>{item.kind === 'phone' ? 'Celular' : 'Moto'}</td><td>{money(item.price)}</td><td>{item.is_active ? 'Ativo' : 'Inativo'}</td><td><button className="text-indigo-300" disabled={busy} onClick={() => setModel({ ...item, image_url: item.image_url || '', cost: item.cost || '', commission_rate: item.commission_rate || '0' })}>Editar</button></td></tr>)}</tbody></table></div>
     </section>}
-    <section className={section}><h2 className="text-xl font-semibold">Cadastrar venda</h2>
+    {catalog && !manager && <section className={section}><h2 className="text-xl font-semibold">Catálogo de produtos</h2>{models.map(item => <div key={item.id} className="border-b border-gray-700 py-3"><strong>{item.name}</strong><p>{money(item.price)}</p></div>)}</section>}
+    {!catalog && <section className={section}><h2 className="text-xl font-semibold">Cadastrar venda</h2>
       <form onSubmit={saveSale} className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
         <label>Produto<select className={field} value={sale.model_id} onChange={e => { const item = models.find(model => model.id === e.target.value); setSale({ ...sale, model_id: e.target.value, price: item?.price || '', serial: '', color: '', memory: '', condition: 'new' }); }} required><option value="">Selecione o produto cadastrado</option>{models.filter(item => item.is_active).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label>Vendedor<select className={field} value={sellerId} onChange={e => setSale({ ...sale, seller_id: e.target.value, opportunity_id: '' })} disabled={!manager} required><option value="">Selecione</option>{sellers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
@@ -90,8 +113,8 @@ export default function SalesCatalog() {
       {selectedUnit && <div className="flex gap-4"><button className="text-indigo-300" disabled={busy || !sale.opportunity_id} onClick={() => void run(() => api.post(`/products/${selectedUnit.id}/reserve`, { opportunity_id: sale.opportunity_id, minutes: 30 }), 'Unidade reservada por 30 minutos.')}>Reservar unidade</button><button className="text-amber-300" disabled={busy} onClick={() => void run(() => api.delete(`/products/${selectedUnit.id}/reserve`), 'Reserva liberada.')}>Liberar reserva</button></div>}
       {!models.some(item => item.is_active) && <p className="text-amber-300">Peça ao admin ou supervisor para cadastrar os produtos do catálogo.</p>}
       <p className="text-sm text-gray-400">Salvar a venda não confirma pagamento nem emite boleto. Recebimentos e indicadores são restritos a admin e supervisor.</p>
-    </section>
-    {manager && <section className={section}><h2 className="text-xl font-semibold">Métricas de vendas</h2><div className="flex gap-4"><label>Desde<input type="date" className={field} value={from} onChange={e => setFrom(e.target.value)} /></label><label>Até<input type="date" className={field} value={to} onChange={e => setTo(e.target.value)} /></label></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['Vendedor', 'Vendas', 'Total vendido', 'Ticket médio'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{metrics.map(item => <tr className="border-t border-gray-700" key={item.id}><td className="p-3">{item.name}</td><td>{item.count}</td><td>{money(item.total)}</td><td>{money(item.average)}</td></tr>)}</tbody></table></div></section>}
-    {manager && <section className={section}><h2 className="text-xl font-semibold">Unidades e vendas registradas</h2><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['Produto', 'Chassi / IMEI', 'Detalhes', 'Vendedor', 'Valor', 'Status'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{units.map(unit => <tr key={unit.id} className="border-t border-gray-700"><td className="p-3">{unit.name}</td><td>{unit.serial}</td><td>{[unit.color, unit.memory, conditions[unit.condition as keyof typeof conditions]].filter(Boolean).join(' / ')}</td><td>{unit.seller?.name}</td><td>{money(unit.price)}</td><td>{unit.status === 'sold' ? 'Vendido' : unit.status === 'returned' ? 'Devolvido' : 'Em estoque'}</td></tr>)}</tbody></table></div></section>}
+    </section>}
+    {!catalog && manager && <section className={section}><h2 className="text-xl font-semibold">Métricas de vendas</h2><div className="flex gap-4"><label>Desde<input type="date" className={field} value={from} onChange={e => setFrom(e.target.value)} /></label><label>Até<input type="date" className={field} value={to} onChange={e => setTo(e.target.value)} /></label></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['Vendedor', 'Vendas', 'Total vendido', 'Ticket médio'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{metrics.map(item => <tr className="border-t border-gray-700" key={item.id}><td className="p-3">{item.name}</td><td>{item.count}</td><td>{money(item.total)}</td><td>{money(item.average)}</td></tr>)}</tbody></table></div></section>}
+    {!catalog && manager && <section className={section}><h2 className="text-xl font-semibold">Histórico de vendas</h2><div className="flex flex-wrap items-end gap-3"><label>Buscar por produto ou chassi / IMEI<input className={field} value={historySearch} maxLength={160} onChange={e => { setHistorySearch(e.target.value); setHistoryPage(1); }} /></label><button disabled={historyPage === 1 || busy} onClick={() => setHistoryPage(historyPage - 1)}>Anterior</button><span>Página {historyPage} de {Math.max(1, Math.ceil(historyTotal / 25))}</span><button disabled={historyPage * 25 >= historyTotal || busy} onClick={() => setHistoryPage(historyPage + 1)}>Próxima</button></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['Produto', 'Chassi / IMEI', 'Detalhes', 'Vendedor', 'Valor', 'Status'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{history.map(unit => <tr key={unit.id} className="border-t border-gray-700"><td className="p-3">{unit.name}</td><td>{unit.serial}</td><td>{[unit.color, unit.memory, conditions[unit.condition as keyof typeof conditions]].filter(Boolean).join(' / ')}</td><td>{unit.seller?.name}</td><td>{money(unit.price)}</td><td>{unit.status === 'sold' ? 'Vendido' : unit.status === 'returned' ? 'Devolvido' : 'Em estoque'}</td></tr>)}</tbody></table></div></section>}
   </div>;
 }

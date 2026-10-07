@@ -16,7 +16,7 @@ const wrap = fn => async (req, res) => {
 router.get('/sellers', wrap(async (req, res) => {
   res.json(await prisma.user.findMany({ where: { company_id: req.user.company_id, role: 'seller' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }));
 }));
-router.get('/models', wrap(async (req, res) => res.json(await require('../services/productModelService').list(req.user))));
+router.get('/models', wrap(async (req, res) => res.json(await require('../services/productModelService').list(req.user, req.query))));
 router.post('/models', wrap(async (req, res) => res.status(201).json(await require('../services/productModelService').save(req.user, null, req.body, req.company.max_products))));
 router.put('/models/:id', wrap(async (req, res) => res.json(await require('../services/productModelService').save(req.user, req.params.id, req.body, req.company.max_products))));
 router.post('/sales', wrap(async (req, res) => {
@@ -37,8 +37,14 @@ router.get('/metrics', wrap(async (req, res) => {
   }));
 }));
 router.get('/', wrap(async (req, res) => {
-  const products = await prisma.product.findMany({ where: { ...scope(req.user), ...(!['admin', 'supervisor'].includes(req.user.role) ? { status: 'stock' } : {}) }, include: { seller: { select: { id: true, name: true } } }, orderBy: { created_at: 'desc' } });
-  res.json(products.map(({ cost, supplier_name, commission_rate, ...product }) => ({ ...product, ...(['admin', 'supervisor'].includes(req.user.role) ? { cost, supplier_name, commission_rate } : {}) })));
+  const manager = ['admin', 'supervisor'].includes(req.user.role);
+  const p = require('../services/listPaginationService').pagination(req.query);
+  const where = { ...scope(req.user), ...(!manager || req.query.status === 'stock' ? { status: 'stock' } : req.query.status === 'sales' ? { status: { in: ['sold', 'returned'] } } : {}),
+    ...(req.query.model_id ? { model_id: String(req.query.model_id) } : {}),
+    ...(p.search ? { OR: [{ name: { contains: p.search, mode: 'insensitive' } }, { serial: { contains: p.search, mode: 'insensitive' } }] } : {}) };
+  const products = await prisma.product.findMany({ where, include: { seller: { select: { id: true, name: true } } }, orderBy: [{ created_at: 'desc' }, { id: 'desc' }], ...(req.query.page !== undefined ? { skip: p.skip, take: p.take } : {}) });
+  const items = products.map(({ cost, supplier_name, commission_rate, ...product }) => ({ ...product, ...(manager ? { cost, supplier_name, commission_rate } : {}) }));
+  res.json(req.query.page !== undefined ? { items, total: await prisma.product.count({ where }), page: p.page } : items);
 }));
 async function save(req, res) {
   if (!['admin', 'supervisor'].includes(req.user.role)) return res.status(403).json({ error: 'Somente admin e supervisor cadastram produtos. Use Cadastrar venda.' });

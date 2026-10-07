@@ -91,7 +91,7 @@ export default function Commercial() {
         {manager && <label>Responsável<select className={field} value={leadDraft.seller_id} onChange={e => setLeadDraft({ ...leadDraft, seller_id: e.target.value })}><option value="">Manter responsável</option>{sellers.map(seller => <option key={seller.id} value={seller.id}>{seller.name}</option>)}</select></label>}
         {leadDraft.status === 'lost' && <label>Motivo da perda<input className={field} value={leadDraft.lost_reason} maxLength={500} required onChange={e => setLeadDraft({ ...leadDraft, lost_reason: e.target.value })} /></label>}
         <button className={button} disabled={busy}>Salvar qualificação</button><button type="button" onClick={() => { setTaskLead(leadId); setTab('tasks'); }}>Agendar retorno</button>
-      </form><p className="text-sm text-gray-400">Vendas são registradas em Produtos e vendas. Alterar os dados comerciais não libera acesso às mensagens da loja.</p></section>}
+      </form><p className="text-sm text-gray-400">Vendas são registradas na tela Vendas. Alterar os dados comerciais não libera acesso às mensagens da loja.</p></section>}
     </>}
     {tab === 'tasks' && <>
       <section className={section}><h2 className="text-lg font-semibold">Agendar retorno</h2><form className="grid md:grid-cols-3 gap-3" onSubmit={event => submit(event, async () => { await api.post('/commercial/tasks', { opportunity_id: taskLead, title: taskTitle, due_at: new Date(taskDue).toISOString() }); setTaskTitle(''); setTaskDue(''); }, 'Retorno agendado.')}>

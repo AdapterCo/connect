@@ -13,6 +13,7 @@ const WhatsApp = lazy(() => import('./pages/WhatsApp'));
 const SettingsAI = lazy(() => import('./pages/SettingsAI'));
 const Team = lazy(() => import('./pages/Team'));
 const Reports = lazy(() => import('./pages/Reports'));
+const Sales = lazy(() => import('./pages/SalesCatalog'));
 const StoreProducts = lazy(() => import('./pages/StoreProducts'));
 const Commercial = lazy(() => import('./pages/Commercial'));
 const Logs = lazy(() => import('./pages/Logs'));
@@ -61,8 +62,9 @@ function App() {
             <Route path="/chats" element={<Chats />} />
             <Route path="/kanban" element={<Kanban />} />
             <Route path="/catalog" element={<RequireRole roles={[...MANAGERS, 'seller']}><StoreProducts /></RequireRole>} />
+            <Route path="/sales" element={<RequireRole roles={[...MANAGERS, 'seller']}><Sales /></RequireRole>} />
             <Route path="/commercial" element={<RequireRole roles={[...MANAGERS, 'seller']}><Commercial /></RequireRole>} />
-            <Route path="/orders" element={<Navigate to="/catalog" replace />} />
+            <Route path="/orders" element={<Navigate to="/sales" replace />} />
             <Route path="/fluxos" element={<RequireRole roles={MANAGERS}><Flows /></RequireRole>} />
             <Route path="/fluxos/:id" element={<RequireRole roles={MANAGERS}><FlowEditor /></RequireRole>} />
             <Route path="/whatsapp" element={<RequireRole roles={MANAGERS}><WhatsApp /></RequireRole>} />
