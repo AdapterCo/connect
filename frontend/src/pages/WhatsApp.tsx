@@ -16,7 +16,16 @@ export default function WhatsApp() {
   useEffect(() => {
     fetchInstances();
     fetchUsers();
-
+    // Reconcile missed socket events and refresh when returning to this tab.
+    const refresh = () => { if (!document.hidden) fetchInstances().catch(() => {}); };
+    const timer = window.setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [fetchInstances, fetchUsers]);
 
   const handleCreate = async () => {
@@ -95,7 +104,7 @@ export default function WhatsApp() {
                 instance.status === 'connecting' || instance.status === 'qr' ? 'bg-amber-500/20 text-amber-400' :
                 'bg-red-500/20 text-red-400'
               }`}>
-                {instance.status === 'open' ? 'Conectado' : instance.status === 'qr' ? 'Aguardando QR' : 'Desconectado'}
+                {instance.status === 'open' ? 'Conectado' : instance.status === 'connecting' ? 'Conectando' : instance.status === 'qr' ? 'Aguardando QR' : 'Desconectado'}
               </span>
             </div>
 

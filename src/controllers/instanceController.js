@@ -16,7 +16,11 @@ async function getInstances(req, res) {
         id: inst.id,
         name: inst.name,
         phone: conn.connectedPhone || inst.phone || null,
-        status: conn.connectionStatus || inst.status || 'disconnected',
+        status: !conn.sock || conn.stopped
+          ? (conn.connectionStatus === 'connecting' && !conn.stopped ? 'connecting' : 'disconnected')
+          : conn.sock.ws?.isOpen === false
+            ? 'disconnected'
+            : conn.connectionStatus || 'disconnected',
         user_id: inst.user_id || null,
         qr: canPair ? conn.qrCodeImage || null : null
       };

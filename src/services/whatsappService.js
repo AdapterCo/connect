@@ -212,6 +212,16 @@ async function startInstance(instanceId, companyId, token) {
      * Guarda o socket atual da instância.
      */
     connectionState.sock = sock;
+    // Publish transport loss immediately; connection.update still handles cleanup/retry.
+    sock.ws.on('close', () => {
+      if (!isCurrent() || connectionState.sock !== sock) return;
+      connectionState.connectionStatus = 'disconnected';
+      connectionState.connectedPhone = null;
+      connectionState.qrCodeImage = null;
+      emitToCompany(companyId, 'whatsapp_status_updated', {
+        instanceId, status: 'disconnected', phone: null, qr: null
+      });
+    });
     connectionState.phoneAliases = connectionState.phoneAliases || new Map();
     const rememberPhone = async (lid, jid) => {
       if (!isCurrent() || connectionState.sock !== sock) return;
