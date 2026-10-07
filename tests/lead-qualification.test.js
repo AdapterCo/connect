@@ -8,6 +8,23 @@ const catalog = [{ products: [
 const response = { message: 'Vou encaminhar voce.', status: 'interesse em compra', disable_ai: false };
 const saved = qualification => ({ sender: 'system', is_note: true, text: 'Triagem do lead: ' + JSON.stringify(qualification) });
 
+test('exact observed motorcycle conversation preserves model and cash then routes only after confirmation', () => {
+  const options = { configuredPrompt: 'Moto Future (sem cestinha): R$ 5.999,99. Moto Phantom: R$ 5.999,99. Dinheiro, Pix ou Cartao.', preserveCatalogResponse: true };
+  const messages = [{ sender: 'attendant', text: 'Qual modelo chamou sua atencao e como prefere pagar?' }];
+  const cash = qualify({ messages }, 'dinheiro', { message: 'Qual dos nossos modelos voce tem interesse em adquirir?', intent: 'question' }, [], options);
+  messages.push({ sender: 'client', text: 'dinheiro' }, saved(cash.qualification), { sender: 'attendant', text: cash.message });
+  const selected = qualify({ messages, qualification_memory: { product: null, payment: 'Dinheiro', purchase_confirmed: false } }, 'Moto Future', { message: 'Voce confirma o interesse em fechar a compra desse modelo para eu direcionar voce ao vendedor?', intent: 'question' }, [], options);
+  assert.equal(selected.qualification.product, 'Moto Future'); assert.equal(selected.qualification.payment, 'Dinheiro'); assert.equal(selected.handoff_requested, false);
+  messages.push({ sender: 'client', text: 'Moto Future' }, saved(selected.qualification), { sender: 'attendant', text: selected.message });
+  const confirmed = qualify({ messages, qualification_memory: { product: null, payment: 'Dinheiro', purchase_confirmed: false } }, 'sim', { message: 'Certo.', intent: 'question' }, [], options);
+  assert.equal(confirmed.qualification.product, 'Moto Future'); assert.equal(confirmed.qualification.payment, 'Dinheiro'); assert.equal(confirmed.handoff_requested, true);
+  assert.doesNotMatch(confirmed.message, /Qual aparelho|Qual produto/);
+});
+test('old unqualified conversations recover the named prompt model from client history', () => {
+  const result = qualify({ messages: [{ sender: 'client', text: 'dinheiro' }, { sender: 'client', text: 'Moto Future' }, { sender: 'attendant', text: 'Voce confirma o interesse em fechar a compra?' }] }, 'sim', { message: 'Certo', intent: 'question' }, [], { configuredPrompt: 'Moto Future: R$ 5999', preserveCatalogResponse: true });
+  assert.equal(result.qualification.product, 'Moto Future'); assert.equal(result.handoff_requested, true);
+});
+
 test('prompt-only products retain payment then confirm interest and hand off on yes', () => {
   for (const product of ['Moto X13', 'Sofa Aurora', 'Plano Premium']) {
     const options = { configuredPrompt: `Produtos da loja: ${product}. Preco e condicoes definidos pela loja.`, preserveCatalogResponse: true };
@@ -99,7 +116,7 @@ test('real AI catalog replies retain the full configured list and payment condit
 test('purchase gathers device then payment before routing', () => {
   const initial = qualify({ messages: [] }, 'quero comprar um iphone', { ...response, intent: 'purchase' }, catalog);
   assert.equal(initial.handoff_requested, false);
-  assert.match(initial.message, /Qual aparelho/);
+  assert.match(initial.message, /Qual produto/);
   const chosen = qualify({ messages: [saved(initial.qualification)] }, 'quero levar o iPhone 13 de 128 GB', { ...response, intent: 'purchase', qualification: { product: 'iPhone 13', variant: '128 GB' } }, catalog);
   assert.equal(chosen.handoff_requested, false);
   assert.match(chosen.message, /Como prefere pagar/);
@@ -185,4 +202,19 @@ test('forwarded and attendance stages answer general questions without restartin
     assert.equal(result.handoff_requested, false);
     assert.equal(result.message, 'Abrimos as 9h.');
   }
+});
+
+
+test('prompt-defined financing qualifies a generic product without forcing fixed payment options', () => {
+  const result = qualify({ messages: [] }, 'quero comprar a Moto Future com financiamento', {
+    message: 'Vou chamar o vendedor.', intent: 'purchase', qualification: { product: 'Moto Future', payment: 'Financiamento' }
+  }, [], { configuredPrompt: 'Moto Future, pagamento com Financiamento.', preserveCatalogResponse: true });
+  assert.equal(result.qualification.payment, 'Financiamento');
+  assert.equal(result.qualification.product, 'Moto Future');
+  assert.equal(result.handoff_requested, true);
+});
+
+test('human handoff signal works when the custom AI keeps disable_ai false', () => {
+  const result = qualify({ messages: [] }, 'preciso de ajuda pessoal', { message: 'Vou chamar um atendente.', intent: 'human', request_human: true, disable_ai: false }, []);
+  assert.equal(result.handoff_requested, true);
 });

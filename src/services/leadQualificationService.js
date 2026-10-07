@@ -22,7 +22,7 @@ function previousQualification(chat) {
     if (message.sender !== 'system' || !message.is_note || !message.text?.startsWith(PREFIX)) continue;
     try {
       const parsed = JSON.parse(message.text.slice(PREFIX.length));
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { ...parsed, ...memory };
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { ...parsed, ...Object.fromEntries(Object.entries(memory).filter(([, value]) => value !== null && value !== undefined)) };
     } catch (_) { /* Ignore old invalid notes. */ }
   }
   return { ...memory };
@@ -48,6 +48,13 @@ function qualify(chat, currentMessage, response, categories, options = {}) {
   const customerDevice = recentSelection ? statedDevice(recentSelection) : null;
   const namedProduct = [...products].sort((a, b) => b.name.length - a.name.length).find(item => recentSelection && choiceEvidenceInText(recentSelection, item.name));
   const requestedName = typeof requested.product === 'string' ? requested.product.trim().slice(0, 160) : '';
+  // An exact customer reply can name any item from the store prompt, not only
+  // the device families recognized by the legacy matcher or the CRM catalog.
+  const directPromptProduct = (prior.product ? [currentMessage] : [...clientTexts].reverse())
+    .map(text => String(text || '').trim().replace(/[.!]+$/, '').trim())
+    .find(value => value.length >= 3 && value.length <= 160 && configuredPrompt.includes(fold(value)) && choiceEvidenceInText(value, value) &&
+      !/^(?:sim|nao|dinheiro|pix|cartao|boleto|catalogos?|produtos|motos|celulares|listas?|iphones|telefones|aparelhos|bom dia|boa tarde|boa noite|ola|obrigad[oa])$/.test(fold(value)) &&
+      (!prior.product || fold(value).includes(' ') || fold(requestedName) === fold(value)));
   const knownRequested = requestedName && (configuredPrompt.includes(fold(requestedName)) || products.some(item => fold(item.name) === fold(requestedName)));
   const paymentQuestion = /(?:como|qual|forma|prefere).{0,50}(?:pagar|pagamento|pix|dinheiro|cartao|boleto)/.test(assistantText);
   const contextualChoice = knownRequested && (
@@ -57,7 +64,7 @@ function qualify(chat, currentMessage, response, categories, options = {}) {
   const modelProduct = requestedName && (choiceEvidence(requestedName) || contextualChoice) ? requestedName : null;
   // The customer's stated model is useful even if the catalog has no exact entry.
   // Never silently replace a Pro Max with a base iPhone of the same generation.
-  const statedProduct = customerDevice || namedProduct?.name || modelProduct;
+  const statedProduct = customerDevice || namedProduct?.name || modelProduct || directPromptProduct;
   const product = products.find(item => fold(item.name) === fold(statedProduct));
   const priorProduct = products.find(item => fold(item.name) === fold(prior.product));
   const qualification = {
@@ -73,52 +80,56 @@ function qualify(chat, currentMessage, response, categories, options = {}) {
   const payments = ['Pix', 'Dinheiro', 'Cartao', 'Boleto'];
   const paymentTexts = prior.payment ? [currentMessage] : [...clientTexts].reverse();
   const payment = paymentTexts.flatMap(text => String(text).split(/[,;]|\bmas\b/i).reverse()).map(text => payments.find(item => new RegExp(`\\b${escaped(fold(item))}\\b`).test(fold(text)) && choiceEvidenceInText(text, item, true))).find(Boolean);
-  if (payment) qualification.payment = payment;
+  const requestedPayment = typeof requested.payment === 'string' ? requested.payment.trim().slice(0, 160) : '';
+  const configuredPayment = requestedPayment && configuredPrompt.includes(fold(requestedPayment)) &&
+    paymentTexts.some(text => choiceEvidenceInText(text, requestedPayment, true)) ? requestedPayment : null;
+  if (payment || configuredPayment) qualification.payment = payment || configuredPayment;
 
   const asksHuman = !/(?:nao quero|nao precisa).{0,20}(?:falar|transferir|atendente|vendedor)/.test(current) && /(?:falar|conversar|chamar|transferir|passar|atendimento).{0,35}(?:alguem|humano|vendedor|atendente|pessoa)/.test(current);
   const catalogRequest = /\b(?:catalogos?|produtos|motos|celulares|listas?|iphones|telefones|aparelhos)\b/.test(current);
   const browsing = catalogRequest || /(?:quero|gostaria|posso).{0,15}(?:ver|conhecer|olhar)|(?:mostr|catalogo|quais|opcoes|modelos|quanto custa|qual.{0,8}preco|\btem\b|disponiv|funciona|diferenca)/.test(current);
   const purchase = /(?:quero|vou|gostaria|decidi).{0,20}(?:comprar|levar|fechar|ficar com)|(?:fechar|confirmar).{0,15}(?:compra|negocio|pedido)|(?:pode|vamos).{0,12}fechar/.test(current);
   const intent = asksHuman ? 'human' : browsing && !purchase ? 'browse' : response.intent;
-  const explicitHuman = asksHuman || (!browsing && response.intent === 'human' && response.disable_ai === true);
+  const explicitHuman = asksHuman || (!browsing && (response.intent === 'human' || response.request_human === true));
   const currentSelection = !!qualification.product && (choiceEvidenceInText(currentMessage, qualification.product) ||
     (!!recentSelection && currentMessage.includes(recentSelection) && choiceEvidenceInText(recentSelection, qualification.product)) ||
     (contextualChoice && /(?:quero|levo|escolho|prefiro|vou ficar com).{0,15}(?:esse|essa|este|esta|ele|ela)/.test(current)));
-  const confirmingQuestion = /(?:quer|deseja|gostaria|podemos|vamos|posso).{0,40}(?:comprar|fechar|confirmar|finalizar|concluir|prosseguir)/.test(assistantText);
+  const confirmingQuestion = /(?:quer|deseja|gostaria|podemos|vamos|posso|confirma).{0,60}(?:interesse|comprar|compra|fechar|confirmar|finalizar|concluir|prosseguir)/.test(assistantText);
   const confirmsPurchase = confirmingQuestion && /^(?:sim|quero|pode|pode sim|vamos|vamos sim|claro|confirmo|fechado|isso)[!.\s]*$/.test(current.trim());
-  const paymentOnly = !!payment && !purchase && !currentSelection;
-  const purchaseIntent = purchase || confirmsPurchase || (intent === 'purchase' && !paymentOnly) || (!browsing && currentSelection);
+  const paymentOnly = !!(payment || configuredPayment) && !purchase && !currentSelection;
+  const replyAsksConfirmation = /(?:confirma|quer|deseja|gostaria|podemos|vamos|posso).{0,60}(?:interesse|comprar|compra|fechar|finalizar|prosseguir)/.test(fold(response.message));
+  const purchaseIntent = purchase || confirmsPurchase || (intent === 'purchase' && !paymentOnly) || (!browsing && currentSelection && !replyAsksConfirmation);
   const cancelled = !currentSelection && /(?:desisti|cancelar|so estou olhando|nao quero (?:mais|comprar|fechar))/.test(current);
   if (cancelled) { qualification.payment = null; qualification.product = null; qualification.variant = null; }
   if (/(?:nao quero|nao vou|nao pago).{0,20}(?:pix|boleto|cartao|dinheiro)/.test(current) && !payment) qualification.payment = null;
   qualification.purchase_confirmed = !cancelled && (purchaseIntent || prior.purchase_confirmed === true);
   const ready = !!qualification.product && !!qualification.payment;
-  const completesQualification = !alreadyRouted && !!(statedProduct || payment || variant);
+  const completesQualification = !alreadyRouted && !!(statedProduct || payment || configuredPayment || variant);
   const qualifying = qualification.purchase_confirmed && !ready && !explicitHuman && !browsing && !alreadyRouted;
   qualification.missing_field = !qualification.product ? 'product' : !qualification.payment ? 'payment' : null;
   qualification.questions_asked = prior.missing_field === qualification.missing_field && Number.isInteger(prior.questions_asked) ? prior.questions_asked : 0;
   const stopRepeating = qualifying && qualification.questions_asked >= 1;
   const handoff = explicitHuman || stopRepeating || (purchaseIntent && !cancelled && alreadyRouted) || (qualification.purchase_confirmed && ready && !browsing && (purchaseIntent || completesQualification));
   let message = response.message;
-  if (ready && payment && !qualification.purchase_confirmed && !explicitHuman && !alreadyRouted && !browsing) {
+  if (ready && (payment || configuredPayment) && !qualification.purchase_confirmed && !explicitHuman && !alreadyRouted && !browsing) {
     message = `Voce prefere pagar em ${qualification.payment}. Deseja confirmar o interesse na compra de ${qualification.product} para eu chamar um vendedor?`;
   }
   if (qualifying && !handoff) {
     qualification.questions_asked += 1;
     message = !qualification.product
-      ? 'Qual aparelho e modelo voce escolheu? Posso ajudar a comparar as opcoes do catalogo antes de encaminhar ao vendedor.'
-      : `Voce escolheu ${qualification.product}. Como prefere pagar: Pix, dinheiro, cartao ou boleto?`;
+      ? 'Qual produto ou servico voce escolheu? Posso ajudar com as opcoes da loja antes de encaminhar ao vendedor.'
+      : `Voce escolheu ${qualification.product}. Como prefere pagar?`;
   }
   if (!options.preserveCatalogResponse && intent === 'browse' && (catalogRequest || /(?:ver|mostr|catalogo|opcoes|modelos)/.test(current))) {
     const listed = products.map(item => `${item.name}: R$ ${Number(item.price).toFixed(2)}${[item.memory, item.color, item.condition, item.description].filter(Boolean).length ? ' — ' + clip([item.memory, item.color, item.condition, item.description].filter(Boolean).join(', ')) : ''}`).join('\n');
-    message = listed ? `Estas sao as opcoes cadastradas:\n${listed}\n\nQual modelo voce gostaria de conhecer melhor?` : 'Nao encontrei esses aparelhos no catalogo cadastrado. Qual modelo voce procura? Posso registrar sua preferencia; um vendedor precisa confirmar a disponibilidade.';
+    message = listed ? `Estas sao as opcoes cadastradas:\n${listed}\n\nQual produto voce gostaria de conhecer melhor?` : 'Nao encontrei produtos no catalogo cadastrado. Qual produto voce procura? Posso registrar sua preferencia; um vendedor precisa confirmar a disponibilidade.';
   }
   qualification.context = clientTexts.slice(-6).map(clip).join('\n').slice(0, 2000);
   return { ...response, message, status: handoff ? 'interesse em compra' : 'iniciada', disable_ai: explicitHuman, handoff_requested: handoff, qualification };
 }
 
 function sellerBrief(qualification = {}, includeContext = true) {
-  return `Aparelho: ${qualification.product || 'nao escolhido'}\n` +
+  return `Produto: ${qualification.product || 'nao escolhido'}\n` +
     (qualification.product && qualification.catalog_confirmed === false ? 'Modelo informado pelo cliente; disponibilidade e preco precisam ser confirmados.\n' : '') +
     `Variacao: ${qualification.variant || 'nao informada'}\n` +
     `Pagamento: ${qualification.payment || 'nao escolhido'}\n` +

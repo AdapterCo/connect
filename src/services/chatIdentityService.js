@@ -8,6 +8,16 @@ function identity(remoteJid, alternativeJid) {
   return { jids, phone };
 }
 
+function phoneForChat(chat) {
+  const contact = identity(chat?.remote_jid);
+  if (contact.phone && /^\d{8,15}$/.test(contact.phone)) return contact.phone;
+  const raw = String(chat?.client_phone || '');
+  const digits = raw.replace(/\D/g, '');
+  if (chat?.remote_jid?.endsWith('@lid') && digits === chat.remote_jid.split('@')[0].split(':')[0]) return null;
+  if (!/^\+?[\d\s()-]+$/.test(raw) || !/^\d{10,15}$/.test(digits)) return null;
+  return (digits.length === 10 || digits.length === 11) && !digits.startsWith('55') ? '55' + digits : digits;
+}
+
 async function findOrCreate(companyId, instanceId, remoteJid, alternativeJid, defaults) {
   const contact = identity(remoteJid, alternativeJid);
   if (!contact.jids.length) throw new Error('Identificador de contato invalido.');
@@ -32,4 +42,4 @@ async function findOrCreate(companyId, instanceId, remoteJid, alternativeJid, de
   });
 }
 
-module.exports = { identity, findOrCreate };
+module.exports = { identity, findOrCreate, phoneForChat };

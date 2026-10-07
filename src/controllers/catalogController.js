@@ -374,6 +374,12 @@ async function deleteProduct(req, res) {
 }
 
 async function getCatalogForAI(companyId) {
+  const settings = await prisma.settings.findUnique({ where: { company_id: companyId }, select: { system_prompt: true } });
+  if (settings?.system_prompt?.trim()) {
+    const configured = [];
+    Object.defineProperty(configured, 'configuredPromptOnly', { value: true });
+    return configured;
+  }
   const categories = await prisma.category.findMany({
     where: { company_id: companyId, is_active: true },
     include: {
@@ -396,6 +402,7 @@ async function getCatalogForAI(companyId) {
 }
 
 function formatCatalogForPrompt(categories) {
+  if (categories?.configuredPromptOnly) return '';
   if (!categories || categories.length === 0) {
     return 'Nenhum produto cadastrado no catálogo.';
   }

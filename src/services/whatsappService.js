@@ -197,6 +197,22 @@ async function startInstance(instanceId, companyId) {
      * Guarda o socket atual da instância.
      */
     connectionState.sock = sock;
+    connectionState.phoneAliases = connectionState.phoneAliases || new Map();
+    const rememberPhone = async (lid, jid) => {
+      const phone = require('./chatIdentityService').identity(lid, jid).phone;
+      if (!lid?.endsWith('@lid') || !phone || !/^\d{8,15}$/.test(phone)) return;
+      connectionState.phoneAliases.set(lid, `${phone}@s.whatsapp.net`);
+      const corrected = await prisma.chat.findMany({ where: { company_id: companyId, instance_id: instanceId, remote_jid: lid, client_phone: { not: phone } } });
+      for (const chat of corrected) {
+        const updated = await prisma.chat.update({ where: { id: chat.id }, data: { client_phone: phone } });
+        if (updated.assigned_to && updated.status === 'interesse em compra') await require('./leadNotificationService').notifySeller(updated, updated.assigned_to);
+      }
+    };
+    const rememberContact = contact => rememberPhone(contact.lid || (contact.id?.endsWith('@lid') ? contact.id : null), contact.jid || (contact.id?.endsWith('@s.whatsapp.net') ? contact.id : null));
+    sock.ev.on('chats.phoneNumberShare', contact => { rememberPhone(contact.lid, contact.jid).catch(error => console.error('[Contact identity]', error.code || error.name)); });
+    for (const event of ['contacts.upsert', 'contacts.update']) sock.ev.on(event, contacts => {
+      Promise.all(contacts.map(rememberContact)).catch(error => console.error('[Contact identity]', error.code || error.name));
+    });
 
 
     /*
@@ -533,7 +549,7 @@ async function startInstance(instanceId, companyId) {
              * O remoteJid principal continua sendo preservado.
              */
             const senderJidAlt =
-              msg.key?.remoteJidAlt || null;
+              msg.key?.remoteJidAlt || connectionState.phoneAliases.get(senderJid) || null;
 
 
             const senderIdentifier =
@@ -1232,14 +1248,12 @@ async function handleIncomingWhatsAppMessage(
 
     let isNewChat = !chat;
 
-    let cleanPhone = senderJid.split('@')[0];
-    if (senderJid.endsWith('@lid') && senderJidAlt && senderJidAlt.includes('@s.whatsapp.net')) {
-      cleanPhone = senderJidAlt.split('@')[0];
-    } else if (senderJidAlt && senderJidAlt.includes('@s.whatsapp.net') && !senderJid.endsWith('@s.whatsapp.net')) {
-      cleanPhone = senderJidAlt.split('@')[0];
-    }
+    const identityService = require('./chatIdentityService');
+    const alternative = senderJidAlt || activeConnections[instanceId]?.phoneAliases?.get(senderJid);
+    const resolvedPhone = identityService.identity(senderJid, alternative).phone;
+    const cleanPhone = resolvedPhone || identityService.phoneForChat(chat) || senderJid.split('@')[0];
 
-    if (chat && cleanPhone && chat.client_phone !== cleanPhone && (chat.remote_jid?.endsWith('@lid') || chat.client_phone.length > 13)) {
+    if (chat && resolvedPhone && chat.client_phone !== resolvedPhone) {
       chat = await Chat.update(chat.id, { client_phone: cleanPhone }, companyId);
     }
 

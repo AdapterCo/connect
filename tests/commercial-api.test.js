@@ -5,7 +5,7 @@ const { once } = require('node:events');
 process.env.JWT_SECRET = 'commercial-test-only-'.repeat(3);
 process.env.ENCRYPTION_KEY = 'commercial-test-key-'.repeat(3);
 process.env.DATABASE_URL = 'postgresql://test:test@localhost/test';
-const names = ['company', 'user', 'instance', 'chat', 'message', 'opportunity', 'product', 'productModel', 'category', 'sale', 'saleReceipt', 'afterSale', 'followUpTask', 'cannedReply', 'auditLog', 'pushSubscription', 'platformConfig'];
+const names = ['company', 'settings', 'user', 'instance', 'chat', 'message', 'opportunity', 'product', 'productModel', 'category', 'sale', 'saleReceipt', 'afterSale', 'followUpTask', 'cannedReply', 'auditLog', 'pushSubscription', 'platformConfig'];
 let db, queue = Promise.resolve();
 function relation(row, key) {
   const links = { opportunity: ['opportunity', 'opportunity_id'], sale: ['sale', 'sale_id'], product: ['product', 'product_id'], instance: ['instance', 'instance_id'] };
@@ -329,4 +329,11 @@ test('AI receives active catalog models as reference, without implying confirmed
   assert.match(prompt, /Confirme disponibilidade, unidade e valor final/);
   db.productModel[0].is_active = false;
   assert.doesNotMatch(catalog.formatCatalogForPrompt(await catalog.getCatalogForAI('c1')), /iPhone 13/);
+});
+test('configured store prompt receives no additional CRM product or reference-price text', async () => {
+  db.settings.push({ company_id: 'c1', system_prompt: 'Vendemos Moto Future e Bike Lest.' });
+  const catalog = require('../src/controllers/catalogController');
+  const categories = await catalog.getCatalogForAI('c1');
+  assert.equal(categories.length, 0); assert.equal(catalog.formatCatalogForPrompt(categories), '');
+  assert.doesNotMatch(catalog.formatCatalogForPrompt(categories), /iPhone|referência|Nenhum/);
 });

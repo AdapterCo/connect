@@ -24,18 +24,20 @@ async function notifySeller(chat, sellerId) {
     if (!cleanSellerPhone) return;
 
     const sellerJid = `${cleanSellerPhone}@s.whatsapp.net`;
-    let clientDigits = normalizeDigits(chat.client_phone) || chat.client_phone;
+    const { phoneForChat } = require('./chatIdentityService');
     if (chat.id) {
       const fresh = await prisma.chat.findUnique({
         where: { id: chat.id },
-        select: { client_phone: true, company_id: true, opportunity: { select: { product: true, variant: true, payment: true, purchase_confirmed: true } }, messages: { where: { sender: 'system', is_note: true }, orderBy: { timestamp: 'desc' }, take: 30 } }
+        select: { client_phone: true, remote_jid: true, company_id: true, opportunity: { select: { product: true, variant: true, payment: true, purchase_confirmed: true } }, messages: { where: { sender: 'system', is_note: true }, orderBy: { timestamp: 'desc' }, take: 30 } }
       });
       if (fresh?.company_id === chat.company_id && fresh.messages) chat = { ...chat, messages: [...fresh.messages].reverse() };
       if (fresh?.company_id === chat.company_id && fresh.opportunity) chat = { ...chat, qualification_memory: fresh.opportunity };
-      if (fresh && fresh.client_phone) {
-        clientDigits = normalizeDigits(fresh.client_phone) || fresh.client_phone;
+      if (fresh?.company_id === chat.company_id) {
+        chat = { ...chat, client_phone: fresh.client_phone, remote_jid: fresh.remote_jid || chat.remote_jid };
       }
     }
+
+    const clientDigits = phoneForChat(chat);
 
     if (clientDigits) {
       const internalCandidates = [clientDigits, clientDigits.replace(/^55/, '')];
@@ -55,8 +57,8 @@ async function notifySeller(chat, sellerId) {
 
     const text = `🚨 *Novo Lead Atribuído!*\n\n` +
       `👤 *Cliente:* ${clientName}\n` +
-      `📱 *Telefone:* +${clientDigits}\n\n` +
-      `👉 *Iniciar conversa:* https://wa.me/${clientDigits}\n\n` +
+      (clientDigits ? `📱 *Telefone:* +${clientDigits}\n\n👉 *Iniciar conversa:* https://wa.me/${clientDigits}\n\n`
+        : '📱 *Telefone:* aguardando identificação pelo WhatsApp. O identificador interno não é um número para contato.\n\n') +
       `*Triagem e contexto:*\n${brief}\n\n` +
       `*Para confirmar e pausar o rodízio:* responda a esta mensagem com "CONFIRMAR", envie "CONFIRMAR ${chat.id}" ou responda ao cliente pelo seu chip conectado/painel do Connect.`;
 

@@ -14,7 +14,7 @@ require.cache[require.resolve('../src/config/database')] = { exports: { prisma: 
 require.cache[require.resolve('../src/services/salesRotationService')] = { exports: {
   withCompanyLock: (_company, work) => { const pending = queue.then(() => work(db)); queue = pending.catch(() => {}); return pending; }
 } };
-const { findOrCreate, identity } = require('../src/services/chatIdentityService');
+const { findOrCreate, identity, phoneForChat } = require('../src/services/chatIdentityService');
 const PN = '5511999999999@s.whatsapp.net';
 const LID = '123456789012345@lid';
 const resolve = (jid, alt, company = 'c1', instance = 'store') => findOrCreate(company, instance, jid, alt, { client_name: 'Daniel' });
@@ -51,4 +51,10 @@ test('same phone across companies or connections remains isolated', async () => 
 test('LID is not treated as a real telephone number', () => {
   assert.equal(identity(LID).phone, null);
   assert.equal(identity(LID, PN).phone, '5511999999999');
+});
+test('lead phone uses a phone JID or a resolved phone, never the LID identifier', () => {
+  assert.equal(phoneForChat({ remote_jid: '66791506194465@lid', client_phone: '66791506194465' }), null);
+  assert.equal(phoneForChat({ remote_jid: '1234567890123@lid', client_phone: '1234567890123' }), null);
+  assert.equal(phoneForChat({ remote_jid: '66791506194465@lid', client_phone: '5521985080634' }), '5521985080634');
+  assert.equal(phoneForChat({ remote_jid: '5521985080634:3@s.whatsapp.net', client_phone: '66791506194465' }), '5521985080634');
 });
