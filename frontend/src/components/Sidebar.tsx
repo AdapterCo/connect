@@ -27,7 +27,7 @@ const navItems = [
   { to: '/chats', icon: '💬', label: 'Chats / Funil' },
   { to: '/kanban', icon: '📋', label: 'Pipeline (Kanban)' },
   { to: '/sales', icon: 'V', label: 'Vendas', roles: ['admin', 'supervisor', 'seller'] },
-  { to: '/catalog', icon: 'P', label: 'Produtos', roles: ['admin', 'supervisor', 'seller'] },
+  { to: '/catalog', icon: 'P', label: 'Produtos', roles: ['admin', 'supervisor'] },
   { to: '/whatsapp', icon: '📱', label: 'Conexões WhatsApp', roles: ['admin', 'supervisor'] },
   { to: '/fluxos', icon: '🔀', label: 'Fluxos', roles: ['admin', 'supervisor'] },
   { to: '/settings/ai', icon: '🤖', label: 'Configurações IA', roles: ['admin'] },
@@ -65,7 +65,9 @@ export default function Sidebar() {
   const filteredNavItems = navItems.filter(item => {
     if (!item.roles) return true;
     return user && item.roles.includes(user.role);
-  });
+  }).map(item => item.to === '/sales' && user?.role === 'seller'
+    ? { ...item, label: 'Cadastrar venda' }
+    : item);
 
   const isNearLimit = planInfo && (
     planInfo.usage.users >= planInfo.plan.max_users - 1 ||

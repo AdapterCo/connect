@@ -61,7 +61,7 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/chats" element={<Chats />} />
             <Route path="/kanban" element={<Kanban />} />
-            <Route path="/catalog" element={<RequireRole roles={[...MANAGERS, 'seller']}><StoreProducts /></RequireRole>} />
+            <Route path="/catalog" element={<RequireRole roles={MANAGERS}><StoreProducts /></RequireRole>} />
             <Route path="/sales" element={<RequireRole roles={[...MANAGERS, 'seller']}><Sales /></RequireRole>} />
             <Route path="/commercial" element={<RequireRole roles={[...MANAGERS, 'seller']}><Commercial /></RequireRole>} />
             <Route path="/orders" element={<Navigate to="/sales" replace />} />

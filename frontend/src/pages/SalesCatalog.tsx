@@ -20,7 +20,7 @@ export default function SalesCatalog({ mode = 'sales' }: { mode?: 'products' | '
   const catalog = mode === 'products';
   const user = useAuthStore(state => state.user);
   const manager = ['admin', 'supervisor'].includes(user?.role || '');
-  const allowed = manager || user?.role === 'seller';
+  const allowed = manager || (!catalog && user?.role === 'seller');
   const [models, setModels] = useState<Model[]>([]), [sellers, setSellers] = useState<Seller[]>([]), [leads, setLeads] = useState<Lead[]>([]), [units, setUnits] = useState<Unit[]>([]), [metrics, setMetrics] = useState<Metric[]>([]);
   const loadVersion = useRef(0);
   const [page, setPage] = useState(1), [search, setSearch] = useState(''), [total, setTotal] = useState(0);
@@ -77,7 +77,7 @@ export default function SalesCatalog({ mode = 'sales' }: { mode?: 'products' | '
   }
   if (!allowed) return <p className="p-6">Acesso restrito à equipe de vendas.</p>;
   return <div className="h-full overflow-y-auto p-6 space-y-6 text-white">
-    <header><h1 className="text-2xl font-bold">{catalog ? 'Produtos' : 'Vendas'}</h1><p className="text-gray-400">{catalog ? 'Gerencie os modelos, preços e fotos do catálogo.' : 'Registre uma venda vinculada ao cliente usando um produto cadastrado.'}</p></header>
+    <header><h1 className="text-2xl font-bold">{catalog ? 'Produtos' : manager ? 'Vendas' : 'Cadastrar venda'}</h1><p className="text-gray-400">{catalog ? 'Gerencie os modelos, preços e fotos do catálogo.' : 'Registre uma venda vinculada ao cliente usando um produto cadastrado.'}</p></header>
     <p role="status" className="text-indigo-200">{message}</p>
     <div className="flex flex-wrap items-end gap-3"><label>{catalog ? 'Buscar produto' : 'Buscar produto para vender'}<input className={field} value={search} maxLength={160} onChange={e => { setSearch(e.target.value); setPage(1); if (!catalog) setSale({ ...sale, model_id: '' }); }} /></label><button disabled={page === 1 || busy} onClick={() => setPage(page - 1)}>Anterior</button><span>Página {page} de {Math.max(1, Math.ceil(total / 25))}</span><button disabled={page * 25 >= total || busy} onClick={() => { setPage(page + 1); if (!catalog) setSale({ ...sale, model_id: '' }); }}>Próxima</button></div>
     {catalog && manager && <section className={section}><h2 className="text-xl font-semibold">{model.id ? 'Editar produto do catálogo' : 'Cadastrar produto no catálogo'}</h2>
@@ -93,7 +93,6 @@ export default function SalesCatalog({ mode = 'sales' }: { mode?: 'products' | '
       </form><p className="text-sm text-gray-400">Cadastre cada modelo uma vez. Dados da unidade são informados na venda. Preço sugerido não confirma estoque.</p>
       <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead><tr>{['Produto', 'Tipo', 'Valor sugerido', 'Situação', 'Ações'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{models.map(item => <tr className="border-t border-gray-700" key={item.id}><td className="p-3">{item.name}</td><td>{item.kind === 'phone' ? 'Celular' : 'Moto'}</td><td>{money(item.price)}</td><td>{item.is_active ? 'Ativo' : 'Inativo'}</td><td><button className="text-indigo-300" disabled={busy} onClick={() => setModel({ ...item, image_url: item.image_url || '', cost: item.cost || '', commission_rate: item.commission_rate || '0' })}>Editar</button></td></tr>)}</tbody></table></div>
     </section>}
-    {catalog && !manager && <section className={section}><h2 className="text-xl font-semibold">Catálogo de produtos</h2>{models.map(item => <div key={item.id} className="border-b border-gray-700 py-3"><strong>{item.name}</strong><p>{money(item.price)}</p></div>)}</section>}
     {!catalog && <section className={section}><h2 className="text-xl font-semibold">Cadastrar venda</h2>
       <form onSubmit={saveSale} className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
         <label>Produto<select className={field} value={sale.model_id} onChange={e => { const item = models.find(model => model.id === e.target.value); setSale({ ...sale, model_id: e.target.value, price: item?.price || '', serial: '', color: '', memory: '', condition: 'new' }); }} required><option value="">Selecione o produto cadastrado</option>{models.filter(item => item.is_active).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
