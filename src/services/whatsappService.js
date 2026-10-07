@@ -334,8 +334,9 @@ async function startInstance(instanceId, companyId, token) {
 
 
           /*
-           * Remove referência ao socket encerrado
-           * ANTES de iniciar uma nova conexão.
+           * Remove a referência do socket encerrado antes da
+           * reconexão e encerra explicitamente o socket antigo.
+           * Não usar logout(): o código 515 preserva a sessão.
            */
           if (
             activeConnections[instanceId].sock === sock
@@ -343,6 +344,13 @@ async function startInstance(instanceId, companyId, token) {
             activeConnections[instanceId].sock = null;
           }
 
+          try {
+            sock.ev.removeAllListeners();
+          } catch (_) {}
+
+          try {
+            sock.end(new Error(`Connection closed (${statusCode})`));
+          } catch (_) {}
 
           activeConnections[instanceId].connectionStatus =
             'disconnected';
@@ -390,7 +398,7 @@ async function startInstance(instanceId, companyId, token) {
 
             activeConnections[instanceId].reconnectTimer =
               setTimeout(
-                () => {
+                async () => {
                   if (!isCurrent()) return;
                   if (
                     activeConnections[instanceId]
@@ -401,11 +409,23 @@ async function startInstance(instanceId, companyId, token) {
                   }
 
 
+                  // Aguarda gravações pendentes das credenciais/chaves anteriores.
+                  try {
+                    await authFence.close();
+                  } catch (err) {
+                    console.error(
+                      `[WhatsApp:${instanceId}] Error closing auth fence:`,
+                      err.code || err.name || err.message
+                    );
+                  }
+
+                  if (!isCurrent()) return;
+
                   startWhatsAppInstance(
                     instanceId,
                     companyId
                   ).catch((err) => {
-                    console.error(err);
+                    console.error(`[WhatsApp:${instanceId}] Reconnect failed:`, err);
                   });
 
                 },
