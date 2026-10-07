@@ -8,6 +8,30 @@ const catalog = [{ products: [
 const response = { message: 'Vou encaminhar voce.', status: 'interesse em compra', disable_ai: false };
 const saved = qualification => ({ sender: 'system', is_note: true, text: 'Triagem do lead: ' + JSON.stringify(qualification) });
 
+test('prompt-only products retain payment then confirm interest and hand off on yes', () => {
+  for (const product of ['Moto X13', 'Sofa Aurora', 'Plano Premium']) {
+    const options = { configuredPrompt: `Produtos da loja: ${product}. Preco e condicoes definidos pela loja.`, preserveCatalogResponse: true };
+    const chat = { messages: [{ sender: 'client', text: `Me fale sobre ${product}` }, { sender: 'attendant', text: `O que achou dela? Como prefere realizar o pagamento (Dinheiro, Pix ou Cartao)?` }] };
+    const answer = qualify(chat, 'dinheiro', { message: 'Qual produto?', intent: 'purchase', qualification: { product } }, [], options);
+    assert.equal(answer.qualification.product, product); assert.equal(answer.qualification.payment, 'Dinheiro');
+    assert.equal(answer.handoff_requested, false); assert.match(answer.message, /Deseja confirmar o interesse/);
+    const confirmed = qualify({ messages: [...chat.messages, { sender: 'client', text: 'dinheiro' }, saved(answer.qualification), { sender: 'attendant', text: answer.message }] }, 'sim', { message: 'Vou chamar um vendedor.', intent: 'question' }, [], options);
+    assert.equal(confirmed.handoff_requested, true); assert.equal(confirmed.qualification.product, product); assert.equal(confirmed.qualification.payment, 'Dinheiro');
+  }
+});
+test('a contextual selection of a generic prompt product survives payment in the next message', () => {
+  const options = { configuredPrompt: 'Sofa Aurora - cor azul - R$ 1000', preserveCatalogResponse: true };
+  const chosen = qualify({ messages: [{ sender: 'attendant', text: 'O Sofa Aurora tem cor azul.' }] }, 'quero esse', { message: 'Como prefere pagar?', intent: 'question', qualification: { product: 'Sofa Aurora' } }, [], options);
+  assert.equal(chosen.qualification.product, 'Sofa Aurora'); assert.equal(chosen.handoff_requested, false);
+  const paid = qualify({ messages: [saved(chosen.qualification), { sender: 'attendant', text: chosen.message }] }, 'dinheiro', { message: 'Certo', intent: 'question' }, [], options);
+  assert.equal(paid.handoff_requested, true); assert.equal(paid.qualification.product, 'Sofa Aurora');
+});
+test('a payment answer cannot introduce an unrelated prompt product or force purchase interest', () => {
+  const options = { configuredPrompt: 'Sofa Aurora e Moto X13', preserveCatalogResponse: true };
+  const result = qualify({ messages: [{ sender: 'client', text: 'oi' }, { sender: 'attendant', text: 'Como prefere pagar?' }] }, 'dinheiro', { message: 'Certo', intent: 'purchase', qualification: { product: 'Moto X13' } }, [], options);
+  assert.equal(result.qualification.product, null); assert.equal(result.handoff_requested, false); assert.equal(result.qualification.purchase_confirmed, false);
+});
+
 test('structured preferences survive missing history and cannot be reverted by old client selections', () => {
   const result = qualify({ messages: [{ sender: 'client', text: 'quero iPhone 13 no boleto' }], qualification_memory: { product: 'iPhone 15', payment: 'Pix', variant: '256 GB', purchase_confirmed: true } }, 'qual o horário?', { message: 'Abrimos às 9h.', intent: 'question' }, catalog);
   assert.equal(result.qualification.product, 'iPhone 15'); assert.equal(result.qualification.payment, 'Pix');

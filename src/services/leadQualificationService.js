@@ -37,6 +37,9 @@ function qualify(chat, currentMessage, response, categories, options = {}) {
   const current = fold(currentMessage);
   const products = (categories || []).flatMap(category => category.products || []);
   const requested = response.qualification || {};
+  const configuredPrompt = fold(options.configuredPrompt || '');
+  const lastAssistant = [...(chat.messages || [])].reverse().find(message => message.sender === 'attendant' && !message.is_note && message.text);
+  const assistantText = fold(lastAssistant?.text || '');
   const choiceEvidence = value => clientTexts.some(text => choiceEvidenceInText(text, value));
   const recentSelection = (prior.product ? [currentMessage] : [...clientTexts].reverse()).flatMap(text => String(text).split(/[,;]|\bmas\b/i).reverse()).find(text => {
     const device = statedDevice(text);
@@ -44,7 +47,14 @@ function qualify(chat, currentMessage, response, categories, options = {}) {
   });
   const customerDevice = recentSelection ? statedDevice(recentSelection) : null;
   const namedProduct = [...products].sort((a, b) => b.name.length - a.name.length).find(item => recentSelection && choiceEvidenceInText(recentSelection, item.name));
-  const modelProduct = typeof requested.product === 'string' && choiceEvidence(requested.product) ? requested.product : null;
+  const requestedName = typeof requested.product === 'string' ? requested.product.trim().slice(0, 160) : '';
+  const knownRequested = requestedName && (configuredPrompt.includes(fold(requestedName)) || products.some(item => fold(item.name) === fold(requestedName)));
+  const paymentQuestion = /(?:como|qual|forma|prefere).{0,50}(?:pagar|pagamento|pix|dinheiro|cartao|boleto)/.test(assistantText);
+  const contextualChoice = knownRequested && (
+    (clientTexts.some(text => fold(text).includes(fold(requestedName))) && paymentQuestion) ||
+    (assistantText.includes(fold(requestedName)) && /(?:quero|levo|escolho|prefiro|vou ficar com).{0,15}(?:esse|essa|este|esta|ele|ela)/.test(current))
+  );
+  const modelProduct = requestedName && (choiceEvidence(requestedName) || contextualChoice) ? requestedName : null;
   // The customer's stated model is useful even if the catalog has no exact entry.
   // Never silently replace a Pro Max with a base iPhone of the same generation.
   const statedProduct = customerDevice || namedProduct?.name || modelProduct;
@@ -72,8 +82,12 @@ function qualify(chat, currentMessage, response, categories, options = {}) {
   const intent = asksHuman ? 'human' : browsing && !purchase ? 'browse' : response.intent;
   const explicitHuman = asksHuman || (!browsing && response.intent === 'human' && response.disable_ai === true);
   const currentSelection = !!qualification.product && (choiceEvidenceInText(currentMessage, qualification.product) ||
-    (!!recentSelection && currentMessage.includes(recentSelection) && choiceEvidenceInText(recentSelection, qualification.product)));
-  const purchaseIntent = purchase || intent === 'purchase' || (!browsing && currentSelection);
+    (!!recentSelection && currentMessage.includes(recentSelection) && choiceEvidenceInText(recentSelection, qualification.product)) ||
+    (contextualChoice && /(?:quero|levo|escolho|prefiro|vou ficar com).{0,15}(?:esse|essa|este|esta|ele|ela)/.test(current)));
+  const confirmingQuestion = /(?:quer|deseja|gostaria|podemos|vamos|posso).{0,40}(?:comprar|fechar|confirmar|finalizar|concluir|prosseguir)/.test(assistantText);
+  const confirmsPurchase = confirmingQuestion && /^(?:sim|quero|pode|pode sim|vamos|vamos sim|claro|confirmo|fechado|isso)[!.\s]*$/.test(current.trim());
+  const paymentOnly = !!payment && !purchase && !currentSelection;
+  const purchaseIntent = purchase || confirmsPurchase || (intent === 'purchase' && !paymentOnly) || (!browsing && currentSelection);
   const cancelled = !currentSelection && /(?:desisti|cancelar|so estou olhando|nao quero (?:mais|comprar|fechar))/.test(current);
   if (cancelled) { qualification.payment = null; qualification.product = null; qualification.variant = null; }
   if (/(?:nao quero|nao vou|nao pago).{0,20}(?:pix|boleto|cartao|dinheiro)/.test(current) && !payment) qualification.payment = null;
@@ -86,6 +100,9 @@ function qualify(chat, currentMessage, response, categories, options = {}) {
   const stopRepeating = qualifying && qualification.questions_asked >= 1;
   const handoff = explicitHuman || stopRepeating || (purchaseIntent && !cancelled && alreadyRouted) || (qualification.purchase_confirmed && ready && !browsing && (purchaseIntent || completesQualification));
   let message = response.message;
+  if (ready && payment && !qualification.purchase_confirmed && !explicitHuman && !alreadyRouted && !browsing) {
+    message = `Voce prefere pagar em ${qualification.payment}. Deseja confirmar o interesse na compra de ${qualification.product} para eu chamar um vendedor?`;
+  }
   if (qualifying && !handoff) {
     qualification.questions_asked += 1;
     message = !qualification.product
