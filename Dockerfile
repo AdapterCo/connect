@@ -11,8 +11,6 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-COPY patches/ ./patches/
-COPY scripts/apply-baileys-patch.js ./scripts/apply-baileys-patch.js
 RUN npm ci
 
 COPY --chown=node:node . .
