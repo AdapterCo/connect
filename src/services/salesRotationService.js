@@ -135,11 +135,11 @@ function phoneCandidates(phone) {
 }
 
 async function captureRelated(tx, chat, sellerId, now, reason) {
-  const phones = phoneCandidates(chat.client_phone);
-  if (!phones.length) return [];
+  const verifiedPhone = require('./chatIdentityService').phoneForChat(chat);
+  const phones = phoneCandidates(verifiedPhone);
   await require('./commercialService').syncChat(tx, { ...chat, assigned_to: sellerId });
   const related = await tx.chat.findMany({ where: {
-    company_id: chat.company_id, client_phone: { in: phones }, assigned_to: sellerId,
+    company_id: chat.company_id, OR: [{ id: chat.id }, ...(phones.length ? [{ client_phone: { in: phones } }] : [])], assigned_to: sellerId,
     status: { in: HUMAN_STAGES }, is_archived: false, is_blocked: false
   }, include: { instance: { select: { user_id: true } }, messages: { orderBy: { timestamp: 'asc' } } } });
   const changed = [];
@@ -171,7 +171,9 @@ async function confirmAttendance(companyId, sellerId, chatId = null, now = new D
     if (!chatId && groups.size > 1) return { status: 'ambiguous', chats: leads };
     const lead = leads[0];
     const captured = await captureRelated(tx, lead, sellerId, now, `Vendedor ${seller.name} confirmou atendimento via WhatsApp. Rodizio pausado em todas as conexoes deste lead.`);
-    return { status: 'confirmed', chat: lead, chats: captured };
+    const fresh = await tx.chat.findFirst({ where: { id: lead.id, company_id: companyId, assigned_to: sellerId } });
+    const confirmed = fresh && !fresh.sales_reply_due_at && [FORWARDED, ATTENDING].includes(fresh.status);
+    return { status: confirmed ? 'confirmed' : 'unavailable', chat: lead, chats: captured };
   });
   if (result.status === 'confirmed') emitCaptured(result.chats);
   return result;

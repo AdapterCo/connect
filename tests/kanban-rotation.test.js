@@ -398,3 +398,24 @@ test('repeat handoff keeps forwarded store chats out of the rotation and preserv
   assert.equal(result.sales_reply_due_at, null);
   assert.equal(db.audit.length, 0);
 });
+
+
+test('an unresolved LID can confirm the assigned lead by ID without merging unrelated chats', async () => {
+  db.chats[0].remote_jid = '202147551526944@lid';
+  db.chats[0].client_phone = '202147551526944';
+  await enter();
+  db.chats.push({ ...copy(db.chats[0]), id: 'other-lid', remote_jid: '14844145209409@lid', client_phone: '14844145209409' });
+  const result = await rotation.confirmAttendance('c1', 's1', 'chat1', after(1000));
+  assert.equal(result.status, 'confirmed');
+  assert.equal(db.chats[0].sales_reply_due_at, null);
+  assert.notEqual(db.chats[1].sales_reply_due_at, null);
+  assert.equal(await rotation.rotateExpiredChat('chat1', 'c1', after(60000)), null);
+});
+
+test('confirmation cannot report success when a newer claim prevents actual capture', async () => {
+  await enter();
+  db.chats[0].claimed_at = after(5000);
+  const result = await rotation.confirmAttendance('c1', 's1', 'chat1', after(1000));
+  assert.equal(result.status, 'unavailable');
+  assert.notEqual(db.chats[0].sales_reply_due_at, null);
+});

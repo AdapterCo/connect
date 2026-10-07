@@ -50,8 +50,10 @@ async function sendMessage(instanceId, jid, content) {
   const messageId = generateMessageIDV2(conn.sock.user?.id);
   // Register before sending: the echo can arrive before sendMessage resolves.
   registerSentMessageId(messageId);
+  if (content.text) require('./whatsappRetryService').remember(conn, messageId, { conversation: content.text });
   const result = await conn.sock.sendMessage(jid, content, { messageId });
   if (result?.key?.id) {
+    require('./whatsappRetryService').remember(conn, result.key.id, result.message);
     registerSentMessageId(result.key.id);
   }
   return result;
@@ -179,6 +181,8 @@ async function startInstance(instanceId, companyId) {
       }),
       getMessage: async (key) => {
         if (!key?.id) return undefined;
+        const cached = require('./whatsappRetryService').get(connectionState, key.id);
+        if (cached) return cached;
         try {
           const stored = await prisma.message.findFirst({
             where: { id: key.id, chat: { company_id: companyId, instance_id: instanceId } }
@@ -548,27 +552,23 @@ async function startInstance(instanceId, companyId) {
              *
              * O remoteJid principal continua sendo preservado.
              */
-            const senderJidAlt =
-              msg.key?.remoteJidAlt || connectionState.phoneAliases.get(senderJid) || null;
-
-
-            const senderIdentifier =
-              senderJid.split('@')[0];
-
-            const rawSenderDigits = senderIdentifier.replace(/\D/g, '');
-            const rawAltDigits = senderJidAlt ? senderJidAlt.split('@')[0].replace(/\D/g, '') : null;
-            const candidatePhones = new Set();
-            if (rawSenderDigits) {
-              candidatePhones.add(rawSenderDigits);
-              if (rawSenderDigits.startsWith('55')) candidatePhones.add(rawSenderDigits.slice(2));
-              else candidatePhones.add('55' + rawSenderDigits);
-            }
-            if (rawAltDigits) {
-              candidatePhones.add(rawAltDigits);
-              if (rawAltDigits.startsWith('55')) candidatePhones.add(rawAltDigits.slice(2));
-              else candidatePhones.add('55' + rawAltDigits);
-            }
-            const phonesList = Array.from(candidatePhones);
+            const identityResolver = require('./sellerIdentityService');
+            const command = identityResolver.confirmation(msg.message);
+            let senderJidAlt = msg.key?.remoteJidAlt || msg.key?.senderPn || connectionState.phoneAliases.get(senderJid) || null;
+            try {
+              const staff = command ? await prisma.user.findMany({ where: { company_id: companyId }, select: { phone: true } }) : [];
+              const staffPhones = staff.map(user => require('./leadNotificationService').normalizeDigits(user.phone)).filter(phone => /^\d{10,15}$/.test(phone || '')).map(phone => `${phone}@s.whatsapp.net`);
+              senderJidAlt = await identityResolver.resolvePhone(connectionState, senderJid, senderJidAlt, async lid => {
+                const known = await prisma.chat.findMany({ where: { company_id: companyId, instance_id: instanceId, remote_jid: lid }, select: { client_phone: true, remote_jid: true } });
+                const phone = known.map(require('./chatIdentityService').phoneForChat).find(Boolean);
+                return phone ? `${phone}@s.whatsapp.net` : null;
+              }, staffPhones) || senderJidAlt;
+              if (senderJid.endsWith('@lid') && identityResolver.phoneJid(senderJidAlt)) await rememberPhone(senderJid, senderJidAlt);
+            } catch (error) { console.error('[SellerIdentity] Resolution failed:', error.code || error.name); }
+            const senderIdentifier = senderJid.split('@')[0];
+            const verifiedJid = identityResolver.phoneJid(senderJid) || identityResolver.phoneJid(senderJidAlt);
+            const digits = verifiedJid?.split('@')[0];
+            const phonesList = digits ? [...new Set([digits, digits.startsWith('55') ? digits.slice(2) : '55' + digits])] : [];
 
             const isCompanyInstance = await prisma.instance.findFirst({
               where: {
@@ -583,22 +583,13 @@ async function startInstance(instanceId, companyId) {
               }
             });
 
-            if (teamMember) {
-              const confirmation = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-              const matched = /^CONFIRMAR(?:\s+(chat_[a-zA-Z0-9_-]+))?$/i.exec(confirmation.trim());
-              if (!matched || msg.key?.fromMe) continue;
-              const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-              const quotedText = quoted?.conversation || quoted?.extendedTextMessage?.text || '';
-              const quotedId = /CONFIRMAR\s+(chat_[a-zA-Z0-9_-]+)/i.exec(quotedText)?.[1];
-              const result = await require('./salesRotationService').confirmAttendance(companyId, teamMember.id, matched[1] || quotedId || null);
-              const reply = result.status === 'confirmed'
-                ? 'Atendimento confirmado para ' + result.chat.client_name + '. O rodizio foi pausado para este cliente.'
-                : result.status === 'ambiguous'
-                  ? 'Voce tem mais de um cliente aguardando. Responda a notificacao desejada com CONFIRMAR ou envie o comando com o ID:\n' + result.chats.map(lead => lead.client_name + ': CONFIRMAR ' + lead.id).join('\n')
-                  : 'Nao ha lead pendente atribuido a voce para essa confirmacao. Ele pode ter sido encaminhado a outro vendedor.';
-              await sendMessage(instanceId, senderJid, { text: reply });
-              continue;
-            }
+            // A control command must never enter the customer/AI pipeline.
+            if (await identityResolver.handleConfirmation({
+              command, fromMe: msg.key?.fromMe, teamMember,
+              confirm: (sellerId, chatId) => require('./salesRotationService').confirmAttendance(companyId, sellerId, chatId),
+              send: text => sendMessage(instanceId, senderJid, { text })
+            })) continue;
+            if (teamMember) continue;
 
             if (isCompanyInstance) continue;
 

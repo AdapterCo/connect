@@ -18,7 +18,7 @@ async function notifySeller(chat, sellerId) {
       where: { id: sellerId, company_id: chat.company_id },
       select: { id: true, name: true, phone: true }
     });
-    if (!seller || !seller.phone) return;
+    if (!seller || !seller.phone) { console.warn('[LeadNotification] Seller missing or phone not configured.'); return; }
 
     const cleanSellerPhone = normalizeDigits(seller.phone);
     if (!cleanSellerPhone) return;
@@ -73,7 +73,7 @@ async function notifySeller(chat, sellerId) {
 
     if (instanceId && connections[instanceId]?.connectionStatus === 'open') {
       await whatsappService.sendMessage(instanceId, sellerJid, { text });
-    }
+    } else console.warn('[LeadNotification] No open WhatsApp connection available.');
   } catch (err) {
     console.error('[LeadNotification] Erro ao notificar vendedor:', err && err.message ? err.message : err);
   }
