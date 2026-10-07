@@ -1,8 +1,7 @@
 diff --git a/node_modules/@whiskeysockets/baileys/lib/Socket/messages-recv.js b/node_modules/@whiskeysockets/baileys/lib/Socket/messages-recv.js
-index c46b096..82db455 100644
 --- a/node_modules/@whiskeysockets/baileys/lib/Socket/messages-recv.js
 +++ b/node_modules/@whiskeysockets/baileys/lib/Socket/messages-recv.js
-@@ -652,6 +652,10 @@ export const makeMessagesRecvSocket = (config) => {
+@@ -652,6 +652,10 @@
                          if (msg?.messageStubParameters?.[0] === MISSING_KEYS_ERROR_TEXT) {
                              return sendMessageAck(node, NACK_REASONS.ParsingError);
                          }
@@ -14,10 +13,9 @@ index c46b096..82db455 100644
                              if (ws.isOpen) {
                                  if (getBinaryNodeChild(node, 'unavailable')) {
 diff --git a/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js b/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js
-index a3ccfe6..93e5433 100644
 --- a/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js
 +++ b/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js
-@@ -146,14 +146,52 @@ export const decryptMessageNode = (stanza, meId, meLid, repository, logger) => {
+@@ -146,14 +146,59 @@
                                  });
                                  break;
                              case 'pkmsg':
@@ -50,7 +48,14 @@ index a3ccfe6..93e5433 100644
 +                                    const altUser = (isLidUser(user)
 +                                        ? stanza.attrs.participant_pn || stanza.attrs.sender_pn
 +                                        : stanza.attrs.participant_lid || stanza.attrs.sender_lid)
-+                                        || (fullMessage.key.fromMe ? (isLidUser(user) ? meId : meLid) : undefined);
++                                        || (fullMessage.key.fromMe ? (() => {
++                                            // Own PN/LID identifies the account; retain the SENDER device,
++                                            // not the device suffix of this linked Connect installation.
++                                            const own = isLidUser(user) ? meId : meLid;
++                                            if (!own) return undefined;
++                                            const suffix = /:\d+(?=@)/.exec(user)?.[0] || '';
++                                            return own.replace(/:\d+(?=@)/, '').replace('@', suffix + '@');
++                                        })() : undefined);
 +                                    if (!altUser || altUser === user) {
 +                                        throw err;
 +                                    }
@@ -76,7 +81,7 @@ index a3ccfe6..93e5433 100644
                              case 'plaintext':
                                  msgBuffer = content;
                                  break;
-@@ -182,7 +220,12 @@ export const decryptMessageNode = (stanza, meId, meLid, repository, logger) => {
+@@ -182,7 +227,12 @@
                          }
                      }
                      catch (err) {

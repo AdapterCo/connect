@@ -11,7 +11,7 @@ const protoPromise = baileysPromise.then(({ proto }) => ({ proto }));
 const PN = '5521959343672@s.whatsapp.net', LID = '202147551526944@lid';
 const ME = '5521999999999@s.whatsapp.net', ME_LID = '111111111111111@lid';
 
-async function decode(attrs, succeedsAt, type = 'msg') {
+async function decode(attrs, succeedsAt, type = 'msg', meId = ME, meLid = ME_LID) {
   const { decryptMessageNode } = await modulePromise;
   const { proto } = await protoPromise;
   const calls = [];
@@ -19,7 +19,7 @@ async function decode(attrs, succeedsAt, type = 'msg') {
   const originalError = new Error('Bad MAC');
   const repository = { decryptMessage: async args => { calls.push(args.jid); if (args.jid !== succeedsAt) throw originalError; return message; } };
   const stanza = { tag: 'message', attrs: { id: 'test-message', t: '1791334800', ...attrs }, content: [{ tag: 'enc', attrs: { type }, content: Buffer.from([1, 2]) }] };
-  const result = decryptMessageNode(stanza, ME, ME_LID, repository, { debug() {}, error() {} });
+  const result = decryptMessageNode(stanza, meId, meLid, repository, { debug() {}, error() {} });
   await result.decrypt();
   return { result: result.fullMessage, calls };
 }
@@ -68,4 +68,20 @@ test('install patch rejects changed source and repeated contexts instead of sile
   assert.equal(applyHunks('old\nfixed', diff), 'old\nfixed');
   assert.throws(() => applyHunks('unexpected', diff), /differs/);
   assert.throws(() => applyHunks('old\nbroken\nold\nbroken', diff), /Ambiguous/);
+});
+
+
+test('own LID from primary device uses phone device zero, not linked Connect device 17', async () => {
+  const { result, calls } = await decode({ from: ME_LID, recipient: PN }, ME, 'msg', ME.replace('@', ':17@'), ME_LID.replace('@', ':17@'));
+  assert.deepEqual(calls, [ME_LID, ME]); assert.equal(result.message.conversation, 'CONFIRMAR');
+});
+test('own secondary sender device is preserved rather than replaced by Connect device', async () => {
+  const ownSender = ME_LID.replace('@', ':3@'), target = ME.replace('@', ':3@');
+  const { result, calls } = await decode({ from: ownSender, recipient: PN }, target, 'msg', ME.replace('@', ':17@'), ME_LID.replace('@', ':17@'));
+  assert.deepEqual(calls, [ownSender, target]); assert.equal(result.message.conversation, 'CONFIRMAR');
+});
+test('an explicit WhatsApp identity pairing takes precedence over the own identity fallback', async () => {
+  const paired = ME.replace('@', ':4@');
+  const { result, calls } = await decode({ from: ME_LID, recipient: PN, sender_pn: paired }, paired, 'msg', ME.replace('@', ':17@'), ME_LID.replace('@', ':17@'));
+  assert.deepEqual(calls, [ME_LID, paired]); assert.equal(result.message.conversation, 'CONFIRMAR');
 });

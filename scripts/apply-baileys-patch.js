@@ -6,6 +6,15 @@ const ALLOWED = ['lib/Utils/decode-wa-message.js', 'lib/Socket/messages-recv.js'
 
 function applyHunks(source, diff) {
   let result = source.replace(/\r\n/g, '\n');
+  // Upgrade the previously installed patch without requiring a clean node_modules.
+  result = result.replace('|| (fullMessage.key.fromMe ? (isLidUser(user) ? meId : meLid) : undefined);', `|| (fullMessage.key.fromMe ? (() => {
+                                            // Own PN/LID identifies the account; retain the SENDER device,
+                                            // not the device suffix of this linked Connect installation.
+                                            const own = isLidUser(user) ? meId : meLid;
+                                            if (!own) return undefined;
+                                            const suffix = /:\\d+(?=@)/.exec(user)?.[0] || '';
+                                            return own.replace(/:\\d+(?=@)/, '').replace('@', suffix + '@');
+                                        })() : undefined);`);
   const lines = diff.replace(/\r\n/g, '\n').split('\n');
   let hunks = 0;
   for (let i = 0; i < lines.length; i++) {
