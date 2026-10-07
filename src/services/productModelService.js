@@ -4,6 +4,7 @@ const products = require('./productService');
 const { randomUUID } = require('crypto');
 
 function modelData(body) {
+  const image_url = require('./productPhotoService').validateUrl(body.image_url);
   const name = commercial.text(body.name, 160, 'Produto');
   if (!['phone', 'motorcycle'].includes(body.kind)) throw commercial.fail('Selecione celular ou moto.');
   let price, cost, commission;
@@ -14,7 +15,7 @@ function modelData(body) {
   } catch (error) { throw commercial.fail(error.message); }
   if (Number(price) <= 0 || Number(commission) > 100) throw commercial.fail('Valor ou comissão inválidos.');
   if (body.is_active !== undefined && typeof body.is_active !== 'boolean') throw commercial.fail('Situação inválida.');
-  return { name, kind: body.kind, price, cost, commission_rate: commission, is_active: body.is_active ?? true };
+  return { name, kind: body.kind, price, cost, commission_rate: commission, is_active: body.is_active ?? true, image_url };
 }
 async function save(user, id, body, maxProducts) {
   if (!commercial.managers(user)) throw commercial.fail('Somente admin e supervisor cadastram produtos.', 403);

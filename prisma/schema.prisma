@@ -425,6 +425,7 @@ model ProductModel {
   company_id String
   company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
   name String
+  image_url String?
   kind String
   price Decimal @db.Decimal(12, 2)
   cost Decimal? @db.Decimal(12, 2)

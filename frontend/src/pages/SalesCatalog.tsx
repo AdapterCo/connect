@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import api, { apiErrorMessage } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 
-interface Model { id: string; name: string; kind: 'phone' | 'motorcycle'; price: string; cost?: string | null; commission_rate?: string; is_active: boolean }
+interface Model { image_url?: string | null; id: string; name: string; kind: 'phone' | 'motorcycle'; price: string; cost?: string | null; commission_rate?: string; is_active: boolean }
 interface Seller { id: string; name: string }
 interface Lead { id: string; client_name: string; phone: string; seller_id: string | null; status: string }
 interface Unit { id: string; model_id: string | null; name: string; serial: string; color: string; memory: string | null; condition: string; price: number; down_payment: string; status: string; seller_id: string | null; seller: Seller | null; reserved_lead_id: string | null }
 interface Metric extends Seller { count: number; total: number; average: number }
 const freshSale = { model_id: '', seller_id: '', opportunity_id: '', price: '', down_payment: '0', payment_method: 'pix', serial: '', color: '', memory: '', condition: 'new' };
-const freshModel = { id: '', name: '', kind: 'phone' as 'phone' | 'motorcycle', price: '', cost: '', commission_rate: '0', is_active: true };
+const freshModel = { image_url: '', id: '', name: '', kind: 'phone' as 'phone' | 'motorcycle', price: '', cost: '', commission_rate: '0', is_active: true };
 const field = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white disabled:opacity-60';
 const button = 'bg-indigo-600 rounded-lg px-4 py-2 disabled:opacity-50';
 const section = 'bg-gray-800 border border-gray-700 rounded-xl p-5 space-y-4';
@@ -61,6 +61,7 @@ export default function SalesCatalog() {
     {manager && <section className={section}><h2 className="text-xl font-semibold">{model.id ? 'Editar produto do catálogo' : 'Cadastrar produto no catálogo'}</h2>
       <form className="grid md:grid-cols-3 gap-4" onSubmit={event => { event.preventDefault(); void run(async () => { if (model.id) await api.put(`/products/models/${model.id}`, model); else await api.post('/products/models', model); setModel(freshModel); }, 'Catálogo atualizado.'); }}>
         <label>Produto<input className={field} value={model.name} onChange={e => setModel({ ...model, name: e.target.value })} required maxLength={160} /></label>
+        <label>Foto do produto (URL HTTPS)<input className={field} type="url" value={model.image_url || ''} maxLength={2048} placeholder="https://exemplo.com/foto.jpg" onChange={e => setModel({ ...model, image_url: e.target.value })} /></label>
         <label>Tipo<select className={field} value={model.kind} onChange={e => setModel({ ...model, kind: e.target.value as Model['kind'] })}><option value="phone">Celular</option><option value="motorcycle">Moto</option></select></label>
         <label>Valor sugerido (R$)<input className={field} type="number" min="0.01" step="0.01" value={model.price} onChange={e => setModel({ ...model, price: e.target.value })} required /></label>
         <label>Custo de referência (R$)<input className={field} type="number" min="0" step="0.01" value={model.cost} onChange={e => setModel({ ...model, cost: e.target.value })} /></label>
@@ -68,7 +69,7 @@ export default function SalesCatalog() {
         <label className="self-center"><input type="checkbox" checked={model.is_active} onChange={e => setModel({ ...model, is_active: e.target.checked })} /> Produto ativo</label>
         <div className="flex gap-4"><button className={button} disabled={busy}>Salvar produto</button><button type="button" disabled={busy} onClick={() => setModel(freshModel)}>Limpar</button></div>
       </form><p className="text-sm text-gray-400">Cadastre cada modelo uma vez. Dados da unidade são informados na venda. Preço sugerido não confirma estoque.</p>
-      <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead><tr>{['Produto', 'Tipo', 'Valor sugerido', 'Situação', 'Ações'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{models.map(item => <tr className="border-t border-gray-700" key={item.id}><td className="p-3">{item.name}</td><td>{item.kind === 'phone' ? 'Celular' : 'Moto'}</td><td>{money(item.price)}</td><td>{item.is_active ? 'Ativo' : 'Inativo'}</td><td><button className="text-indigo-300" disabled={busy} onClick={() => setModel({ ...item, cost: item.cost || '', commission_rate: item.commission_rate || '0' })}>Editar</button></td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead><tr>{['Produto', 'Tipo', 'Valor sugerido', 'Situação', 'Ações'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{models.map(item => <tr className="border-t border-gray-700" key={item.id}><td className="p-3">{item.name}</td><td>{item.kind === 'phone' ? 'Celular' : 'Moto'}</td><td>{money(item.price)}</td><td>{item.is_active ? 'Ativo' : 'Inativo'}</td><td><button className="text-indigo-300" disabled={busy} onClick={() => setModel({ ...item, image_url: item.image_url || '', cost: item.cost || '', commission_rate: item.commission_rate || '0' })}>Editar</button></td></tr>)}</tbody></table></div>
     </section>}
     <section className={section}><h2 className="text-xl font-semibold">Cadastrar venda</h2>
       <form onSubmit={saveSale} className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">

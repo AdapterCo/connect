@@ -1627,6 +1627,27 @@ async function handleIncomingWhatsAppMessage(
         await sendMessage(instanceId, Chat.getRemoteJid(beforeSend), { text: aiMsg.text });
         await Chat.addMessage(chat.id, aiMsg);
 
+        // Photos supplement the custom attendant response; never replace its text/catalog.
+        try {
+          const photos = require('./productPhotoService');
+          const models = await prisma.productModel.findMany({ where: { company_id: companyId, is_active: true, image_url: { not: null } } });
+          for (const model of photos.select(models, resolvedText, aiMsg.text)) {
+            const current = await prisma.chat.findFirst({ where: { id: chat.id, company_id: companyId } });
+            if (!current?.ai_active || current.is_blocked || current.is_archived) break;
+            try {
+              const image = await photos.download(model.image_url);
+              const fresh = await prisma.chat.findFirst({ where: { id: chat.id, company_id: companyId } });
+              if (!fresh?.ai_active || fresh.is_blocked || fresh.is_archived) break;
+              await sendMessage(instanceId, Chat.getRemoteJid(fresh), { image, caption: model.name });
+              await Chat.addMessage(chat.id, { sender: 'attendant', text: model.name, media_type: 'image', media_url: model.image_url, timestamp: new Date(), is_ai: true });
+            } catch (error) {
+              console.warn(`[ProductPhoto:${model.id}]`, error.code || error.name);
+            }
+          }
+        } catch (error) {
+          console.warn('[ProductPhoto] Catalog lookup failed:', error.code || error.name);
+        }
+
         /*
          * Métrica de tempo de resposta.
          */
