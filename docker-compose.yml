@@ -23,6 +23,7 @@ services:
     environment:
       - PORT=3009
       - NODE_ENV=production
+      - WHATSAPP_LOG_LEVEL=${WHATSAPP_LOG_LEVEL:-silent}
       - JWT_SECRET=${JWT_SECRET}
       - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:?Defina DB_PASSWORD no .env}@db:5432/adapterconnect?schema=public
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}

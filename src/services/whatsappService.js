@@ -186,7 +186,9 @@ async function startInstance(instanceId, companyId, token) {
       auth: state,
       printQRInTerminal: false,
       logger: pino({
-        level: 'silent'
+        level: ['silent', 'fatal', 'error', 'warn', 'info', 'debug', 'trace'].includes(process.env.WHATSAPP_LOG_LEVEL)
+          ? process.env.WHATSAPP_LOG_LEVEL
+          : 'silent'
       }),
       getMessage: async (key) => {
         if (!key?.id) return undefined;
