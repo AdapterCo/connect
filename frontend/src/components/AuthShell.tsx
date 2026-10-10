@@ -32,32 +32,40 @@ function ReplyTimer() {
 
 export default function AuthShell({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
-    <div className="grid min-h-screen bg-gray-900 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-      <main className="flex flex-col px-6 py-8 sm:px-12">
+    <div className="grid min-h-screen bg-gray-900 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      {/* Apresentacao a esquerda (telas largas); formulario a direita. */}
+      <aside className="hidden flex-col border-r border-gray-800 bg-gray-950 px-16 py-8 lg:flex">
         <div className="flex items-center gap-3">
           <BrandMark className="h-8 w-8" />
           <span className="font-semibold text-gray-50 [font-stretch:112.5%]">Adapter Connect</span>
         </div>
+        <div className="flex flex-1 flex-col justify-center gap-10">
+          <div className="max-w-md">
+            <p className="text-4xl font-semibold leading-tight text-gray-50 [font-stretch:118%]">
+              Nenhum cliente esperando sem resposta.
+            </p>
+            <p className="mt-4 text-gray-400">
+              Conversas do WhatsApp, funil de vendas e rodízio de vendedores no mesmo painel da loja.
+            </p>
+          </div>
+          <ReplyTimer />
+        </div>
+      </aside>
+
+      <main className="flex flex-col px-6 py-8 sm:px-12">
+        {/* No celular o painel da esquerda some: a marca fica acima do formulario. */}
+        <div className="flex items-center gap-3 lg:hidden">
+          <BrandMark className="h-8 w-8" />
+          <span className="font-semibold text-gray-50 [font-stretch:112.5%]">Adapter Connect</span>
+        </div>
         <div className="flex flex-1 items-center">
-          <div className="w-full max-w-sm py-12">
+          <div className="mx-auto w-full max-w-sm py-12">
             <h1 className="text-3xl font-semibold text-gray-50">{title}</h1>
             {description && <p className="mt-2 text-sm text-gray-400">{description}</p>}
             <div className="mt-8">{children}</div>
           </div>
         </div>
       </main>
-
-      <aside className="hidden flex-col justify-center gap-10 border-l border-gray-800 bg-gray-950 px-16 lg:flex">
-        <div className="max-w-md">
-          <p className="text-4xl font-semibold leading-tight text-gray-50 [font-stretch:118%]">
-            Nenhum cliente esperando sem resposta.
-          </p>
-          <p className="mt-4 text-gray-400">
-            Conversas do WhatsApp, funil de vendas e rodízio de vendedores no mesmo painel da loja.
-          </p>
-        </div>
-        <ReplyTimer />
-      </aside>
     </div>
   );
 }
