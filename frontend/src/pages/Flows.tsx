@@ -65,21 +65,21 @@ export default function Flows() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="page">
       <h2 className="mb-2 text-2xl font-bold">Fluxos de atendimento</h2>
       <p className="mb-6 max-w-3xl text-gray-400">
         Monte as perguntas e menus que captam as informações do cliente. O fluxo ativo atende toda conversa nova no WhatsApp;
         ao terminar, a IA (se ligada) ou um atendente assume. Apenas um fluxo fica ativo por vez.
       </p>
 
-      <form onSubmit={create} className="mb-6 flex max-w-xl gap-3 rounded-xl border border-gray-700 bg-gray-800 p-4">
+      <form onSubmit={create} className="mb-6 flex max-w-xl gap-3 rounded-lg border border-gray-700 bg-gray-800 p-4">
         <input
           value={name}
           onChange={(e) => setName(e.target.value.slice(0, 80))}
           placeholder="Nome do novo fluxo (ex.: Captação de leads)"
           className="flex-1 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
         />
-        <button type="submit" disabled={creating} className="rounded-lg bg-emerald-600 px-5 font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+        <button type="submit" disabled={creating} className="rounded-lg bg-indigo-500 px-5 font-medium text-gray-950 hover:bg-indigo-400 disabled:opacity-50">
           {creating ? 'Criando...' : '+ Novo fluxo'}
         </button>
       </form>
@@ -93,7 +93,7 @@ export default function Flows() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {flows.map(flow => (
-            <div key={flow.id} className="rounded-xl border border-gray-700 bg-gray-800 p-4">
+            <div key={flow.id} className="rounded-lg border border-gray-700 bg-gray-800 p-4">
               <div className="mb-2 flex items-start justify-between gap-2">
                 <h3 className="font-bold text-white">{flow.name}</h3>
                 <span className={`rounded px-2 py-1 text-xs font-medium ${flow.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-600/40 text-gray-300'}`}>
@@ -104,11 +104,11 @@ export default function Flows() {
                 {flow.node_count} {flow.node_count === 1 ? 'nó' : 'nós'} · atualizado em {new Date(flow.updated_at).toLocaleString('pt-BR')}
               </p>
               <div className="flex gap-2">
-                <Link to={`/fluxos/${flow.id}`} className="flex-1 rounded bg-indigo-600 px-3 py-2 text-center text-sm font-medium text-white hover:bg-indigo-700">Editar</Link>
+                <Link to={`/fluxos/${flow.id}`} className="flex-1 rounded bg-indigo-500 px-3 py-2 text-center text-sm font-medium text-gray-950 hover:bg-indigo-400">Editar</Link>
                 <button type="button" onClick={() => toggle(flow)} className="rounded border border-gray-600 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700">
                   {flow.is_active ? 'Desativar' : 'Ativar'}
                 </button>
-                <button type="button" onClick={() => remove(flow)} className="rounded border border-gray-600 px-3 py-2 text-sm text-gray-400 hover:bg-gray-700" aria-label={`Excluir ${flow.name}`}>🗑️</button>
+                <button type="button" onClick={() => remove(flow)} className="rounded border border-gray-600 px-3 py-2 text-sm text-gray-400 hover:bg-gray-700" aria-label={`Excluir ${flow.name}`}>Excluir</button>
               </div>
             </div>
           ))}

@@ -31,7 +31,7 @@ export default function FlowAnswers({ chatId, refreshKey }: { chatId: string; re
   return (
     <div className="border-b border-gray-700 bg-gray-800/60 px-4 py-2 text-sm">
       <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center justify-between text-left">
-        <span className="font-medium text-gray-200">🔀 Fluxo “{info.flow_name}” · <span className="text-gray-400">{STATUS_LABELS[info.status] || info.status}</span></span>
+        <span className="font-medium text-gray-200">Fluxo “{info.flow_name}” · <span className="text-gray-400">{STATUS_LABELS[info.status] || info.status}</span></span>
         <span className="text-gray-400">{open ? '▾' : '▸'}</span>
       </button>
       {open && (

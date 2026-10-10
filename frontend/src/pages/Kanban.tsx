@@ -109,7 +109,7 @@ export default function Kanban() {
         {board.columns.map(column => {
           const cards = leads.filter(chat => (!manager || ((!tag || chat.tags.some(t => t.toLowerCase().includes(tag.toLowerCase()))) && (!sellerFilter || chat.assigned_to === sellerFilter) && (!from || new Date(chat.created_at) >= new Date(from + 'T00:00:00')) && (!to || new Date(chat.created_at) <= new Date(to + 'T23:59:59')))) && (placements.get(chat.id) || chat.status) === column.id);
           const collapsed = collapsedColumns.includes(column.id);
-          return <section key={column.id} className={`${collapsed ? 'w-16 min-w-16' : 'w-80 min-w-72'} shrink-0 flex flex-col min-h-0 bg-gray-800 border border-gray-700 rounded-xl p-3`}>
+          return <section key={column.id} className={`${collapsed ? 'w-16 min-w-16' : 'w-80 min-w-72'} shrink-0 flex flex-col min-h-0 bg-gray-800 border border-gray-700 rounded-lg p-3`}>
             <header className="shrink-0 pb-3 space-y-2">
               <div className={`flex gap-2 items-center ${collapsed ? 'flex-col' : ''}`}>
                 <button aria-label={`${collapsed ? 'Expandir' : 'Recolher'} coluna ${column.name}`} aria-expanded={!collapsed} title={collapsed ? 'Expandir coluna' : 'Recolher coluna'} onClick={() => toggleColumn(column.id)} className="text-indigo-300 rounded px-1">{collapsed ? '+' : '−'}</button>

@@ -77,19 +77,19 @@ export default function SuperAdmin() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="page">
       <h2 className="text-2xl font-bold mb-6">Painel Super Admin</h2>
 
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => setTab('companies')}
-          className={`px-4 py-2 rounded-lg font-medium ${tab === 'companies' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300'}`}
+          className={`px-4 py-2 rounded-lg font-medium ${tab === 'companies' ? 'bg-indigo-500 text-gray-950' : 'bg-gray-700 text-gray-300'}`}
         >
           Empresas ({companies.length})
         </button>
         <button
           onClick={() => setTab('plans')}
-          className={`px-4 py-2 rounded-lg font-medium ${tab === 'plans' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300'}`}
+          className={`px-4 py-2 rounded-lg font-medium ${tab === 'plans' ? 'bg-indigo-500 text-gray-950' : 'bg-gray-700 text-gray-300'}`}
         >
           Planos ({plans.length})
         </button>
@@ -99,14 +99,14 @@ export default function SuperAdmin() {
         <div>
           <button
             onClick={() => setShowCompanyForm(!showCompanyForm)}
-            className="mb-4 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700"
+            className="mb-4 px-4 py-2 bg-indigo-500 text-gray-950 rounded-lg font-medium hover:bg-indigo-400"
           >
-            {showCompanyForm ? 'Cancelar' : '➕ Nova Empresa'}
+            {showCompanyForm ? 'Cancelar' : 'Nova Empresa'}
           </button>
 
           {showCompanyForm && <CompanyForm plans={plans} onClose={() => setShowCompanyForm(false)} onSave={fetchCompanies} />}
 
-          <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+          <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-700/50">
                 <tr>
@@ -173,16 +173,16 @@ export default function SuperAdmin() {
         <div>
           <button
             onClick={() => { setShowPlanForm(!showPlanForm); setEditingPlan(null); }}
-            className="mb-4 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700"
+            className="mb-4 px-4 py-2 bg-indigo-500 text-gray-950 rounded-lg font-medium hover:bg-indigo-400"
           >
-            {showPlanForm ? 'Cancelar' : '➕ Novo Plano'}
+            {showPlanForm ? 'Cancelar' : 'Novo Plano'}
           </button>
 
           {showPlanForm && <PlanForm plan={editingPlan} onClose={() => { setShowPlanForm(false); setEditingPlan(null); }} onSave={() => { fetchPlans(); setShowPlanForm(false); }} />}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {plans.map(plan => (
-              <div key={plan.id} className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+              <div key={plan.id} className="bg-gray-800 border border-gray-700 rounded-lg p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-bold text-white">{plan.name}</h3>
                   <span className={`px-2 py-1 rounded text-xs ${plan.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
@@ -208,9 +208,7 @@ export default function SuperAdmin() {
                   <button
                     onClick={() => handleDeletePlan(plan.id)}
                     className="px-3 py-2 border border-red-500/30 text-red-400 rounded text-sm hover:bg-red-500/10"
-                  >
-                    🗑️
-                  </button>
+                  >Excluir</button>
                 </div>
               </div>
             ))}
@@ -245,7 +243,7 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
   };
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-4 max-w-lg">
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-4 max-w-lg">
       <h3 className="font-bold text-white mb-4">Nova Empresa</h3>
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
       <div className="space-y-3">
@@ -254,14 +252,14 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
           placeholder="Nome da Empresa"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+          className="input"
         />
         <input
           type="text"
           placeholder="Slug (ex: minha-empresa)"
           value={formData.slug}
           onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+          className="input"
         />
         <select
           value={formData.plan_id}
@@ -281,14 +279,14 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
           placeholder="Nome do Admin"
           value={formData.admin_name}
           onChange={(e) => setFormData({ ...formData, admin_name: e.target.value })}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+          className="input"
         />
         <input
           type="text"
           placeholder="Username do Admin"
           value={formData.admin_username}
           onChange={(e) => setFormData({ ...formData, admin_username: e.target.value })}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+          className="input"
         />
         <input
           type="email"
@@ -296,7 +294,7 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
           maxLength={254}
           value={formData.admin_email}
           onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+          className="input"
         />
         <input
           type="password"
@@ -305,11 +303,11 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
           maxLength={128}
           value={formData.admin_password}
           onChange={(e) => setFormData({ ...formData, admin_password: e.target.value })}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+          className="input"
         />
         <button
           onClick={handleSubmit}
-          className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700"
+          className="w-full bg-indigo-500 text-gray-950 py-2 rounded-lg font-medium hover:bg-indigo-400"
         >
           Criar Empresa
         </button>
@@ -344,7 +342,7 @@ function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; on
   };
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-4 max-w-md">
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-4 max-w-md">
       <h3 className="font-bold text-white mb-4">{plan ? 'Editar Plano' : 'Novo Plano'}</h3>
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
       <div className="space-y-3">
@@ -353,7 +351,7 @@ function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; on
           placeholder="Nome do Plano"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+          className="input"
         />
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -405,7 +403,7 @@ function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; on
         </label>
         <button
           onClick={handleSubmit}
-          className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700"
+          className="w-full bg-indigo-500 text-gray-950 py-2 rounded-lg font-medium hover:bg-indigo-400"
         >
           {plan ? 'Atualizar' : 'Criar'} Plano
         </button>

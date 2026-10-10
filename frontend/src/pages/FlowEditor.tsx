@@ -211,7 +211,7 @@ function Editor() {
           type="button"
           onClick={save}
           disabled={saving}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+          className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-indigo-400 disabled:opacity-50"
         >
           {saving ? 'Salvando...' : 'Salvar'}
         </button>
@@ -219,7 +219,7 @@ function Editor() {
 
       <div className="flex min-h-0 flex-1">
         <aside className="w-56 shrink-0 space-y-2 overflow-y-auto border-r border-gray-700 bg-gray-900 p-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Tipos de nó</h3>
+          <h3 className="text-xs font-semibold text-gray-400">Tipos de nó</h3>
           {PALETTE.map(type => {
             const meta = NODE_META[type];
             return (
@@ -232,7 +232,7 @@ function Editor() {
                 className={`w-full rounded-lg border bg-gray-800 px-3 py-2 text-left hover:bg-gray-700 ${meta.accent}`}
                 title="Clique ou arraste para o canvas"
               >
-                <span className={`block text-sm font-semibold ${meta.title}`}>{meta.icon} {meta.label}</span>
+                <span className={`flex items-center gap-2 text-sm font-semibold ${meta.title}`}><meta.icon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />{meta.label}</span>
                 <span className="block text-[11px] text-gray-400">{meta.description}</span>
               </button>
             );

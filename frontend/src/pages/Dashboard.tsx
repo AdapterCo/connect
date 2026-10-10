@@ -1,12 +1,35 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../stores/appStore';
 import { useAuthStore } from '../stores/authStore';
 import { kanbanLeads } from '../utils/kanbanLeads';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import type { Chat } from '../types';
+
+// Etapas do funil, na ordem em que o cliente percorre.
+const STAGES: { status: Chat['status']; label: string; hint: string }[] = [
+  { status: 'iniciada', label: 'Iniciada', hint: 'Primeiro contato' },
+  { status: 'interesse em compra', label: 'Interesse em compra', hint: 'No rodízio de vendedores' },
+  { status: 'encaminhados', label: 'Encaminhados', hint: 'Com vendedor definido' },
+  { status: 'em atendimento', label: 'Em atendimento', hint: 'Negociação em andamento' },
+  { status: 'finalizada', label: 'Finalizada', hint: 'Venda concluída ou encerrada' }
+];
+
+// A partir deste tempo de espera o cliente aparece em destaque (ambar).
+const LONG_WAIT_MS = 5 * 60 * 1000;
+
+function waitingLabel(since: string, now: number) {
+  const minutes = Math.max(0, Math.floor((now - new Date(since).getTime()) / 60000));
+  if (minutes < 1) return 'agora';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours} h ${minutes % 60} min` : `${Math.floor(hours / 24)} d`;
+}
 
 export default function Dashboard() {
-  const { chats, logs, fetchChats, fetchLogs } = useAppStore();
+  const { chats, logs, fetchChats, fetchLogs, selectChat } = useAppStore();
   const isManager = useAuthStore((state) => ['admin', 'supervisor'].includes(state.user?.role ?? ''));
+  const navigate = useNavigate();
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     fetchChats();
@@ -14,93 +37,117 @@ export default function Dashboard() {
     if (isManager) fetchLogs();
   }, [fetchChats, fetchLogs, isManager]);
 
-  const totalChats = chats.length;
-  const activeChats = kanbanLeads(chats);
-  const iniciadaCount = activeChats.filter(c => c.status === 'iniciada').length;
-  const interesseCount = activeChats.filter(c => c.status === 'interesse em compra').length;
-  const finalizadaCount = activeChats.filter(c => c.status === 'finalizada').length;
-  const encaminhadosCount = activeChats.filter(c => c.status === 'encaminhados').length;
-  const atendimentoCount = activeChats.filter(c => c.status === 'em atendimento').length;
+  // Atualiza os tempos de espera a cada 30 segundos.
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  const chartData = [
-    { name: 'Iniciada', value: iniciadaCount, fill: '#6366f1' },
-    { name: 'Interesse', value: interesseCount, fill: '#f59e0b' },
-    { name: 'Encaminhados', value: encaminhadosCount, fill: '#a78bfa' },
-    { name: 'Em atendimento', value: atendimentoCount, fill: '#38bdf8' },
-    { name: 'Finalizada', value: finalizadaCount, fill: '#10b981' },
-  ];
+  const leads = kanbanLeads(chats);
+  const counts = Object.fromEntries(STAGES.map(stage => [stage.status, leads.filter(chat => chat.status === stage.status).length]));
+  const inFunnel = leads.length;
 
-  const recentLogs = logs.slice(0, 10);
+  const waiting = leads
+    .filter(chat => chat.waiting_since && chat.status !== 'finalizada')
+    .sort((a, b) => new Date(a.waiting_since!).getTime() - new Date(b.waiting_since!).getTime())
+    .slice(0, 8);
 
-  return (
-    <div className="h-full overflow-y-auto p-6">
-      <h2 className="text-2xl font-bold mb-6">Dashboard</h2>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard icon="💬" label="Total de Chats" value={totalChats} color="indigo" />
-        <StatCard icon="➕" label="Status: Iniciada" value={iniciadaCount} color="blue" />
-        <StatCard icon="🛒" label="Interesse de Compra" value={interesseCount} color="amber" />
-        <StatCard icon="E" label="Encaminhados" value={encaminhadosCount} color="indigo" />
-        <StatCard icon="A" label="Em atendimento" value={atendimentoCount} color="blue" />
-        <StatCard icon="✅" label="Conversas finalizadas" value={finalizadaCount} color="green" />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-          <h3 className="text-lg font-semibold mb-4">Etapas das conversas</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="name" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
-                />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-          <h3 className="text-lg font-semibold mb-4">Últimas Ações</h3>
-          <div className="space-y-3 max-h-64 overflow-y-auto">
-            {recentLogs.length === 0 ? (
-              <p className="text-gray-500 text-sm">Nenhum log registrado.</p>
-            ) : (
-              recentLogs.map((log, index) => (
-                <div key={index} className="flex gap-3 text-sm">
-                  <span className="text-gray-500 whitespace-nowrap">
-                    {new Date(log.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  <span className="text-gray-300">{log.message}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ icon, label, value, color }: { icon: string; label: string; value: number; color: string }) {
-  const colorClasses: Record<string, string> = {
-    indigo: 'bg-indigo-500/10 text-indigo-400',
-    blue: 'bg-blue-500/10 text-blue-400',
-    amber: 'bg-amber-500/10 text-amber-400',
-    green: 'bg-green-500/10 text-green-400',
+  const openChat = (chatId: string) => {
+    selectChat(chatId);
+    navigate('/chats');
   };
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex items-center gap-4">
-      <div className={`w-12 h-12 rounded-lg flex items-center justify-center text-2xl ${colorClasses[color]}`}>
-        {icon}
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-white">{value}</p>
-        <p className="text-sm text-gray-400">{label}</p>
+    <div className="page space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="page-title">Painel</h1>
+          <p className="page-lead">
+            {inFunnel} {inFunnel === 1 ? 'conversa' : 'conversas'} no funil agora, de {chats.length} no total.
+          </p>
+        </div>
+        <Link to="/chats" className="btn btn-secondary">Abrir conversas</Link>
+      </header>
+
+      <section aria-labelledby="funnel-title">
+        <h2 id="funnel-title" className="sr-only">Funil de vendas</h2>
+        <ol className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-gray-700 bg-gray-700 lg:grid-cols-5">
+          {STAGES.map((stage) => {
+            const count = counts[stage.status] || 0;
+            const share = inFunnel ? count / inFunnel : 0;
+            const signal = stage.status === 'interesse em compra';
+            return (
+              <li
+                key={stage.status}
+                className={`relative bg-gray-800 p-5 ${signal ? 'shadow-[inset_0_2px_0_var(--color-signal)]' : ''}`}
+              >
+                <p className={`text-sm ${signal ? 'font-medium text-indigo-300' : 'text-gray-300'}`}>{stage.label}</p>
+                <p className="mt-3 text-4xl font-semibold tabular-nums text-gray-50 [font-stretch:112.5%]">{count}</p>
+                <p className="mt-1 text-xs text-gray-400">{stage.hint}</p>
+                <div className="mt-4 h-1 rounded-full bg-gray-700" aria-hidden="true">
+                  <div className={`h-1 rounded-full ${signal ? 'bg-indigo-500' : 'bg-gray-400'}`} style={{ width: `${share * 100}%` }} />
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+
+      <div className={`grid gap-6 ${isManager ? 'lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]' : ''}`}>
+        <section className="panel" aria-labelledby="waiting-title">
+          <div className="flex items-baseline justify-between border-b border-gray-700 px-5 py-4">
+            <h2 id="waiting-title" className="font-semibold text-gray-50">Aguardando resposta</h2>
+            <span className="text-xs text-gray-400">Mais antigos primeiro</span>
+          </div>
+          {waiting.length === 0 ? (
+            <p className="px-5 py-8 text-sm text-gray-400">Ninguém esperando. Novas mensagens de clientes aparecem aqui.</p>
+          ) : (
+            <ul className="divide-y divide-gray-700">
+              {waiting.map(chat => (
+                <li key={chat.id}>
+                  <button
+                    type="button"
+                    onClick={() => openChat(chat.id)}
+                    className="flex w-full items-center gap-4 px-5 py-3 text-left hover:bg-gray-700/40"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-700 text-sm font-semibold text-gray-100">
+                      {chat.client_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-gray-50">{chat.client_name}</p>
+                      <p className="truncate text-xs text-gray-400">{STAGES.find(stage => stage.status === chat.status)?.label}</p>
+                    </div>
+                    <span className={`shrink-0 text-sm tabular-nums ${now - new Date(chat.waiting_since!).getTime() >= LONG_WAIT_MS ? 'font-medium text-indigo-300' : 'text-gray-400'}`}>
+                      {waitingLabel(chat.waiting_since!, now)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {isManager && (
+          <section className="panel" aria-labelledby="activity-title">
+            <div className="border-b border-gray-700 px-5 py-4">
+              <h2 id="activity-title" className="font-semibold text-gray-50">Atividade recente</h2>
+            </div>
+            {logs.length === 0 ? (
+              <p className="px-5 py-8 text-sm text-gray-400">As ações da equipe e do sistema aparecem aqui.</p>
+            ) : (
+              <ul className="max-h-96 space-y-3 overflow-y-auto px-5 py-4">
+                {logs.slice(0, 12).map((log, index) => (
+                  <li key={index} className="flex gap-3 text-sm">
+                    <time className="w-12 shrink-0 text-gray-500" dateTime={new Date(log.timestamp).toISOString()}>
+                      {new Date(log.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </time>
+                    <span className="text-gray-300">{log.message}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );

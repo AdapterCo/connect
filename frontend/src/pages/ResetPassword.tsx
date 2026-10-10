@@ -1,6 +1,7 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import api, { apiErrorMessage } from '../services/api';
+import AuthShell from '../components/AuthShell';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -53,92 +54,62 @@ export default function ResetPassword() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+        <p className="text-sm text-gray-400">Verificando o link...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-900">
-      <div className="w-full max-w-md p-6">
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 shadow-2xl">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <span className="text-3xl font-bold text-white">A</span>
-            </div>
-            <h2 className="text-2xl font-bold text-white">Adapter Connect</h2>
+    <AuthShell
+      title={step === 'success' ? 'Senha alterada' : 'Criar nova senha'}
+      description={step === 'reset' ? `Olá, ${userName}. A nova senha precisa ter pelo menos 8 caracteres.` : undefined}
+    >
+      {error && step !== 'success' && (
+        <div role="alert" className="mb-5 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>
+      )}
+
+      {step === 'reset' && (
+        <form onSubmit={handleReset} className="space-y-5">
+          <div>
+            <label htmlFor="reset-password" className="mb-1.5 block text-sm font-medium text-gray-200">Nova senha</label>
+            <input
+              id="reset-password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              minLength={8}
+              maxLength={128}
+              required
+              autoComplete="new-password"
+              className="input"
+            />
           </div>
+          <div>
+            <label htmlFor="reset-confirm" className="mb-1.5 block text-sm font-medium text-gray-200">Repita a nova senha</label>
+            <input
+              id="reset-confirm"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              className="input"
+            />
+          </div>
+          <button type="submit" className="btn btn-primary w-full py-2.5">Salvar nova senha</button>
+        </form>
+      )}
 
-          {error && step !== 'success' && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg mb-4 text-sm">
-              {error}
-            </div>
-          )}
-
-          {step === 'reset' && (
-            <>
-              <p className="text-gray-400 text-sm mb-6 text-center">
-                Olá, <span className="text-white font-medium">{userName}</span>. Defina sua nova senha.
-              </p>
-              <form onSubmit={handleReset} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Nova Senha</label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
-                    required
-                    className="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Confirmar Nova Senha</label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repita a senha"
-                    required
-                    className="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity"
-                >
-                  Alterar Senha
-                </button>
-              </form>
-            </>
-          )}
-
-          {step === 'success' && (
-            <div className="text-center">
-              <div className="text-4xl mb-4">✅</div>
-              <h3 className="text-lg font-bold text-white mb-2">Senha Alterada!</h3>
-              <p className="text-gray-400 text-sm mb-6">Sua senha foi alterada com sucesso.</p>
-              <Link
-                to="/login"
-                className="block w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity text-center"
-              >
-                Ir para Login
-              </Link>
-            </div>
-          )}
-
-          {error && step !== 'reset' && step !== 'success' && (
-            <div className="text-center">
-              <Link
-                to="/login"
-                className="text-indigo-400 hover:text-indigo-300 text-sm"
-              >
-                Voltar ao Login
-              </Link>
-            </div>
-          )}
+      {step === 'success' && (
+        <div className="space-y-6">
+          <p className="text-sm text-gray-300">Use a nova senha para entrar. As sessões abertas em outros aparelhos foram encerradas.</p>
+          <Link to="/login" className="btn btn-primary w-full py-2.5">Ir para o login</Link>
         </div>
-      </div>
-    </div>
+      )}
+
+      {error && step !== 'reset' && step !== 'success' && (
+        <Link to="/forgot-password" className="btn btn-secondary w-full">Pedir um novo link</Link>
+      )}
+    </AuthShell>
   );
 }

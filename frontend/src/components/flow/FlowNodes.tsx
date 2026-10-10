@@ -13,7 +13,7 @@ function Card({ type, selected, children, target = true }: { type: FlowNodeType;
     <div className={`w-60 rounded-lg border bg-gray-800 text-left shadow-lg ${meta.accent} ${selected ? 'ring-2 ring-indigo-400' : ''}`}>
       {target && <Handle type="target" position={Position.Top} className={handleClass} />}
       <div className={`flex items-center gap-2 border-b border-gray-700 px-3 py-2 text-sm font-semibold ${meta.title}`}>
-        <span aria-hidden="true">{meta.icon}</span>
+        <meta.icon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
         {meta.label}
       </div>
       <div className="px-3 py-2 text-xs text-gray-300">{children}</div>
@@ -48,7 +48,7 @@ export function QuestionNode({ data, selected }: NodeProps<FlowCanvasNode>) {
     <Card type="question" selected={selected}>
       <Preview text={data.text} empty="Escreva a pergunta" />
       <p className="mt-1 text-[11px] text-gray-400">
-        {data.variable ? <>Salva em <span className="font-mono text-orange-300">{data.variable}</span></> : 'Defina a variável'}
+        {data.variable ? <>Salva em <span className="font-mono text-cyan-300">{data.variable}</span></> : 'Defina a variável'}
         {' · '}{INPUT_LABELS[data.input || 'text']}
       </p>
       <Handle type="source" position={Position.Bottom} className={handleClass} />
@@ -79,7 +79,7 @@ export function ConditionNode({ data, selected }: NodeProps<FlowCanvasNode>) {
   return (
     <Card type="condition" selected={selected}>
       {data.variable
-        ? <p>Se <span className="font-mono text-yellow-300">{data.variable}</span> {operator}{hasValue ? <> “{data.value}”</> : null}</p>
+        ? <p>Se <span className="font-mono text-blue-300">{data.variable}</span> {operator}{hasValue ? <> “{data.value}”</> : null}</p>
         : <p className="italic text-gray-500">Configure a condição</p>}
       <div className="mt-2 flex justify-between text-[11px] font-semibold">
         <span className="text-emerald-400">Sim</span>

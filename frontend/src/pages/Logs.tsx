@@ -125,7 +125,7 @@ export default function Logs() {
         </select>
       </div>
 
-      <div className="flex-1 bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+      <div className="flex-1 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
         <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
           <table className="w-full text-sm">
             <thead className="bg-gray-700/50 sticky top-0">

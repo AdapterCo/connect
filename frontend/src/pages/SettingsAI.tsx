@@ -109,14 +109,14 @@ export default function SettingsAI() {
         model: modelMap[provider]
       });
       if (res.data.ok) {
-        setTestResult({ ok: true, message: `✅ Chave válida! Modelo: ${res.data.model}` });
+        setTestResult({ ok: true, message: `Chave válida! Modelo: ${res.data.model}` });
       } else {
-        setTestResult({ ok: false, message: `❌ Erro da API: ${res.data.error}` });
+        setTestResult({ ok: false, message: `Erro da API: ${res.data.error}` });
       }
     } catch (err) {
       setTestResult({
         ok: false,
-        message: `❌ ${apiErrorMessage(err, err instanceof Error ? err.message : 'Erro ao testar chave.')}`
+        message: `${apiErrorMessage(err, err instanceof Error ? err.message : 'Erro ao testar chave.')}`
       });
     } finally {
       setTestingKey(false);
@@ -126,10 +126,10 @@ export default function SettingsAI() {
   const showTestButton = ['openai', 'gemini', 'groq'].includes(formData.ai_provider);
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="page">
       <h2 className="text-2xl font-bold mb-6">Configurações de IA</h2>
 
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-3xl">
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 max-w-3xl">
         <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-700">
           <div>
             <h3 className="font-bold text-white">Ativar Atendente Virtual (IA)</h3>
@@ -266,7 +266,7 @@ export default function SettingsAI() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
+              className="flex-1 bg-indigo-500 text-gray-950 py-3 rounded-lg font-medium hover:bg-indigo-400 disabled:opacity-50"
             >
               {saving ? 'Salvando...' : 'Salvar Configurações'}
             </button>
@@ -278,7 +278,7 @@ export default function SettingsAI() {
                 className="px-5 bg-gray-700 text-white py-3 rounded-lg font-medium hover:bg-gray-600 disabled:opacity-50 border border-gray-600 whitespace-nowrap"
                 title="Testa a chave com uma chamada real à API do provedor selecionado"
               >
-                {testingKey ? 'Testando...' : '🔌 Testar Chave'}
+                {testingKey ? 'Testando...' : 'Testar Chave'}
               </button>
             )}
           </div>
