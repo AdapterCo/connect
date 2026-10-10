@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { Link } from 'react-router-dom';
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
 import api, { apiErrorMessage } from '../services/api';
+import BrandMark from '../components/BrandMark';
 
 interface Plan {
   id: string;
@@ -34,15 +35,16 @@ interface PixPayment {
 }
 
 const planDescriptions: Record<string, string> = {
-  Essencial: 'Para pequenos times que precisam organizar atendimento e vendas no WhatsApp.',
-  Profissional: 'Para operacoes em crescimento com mais usuarios, conexoes e rotinas comerciais.',
-  Empresarial: 'Para empresas com varios atendentes, maior volume e operacao multiatendimento.'
+  Essencial: 'Para lojas pequenas organizarem atendimento e vendas no WhatsApp.',
+  Profissional: 'Para lojas em crescimento, com mais vendedores e números de WhatsApp.',
+  Empresarial: 'Para lojas com vários vendedores, mais números de WhatsApp e maior volume de conversas.'
 };
 
+// Todos os planos tem os mesmos recursos; mudam apenas os limites.
 const planFeatures: Record<string, string[]> = {
-  Essencial: ['CRM de conversas', 'Atendente virtual com IA', 'Kanban de vendas', 'Cobrancas via Mercado Pago'],
-  Profissional: ['Tudo do Essencial', 'Mais conexoes WhatsApp', 'Gestao de equipe', 'Relatorios operacionais'],
-  Empresarial: ['Tudo do Profissional', 'Limites ampliados', 'Catalogo e pedidos', 'Controle avancado por equipe']
+  Essencial: ['Conversas do WhatsApp em um painel', 'Assistente de IA e fluxos automáticos', 'Funil de vendas e rodízio de vendedores', 'Registro de vendas e comissões'],
+  Profissional: ['Tudo do Essencial', 'Mais usuários e números de WhatsApp', 'Mais produtos no catálogo'],
+  Empresarial: ['Tudo do Profissional', 'Limites ampliados para equipes grandes']
 };
 
 function normalizeSlug(value: string) {
@@ -71,27 +73,27 @@ function getMercadoPagoClientErrorMessage(err: unknown) {
   const raw = `${message} ${serialized}`.toLowerCase();
 
   if (raw.includes('public key not found') || raw.includes('"status":404') || raw.includes('status: 404')) {
-    return 'A chave publica do Mercado Pago nao foi encontrada. Verifique a variavel PLATFORM_MP_PUBLIC_KEY na VPS e publique novamente.';
+    return 'O pagamento com cartão está indisponível no momento. Use o Pix ou tente novamente mais tarde.';
   }
 
   if (raw.includes('form could not be submitted')) {
-    return 'Nao foi possivel validar os dados do cartao. Confira as informacoes e tente novamente.';
+    return 'Não foi possível validar os dados do cartão. Confira as informações e tente novamente.';
   }
 
   if (raw.includes('failed to fetch') || raw.includes('cors') || raw.includes('err_failed')) {
-    return 'Nao foi possivel comunicar com o Mercado Pago para validar o cartao. Tente novamente ou use Pix.';
+    return 'Não foi possível validar o cartão agora. Tente novamente ou use o Pix.';
   }
 
-  return message || 'Erro ao carregar checkout de cartao.';
+  return message || 'Não foi possível carregar o pagamento com cartão.';
 }
 
 function getCardPaymentFailureMessage(payment: { payment_status_detail?: string } | null | undefined) {
   const detail = payment?.payment_status_detail;
   if (detail) {
-    return `Nao foi possivel realizar a cobranca (${detail}). Verifique os dados do cartao ou tente outro metodo de pagamento.`;
+    return `O pagamento não foi aprovado (${detail}). Confira os dados do cartão ou use outra forma de pagamento.`;
   }
 
-  return 'Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.';
+  return 'O pagamento não foi aprovado. Confira os dados do cartão ou use outra forma de pagamento.';
 }
 
 // Dados entregues pelo formulario de cartao do Mercado Pago (Card Payment Brick).
@@ -102,6 +104,14 @@ interface CardFormData {
   installments?: number;
   payer?: { email?: string; identification?: { type?: string; number?: string } };
 }
+
+// O que acontece com cada mensagem de cliente, na ordem.
+const LEAD_PATH = [
+  { title: 'O cliente chama no WhatsApp', text: 'Todas as linhas da loja chegam em um só painel.' },
+  { title: 'Fluxo ou IA responde na hora', text: 'Perguntas, menus e o catálogo de produtos qualificam o interesse.' },
+  { title: 'O rodízio entrega ao vendedor disponível', text: 'Sem resposta em 60 segundos, a conversa passa para o próximo.' },
+  { title: 'A venda é registrada', text: 'Metas, comissões e relatórios por vendedor ficam atualizados.' }
+];
 
 export default function Landing() {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -144,7 +154,7 @@ export default function Landing() {
           setCardSdkReady(true);
         }
       })
-      .catch(() => setError('Nao foi possivel carregar os planos e configuracoes de pagamento.'))
+      .catch(() => setError('Não foi possível carregar os planos. Recarregue a página.'))
       .finally(() => setLoadingPlans(false));
   }, []);
 
@@ -267,12 +277,12 @@ export default function Landing() {
     if (!checkoutInvoice) return;
 
     setCreatingPayment(true);
-    setCardNotice('Processando pagamento com seguranca. Aguarde, nao feche esta pagina.');
+    setCardNotice('Processando o pagamento. Não feche esta página.');
     setCardError('');
 
     try {
       if (!cardData?.token || !cardData?.payment_method_id) {
-        const message = 'Nao foi possivel validar os dados do cartao. Confira as informacoes e tente novamente.';
+        const message = 'Não foi possível validar os dados do cartão. Confira as informações e tente novamente.';
         setCardNotice('');
         setCardError(message);
         setCardReady(false);
@@ -303,7 +313,7 @@ export default function Landing() {
         throw new Error(message);
       }
     } catch (err) {
-      const message = apiErrorMessage(err, getMercadoPagoClientErrorMessage(err) || 'Nao foi possivel realizar a cobranca. Verifique os dados do cartao ou tente outro metodo de pagamento.');
+      const message = apiErrorMessage(err, getMercadoPagoClientErrorMessage(err) || 'O pagamento não foi aprovado. Confira os dados do cartão ou use outra forma de pagamento.');
       setCardNotice('');
       setCardError(message);
       setCardReady(false);
@@ -334,46 +344,45 @@ export default function Landing() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="border-b border-gray-800 bg-gray-950/90">
+    <div className="min-h-screen bg-gray-900 text-gray-100">
+      <header className="border-b border-gray-800">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-xl font-bold">A</div>
-            <div>
-              <h1 className="text-lg font-bold">Adapter Connect</h1>
-              <p className="text-xs text-gray-400">CRM WhatsApp com IA</p>
-            </div>
+            <BrandMark className="h-9 w-9" />
+            <p className="font-semibold text-gray-50 [font-stretch:112.5%]">Adapter Connect</p>
           </div>
-          <Link to="/login" className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-200 hover:bg-gray-800">
-            Entrar
-          </Link>
+          <Link to="/login" className="btn btn-secondary">Entrar no painel</Link>
         </div>
       </header>
 
       <main>
         <section className="mx-auto grid max-w-6xl gap-10 px-6 py-12 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
-          <div>
-            <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-indigo-300">Atendimento, vendas e cobrancas em um painel</p>
-            <h2 className="max-w-3xl text-4xl font-bold leading-tight md:text-5xl">
-              Organize conversas do WhatsApp, automatize respostas e acompanhe seu funil comercial.
-            </h2>
-            <p className="mt-5 max-w-2xl text-lg text-gray-300">
-              O Adapter Connect centraliza chats, pipeline, atendentes, IA, pedidos, relatorios e recebimentos por Mercado Pago para sua operacao vender e atender melhor.
+          <div className="lg:pt-6">
+            <h1 className="max-w-2xl text-4xl font-semibold leading-[1.1] text-gray-50 [font-stretch:118%] md:text-5xl">
+              Cada cliente do WhatsApp respondido e encaminhado ao vendedor certo.
+            </h1>
+            <p className="mt-5 max-w-xl text-lg text-gray-300">
+              Para lojas de motos e celulares: conversas, funil de vendas, rodízio entre vendedores e registro de vendas no mesmo painel.
             </p>
-            <div className="mt-8 grid gap-3 sm:grid-cols-2">
-              {['IA para atendimento automatico', 'CRM e kanban de oportunidades', 'Gestao de equipe e limites por plano', 'Checkout Pix, credito e debito'].map((feature) => (
-                <div key={feature} className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-3 text-sm text-gray-200">
-                  {feature}
-                </div>
+            {/* O caminho de um lead e uma sequencia real: por isso a numeracao. */}
+            <ol className="mt-10 max-w-xl space-y-5 border-l border-gray-700 pl-6">
+              {LEAD_PATH.map((step, index) => (
+                <li key={step.title} className="relative">
+                  <span className="absolute -left-[37px] flex h-6 w-6 items-center justify-center rounded-full border border-gray-600 bg-gray-900 text-xs tabular-nums text-gray-300">
+                    {index + 1}
+                  </span>
+                  <p className="font-medium text-gray-50">{step.title}</p>
+                  <p className="text-sm text-gray-400">{step.text}</p>
+                </li>
               ))}
-            </div>
+            </ol>
           </div>
 
-          <div className="rounded-xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
+          <div className="rounded-lg border border-gray-700 bg-gray-800 p-6">
             {!checkoutInvoice ? (
               <form onSubmit={handleSubmit}>
-                <h3 className="text-xl font-bold">Criar conta e ativar plano</h3>
-                <p className="mt-1 text-sm text-gray-400">Escolha um plano, cadastre a empresa e pague no checkout seguro.</p>
+                <h2 className="text-xl font-semibold text-gray-50">Criar a conta da loja</h2>
+                <p className="mt-1 text-sm text-gray-400">Escolha o plano, cadastre a loja e o administrador. O acesso é liberado assim que o pagamento é confirmado.</p>
 
                 {error && (
                   <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -389,11 +398,11 @@ export default function Landing() {
                       onChange={(event) => setSelectedPlanId(event.target.value)}
                       required
                       disabled={loadingPlans}
-                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none"
+                      className="input py-2.5"
                     >
                       {plans.map((plan) => (
                         <option key={plan.id} value={plan.id}>
-                          {plan.name} - {formatCurrency(plan.price)}/mes
+                          {plan.name} - {formatCurrency(plan.price)}/mês
                         </option>
                       ))}
                     </select>
@@ -401,37 +410,37 @@ export default function Landing() {
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">Empresa</label>
-                      <input value={companyName} onChange={(event) => handleCompanyNameChange(event.target.value)} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Nome da loja</label>
+                      <input value={companyName} onChange={(event) => handleCompanyNameChange(event.target.value)} required className="input py-2.5" />
                     </div>
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">Slug</label>
-                      <input value={companySlug} onChange={(event) => setCompanySlug(normalizeSlug(event.target.value))} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Identificador da loja (sem espaços)</label>
+                      <input value={companySlug} onChange={(event) => setCompanySlug(normalizeSlug(event.target.value))} required className="input py-2.5" />
                     </div>
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">Nome do admin</label>
-                      <input value={adminName} onChange={(event) => setAdminName(event.target.value)} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Seu nome</label>
+                      <input value={adminName} onChange={(event) => setAdminName(event.target.value)} required className="input py-2.5" />
                     </div>
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">Usuario</label>
-                      <input value={adminUsername} onChange={(event) => setAdminUsername(event.target.value.toLowerCase())} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Usuário de acesso</label>
+                      <input value={adminUsername} onChange={(event) => setAdminUsername(event.target.value.toLowerCase())} required className="input py-2.5" />
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">E-mail para pagamento</label>
-                    <input type="email" value={payerEmail} onChange={(event) => setPayerEmail(event.target.value)} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                    <label className="mb-2 block text-sm font-medium text-gray-300">E-mail (pagamento e recuperação de senha)</label>
+                    <input type="email" value={payerEmail} onChange={(event) => setPayerEmail(event.target.value)} required className="input py-2.5" />
                   </div>
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-300">Senha</label>
-                    <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} minLength={8} maxLength={128} required className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none" />
+                    <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} minLength={8} maxLength={128} required className="input py-2.5" />
                   </div>
 
-                  <button type="submit" disabled={submitting || !selectedPlanId} className="rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                  <button type="submit" disabled={submitting || !selectedPlanId} className="rounded-lg bg-indigo-500 px-4 py-3 font-semibold text-gray-950 hover:bg-indigo-400 disabled:opacity-50">
                     {submitting ? 'Criando conta...' : 'Continuar para pagamento'}
                   </button>
                 </div>
@@ -442,18 +451,18 @@ export default function Landing() {
                 <div className="mt-3 rounded-lg border border-gray-700 bg-gray-800 p-4 text-sm text-gray-300">
                   <div className="flex justify-between">
                     <span>Plano</span>
-                    <strong className="text-white">{checkoutInvoice.plan?.name || selectedPlan?.name}</strong>
+                    <strong className="text-gray-50">{checkoutInvoice.plan?.name || selectedPlan?.name}</strong>
                   </div>
                   <div className="mt-2 flex justify-between">
                     <span>Total</span>
-                    <strong className="text-white">{formatCurrency(checkoutInvoice.amount)}</strong>
+                    <strong className="text-gray-50">{formatCurrency(checkoutInvoice.amount)}</strong>
                   </div>
                 </div>
 
                 {paymentApproved ? (
                   <div className="mt-5 rounded-lg border border-green-500/30 bg-green-500/10 p-4 text-green-300">
                     Pagamento aprovado. Sua conta foi ativada.
-                    <Link to="/login" className="mt-3 block rounded-lg bg-green-600 px-4 py-2 text-center font-semibold text-white hover:bg-green-700">
+                    <Link to="/login" className="mt-3 block rounded-lg bg-indigo-500 px-4 py-2 text-center font-semibold text-gray-950 hover:bg-indigo-400">
                       Ir para login
                     </Link>
                   </div>
@@ -466,22 +475,22 @@ export default function Landing() {
                     )}
 
                     <div className="mt-5 grid grid-cols-2 gap-2 rounded-lg bg-gray-800 p-1">
-                      <button type="button" onClick={() => setPaymentMethod('pix')} className={`rounded-md px-3 py-2 text-sm font-semibold ${paymentMethod === 'pix' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+                      <button type="button" onClick={() => setPaymentMethod('pix')} className={`rounded-md px-3 py-2 text-sm font-semibold ${paymentMethod === 'pix' ? 'bg-indigo-500 text-gray-950' : 'text-gray-300 hover:bg-gray-700'}`}>
                         Pix
                       </button>
-                      <button type="button" onClick={() => setPaymentMethod('card')} className={`rounded-md px-3 py-2 text-sm font-semibold ${paymentMethod === 'card' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+                      <button type="button" onClick={() => setPaymentMethod('card')} className={`rounded-md px-3 py-2 text-sm font-semibold ${paymentMethod === 'card' ? 'bg-indigo-500 text-gray-950' : 'text-gray-300 hover:bg-gray-700'}`}>
                         Credito ou Debito
                       </button>
                     </div>
 
                     {paymentMethod === 'pix' && (
                       <div className="mt-5 space-y-4">
-                        <button type="button" onClick={createPixPayment} disabled={creatingPayment || !checkoutConfig?.pix_enabled} className="w-full rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                        <button type="button" onClick={createPixPayment} disabled={creatingPayment || !checkoutConfig?.pix_enabled} className="w-full rounded-lg bg-indigo-500 px-4 py-3 font-semibold text-gray-950 hover:bg-indigo-400 disabled:opacity-50">
                           {creatingPayment ? 'Gerando Pix...' : 'Gerar QR Code Pix'}
                         </button>
 
                         {!checkoutConfig?.pix_enabled && (
-                          <p className="text-sm text-red-300">Mercado Pago da plataforma nao configurado.</p>
+                          <p className="text-sm text-red-300">Pagamento indisponível no momento. Tente novamente mais tarde.</p>
                         )}
 
                         {pixPayment && (
@@ -497,7 +506,7 @@ export default function Landing() {
                                 </button>
                               </>
                             )}
-                            <p className="mt-3 text-xs text-gray-400">Apos pagar, a plataforma valida automaticamente e libera o login.</p>
+                            <p className="mt-3 text-xs text-gray-400">Assim que o pagamento é confirmado, o acesso é liberado automaticamente.</p>
                           </div>
                         )}
                       </div>
@@ -557,8 +566,8 @@ export default function Landing() {
         <section className="mx-auto max-w-6xl px-6 pb-14">
           <div className="mb-5 flex items-end justify-between gap-4">
             <div>
-              <h3 className="text-2xl font-bold">Planos disponiveis</h3>
-              <p className="mt-1 text-gray-400">Sem plano free. A conta e ativada apos pagamento confirmado.</p>
+              <h2 className="text-2xl font-semibold text-gray-50">Planos</h2>
+              <p className="mt-1 text-gray-400">Assinatura mensal. Sem fidelidade.</p>
             </div>
             {selectedPlan && <span className="hidden text-sm text-indigo-300 sm:inline">Selecionado: {selectedPlan.name}</span>}
           </div>
@@ -569,21 +578,21 @@ export default function Landing() {
                 type="button"
                 key={plan.id}
                 onClick={() => setSelectedPlanId(plan.id)}
-                className={`rounded-xl border p-5 text-left transition ${
-                  selectedPlanId === plan.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-800 bg-gray-900 hover:border-gray-600'
+                className={`rounded-lg border p-5 text-left transition ${
+                  selectedPlanId === plan.id ? 'border-indigo-500 bg-indigo-500/[0.06]' : 'border-gray-700 bg-gray-800 hover:border-gray-500'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h4 className="text-lg font-bold">{plan.name}</h4>
+                    <h3 className="text-lg font-semibold text-gray-50">{plan.name}</h3>
                     <p className="mt-2 min-h-12 text-sm text-gray-400">{planDescriptions[plan.name] || 'Plano para uso mensal do Adapter Connect.'}</p>
                   </div>
                   <span className="rounded-md bg-gray-800 px-2 py-1 text-xs text-gray-300">{plan.max_products} produtos</span>
                 </div>
-                <p className="mt-5 text-3xl font-bold">{formatCurrency(plan.price)}</p>
-                <p className="text-sm text-gray-500">por mes para testes</p>
+                <p className="mt-5 text-3xl font-semibold tabular-nums text-gray-50 [font-stretch:112.5%]">{formatCurrency(plan.price)}</p>
+                <p className="text-sm text-gray-500">por mês</p>
                 <ul className="mt-5 space-y-2 text-sm text-gray-300">
-                  <li>{plan.max_instances} conexao(oes) WhatsApp</li>
+                  <li>{plan.max_instances} {plan.max_instances === 1 ? 'número' : 'números'} de WhatsApp</li>
                   <li>{plan.max_products} produtos cadastrados</li>
                   {(planFeatures[plan.name] || []).map((feature) => (
                     <li key={feature}>{feature}</li>

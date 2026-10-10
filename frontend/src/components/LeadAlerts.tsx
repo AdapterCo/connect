@@ -25,5 +25,5 @@ export default function LeadAlerts() {
     } catch (error) { setFeedback(error instanceof Error ? error.message : 'Não foi possível ativar notificações.'); }
     finally { setBusy(false); }
   };
-  return <div><button disabled={busy} onClick={enable} className="text-xs text-indigo-300 px-4 py-2">{enabled ? 'Desativar alertas' : 'Ativar som e notificações'}</button>{feedback && <p role="status" className="text-xs text-amber-300 px-4 pb-2">{feedback}</p>}</div>;
+  return <div><button disabled={busy} onClick={enable} className="w-full border-t border-gray-700 px-5 py-3 text-left text-xs text-gray-400 hover:text-gray-100 disabled:opacity-50">{enabled ? 'Desativar alertas' : 'Ativar som e notificações'}</button>{feedback && <p role="status" className="px-5 pb-3 text-xs text-indigo-300">{feedback}</p>}</div>;
 }

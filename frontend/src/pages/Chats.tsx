@@ -115,7 +115,7 @@ export default function Chats() {
                   <option value="">Todas Conexões</option>
                   {instances.map((inst) => (
                     <option key={inst.id} value={inst.id}>
-                      📱 {inst.name}
+                      {inst.name}
                     </option>
                   ))}
                 </select>
@@ -125,16 +125,16 @@ export default function Chats() {
             <div className="flex items-center gap-2 text-xs">
               {userInstance ? (
                 <span className="flex-1 px-2.5 py-1.5 rounded-lg bg-indigo-900/40 border border-indigo-700/60 text-indigo-300 font-medium truncate">
-                  📱 Linha: {userInstance.name}
+                  Linha: {userInstance.name}
                 </span>
               ) : (
                 <span className="flex-1 px-2.5 py-1.5 rounded-lg bg-gray-700/50 border border-gray-600 text-gray-300 font-medium truncate">
-                  📱 Linha Geral
+                  Linha Geral
                 </span>
               )}
               {userSector && (
                 <span className="px-2.5 py-1.5 rounded-lg bg-gray-700/50 border border-gray-600 text-gray-300 font-medium whitespace-nowrap">
-                  🏷️ {userSector === 'sales' ? 'Vendas' : userSector === 'support' ? 'Suporte' : 'Financeiro'}
+                  {userSector === 'sales' ? 'Vendas' : userSector === 'support' ? 'Suporte' : 'Financeiro'}
                 </span>
               )}
             </div>
@@ -152,10 +152,10 @@ export default function Chats() {
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`flex-1 py-2 rounded font-medium transition-colors ${
-                  filter === f ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'
+                  filter === f ? 'bg-indigo-500 text-gray-950' : 'text-gray-400 hover:bg-gray-700'
                 }`}
               >
-                {f === 'my' ? 'Meus' : f === 'queue' ? 'Fila' : f === 'favorite' ? '★' : f === 'archive' ? '📁' : 'Todos'}
+                {f === 'my' ? 'Meus' : f === 'queue' ? 'Fila' : f === 'favorite' ? 'Favoritas' : f === 'archive' ? 'Arquivadas' : 'Todos'}
               </button>
             ))}
           </div>
@@ -213,15 +213,15 @@ export default function Chats() {
               <div className="flex gap-2 mb-2">
                 <button
                   onClick={() => setIsNote(false)}
-                  className={`px-3 py-1 rounded text-xs font-medium ${!isNote ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400'}`}
+                  className={`px-3 py-1 rounded text-xs font-medium ${!isNote ? 'bg-indigo-500 text-gray-950' : 'bg-gray-700 text-gray-400'}`}
                 >
-                  💬 Mensagem
+                  Mensagem
                 </button>
                 <button
                   onClick={() => setIsNote(true)}
                   className={`px-3 py-1 rounded text-xs font-medium ${isNote ? 'bg-amber-600 text-white' : 'bg-gray-700 text-gray-400'}`}
                 >
-                  📝 Nota Interna
+                  Nota Interna
                 </button>
               </div>
               <div className="flex gap-2">
@@ -235,7 +235,7 @@ export default function Chats() {
                 />
                 <button
                   onClick={handleSend}
-                  className="px-6 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700"
+                  className="px-6 bg-indigo-500 text-gray-950 rounded-lg font-medium hover:bg-indigo-400"
                 >
                   Enviar
                 </button>
@@ -248,7 +248,6 @@ export default function Chats() {
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-500">
             <div className="text-center">
-              <p className="text-4xl mb-4">💬</p>
               <p>Selecione uma conversa na lista lateral</p>
             </div>
           </div>
@@ -289,7 +288,7 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: Chat; isSelected: b
           {chat.instance && (
             <div className="mt-1">
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 border border-gray-600 text-indigo-300 inline-block truncate max-w-full">
-                📱 {chat.instance.name}
+                {chat.instance.name}
               </span>
             </div>
           )}
@@ -342,7 +341,7 @@ function ChatHeader({ chat, users, currentUser, onUpdateStatus, onAssign, onTogg
               <span>+{chat.client_phone}</span>
               {chat.instance && (
                 <span className="text-xs px-2 py-0.5 rounded bg-gray-700 text-indigo-300 border border-gray-600">
-                  📱 {chat.instance.name}
+                  {chat.instance.name}
                 </span>
               )}
             </div>
@@ -379,7 +378,7 @@ function ChatHeader({ chat, users, currentUser, onUpdateStatus, onAssign, onTogg
           </select>
         ) : (
           <span className="bg-gray-700/60 border border-gray-600 rounded px-2.5 py-1 text-gray-300">
-            👤 {users.find(u => u.id === chat.assigned_to)?.name || currentUser.name}
+            {users.find(u => u.id === chat.assigned_to)?.name || currentUser.name}
           </span>
         )}
 
@@ -396,7 +395,7 @@ function ChatHeader({ chat, users, currentUser, onUpdateStatus, onAssign, onTogg
           </select>
         ) : (
           <span className="bg-gray-700/60 border border-gray-600 rounded px-2.5 py-1 text-gray-300">
-            🏷️ {chat.sector === 'sales' ? 'Vendas' : chat.sector === 'support' ? 'Suporte' : chat.sector === 'finance' ? 'Financeiro' : 'Sem Setor'}
+            {chat.sector === 'sales' ? 'Vendas' : chat.sector === 'support' ? 'Suporte' : chat.sector === 'finance' ? 'Financeiro' : 'Sem Setor'}
           </span>
         )}
 
@@ -487,7 +486,7 @@ function MessageBubble({ message }: { message: Message }) {
             ? 'bg-amber-500/20 border border-amber-500/30 text-amber-200'
             : isClient
             ? 'bg-gray-700 text-white'
-            : 'bg-indigo-600 text-white'
+            : 'bg-indigo-500 text-gray-950'
         }`}
       >
         {message.media_url && (
@@ -503,7 +502,7 @@ function MessageBubble({ message }: { message: Message }) {
             )}
             {message.media_type === 'document' && (
               <a href={message.media_url} target="_blank" rel="noopener noreferrer" className="text-blue-300 underline">
-                📎 {message.file_name || 'Documento'}
+                {message.file_name || 'Documento'}
               </a>
             )}
           </div>
@@ -511,8 +510,8 @@ function MessageBubble({ message }: { message: Message }) {
         <p className="text-sm whitespace-pre-wrap">{message.text}</p>
         <p className={`text-xs mt-1 ${isNote ? 'text-amber-400' : 'text-gray-400'}`}>
           {new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-          {message.is_ai && ' 🤖'}
-          {isNote && ' 📝'}
+          {message.is_ai && ' · IA'}
+          {isNote && ' · nota interna'}
         </p>
       </div>
     </div>

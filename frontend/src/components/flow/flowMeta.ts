@@ -1,22 +1,23 @@
+import { CircleStop, GitFork, ListOrdered, MessageSquareText, MessageCircleQuestion, Play, UserRoundCheck, type LucideIcon } from 'lucide-react';
 import type { FlowNodeData, FlowNodeType } from '../../types';
 
 export interface NodeMeta {
   label: string;
   description: string;
-  icon: string;
+  icon: LucideIcon;
   // Classes Tailwind: borda do cartao e cor do titulo.
   accent: string;
   title: string;
 }
 
 export const NODE_META: Record<FlowNodeType, NodeMeta> = {
-  start: { label: 'Início', description: 'Ponto de entrada do fluxo', icon: '▶', accent: 'border-emerald-500/60', title: 'text-emerald-300' },
-  message: { label: 'Mensagem', description: 'Envia uma mensagem de texto', icon: '💬', accent: 'border-sky-500/60', title: 'text-sky-300' },
-  menu: { label: 'Menu', description: 'Apresenta opções numeradas', icon: '☰', accent: 'border-violet-500/60', title: 'text-violet-300' },
-  question: { label: 'Pergunta', description: 'Faz uma pergunta e guarda a resposta', icon: '?', accent: 'border-orange-500/60', title: 'text-orange-300' },
-  condition: { label: 'Condição', description: 'Verifica uma resposta e bifurca', icon: '⑂', accent: 'border-yellow-500/60', title: 'text-yellow-300' },
-  transfer: { label: 'Transferência', description: 'Transfere para um atendente humano', icon: '👤', accent: 'border-rose-500/60', title: 'text-rose-300' },
-  end: { label: 'Encerramento', description: 'Encerra o fluxo (a IA assume)', icon: '⏹', accent: 'border-gray-500/60', title: 'text-gray-300' }
+  start: { label: 'Início', description: 'Ponto de entrada do fluxo', icon: Play, accent: 'border-emerald-500/60', title: 'text-emerald-300' },
+  message: { label: 'Mensagem', description: 'Envia uma mensagem de texto', icon: MessageSquareText, accent: 'border-sky-500/60', title: 'text-sky-300' },
+  menu: { label: 'Menu', description: 'Apresenta opções numeradas', icon: ListOrdered, accent: 'border-violet-500/60', title: 'text-violet-300' },
+  question: { label: 'Pergunta', description: 'Faz uma pergunta e guarda a resposta', icon: MessageCircleQuestion, accent: 'border-cyan-500/60', title: 'text-cyan-300' },
+  condition: { label: 'Condição', description: 'Verifica uma resposta e bifurca', icon: GitFork, accent: 'border-blue-500/60', title: 'text-blue-300' },
+  transfer: { label: 'Transferência', description: 'Transfere para um atendente humano', icon: UserRoundCheck, accent: 'border-rose-500/60', title: 'text-rose-300' },
+  end: { label: 'Encerramento', description: 'Encerra o fluxo (a IA assume)', icon: CircleStop, accent: 'border-gray-500/60', title: 'text-gray-300' }
 };
 
 // Tipos disponiveis na paleta (o Inicio e unico e ja vem no fluxo).

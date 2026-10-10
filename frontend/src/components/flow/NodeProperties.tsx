@@ -17,7 +17,7 @@ interface Props {
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</span>
+      <span className="text-xs font-semibold text-gray-400">{label}</span>
       {children}
       {hint && <span className="block text-[11px] text-gray-500">{hint}</span>}
     </label>
@@ -76,7 +76,7 @@ export default function NodeProperties({ type, data, variables, onChange, onRemo
   return (
     <div className="space-y-4">
       <div>
-        <h3 className={`text-sm font-bold ${meta.title}`}>{meta.icon} {meta.label}</h3>
+        <h3 className={`flex items-center gap-2 text-sm font-bold ${meta.title}`}><meta.icon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />{meta.label}</h3>
         <p className="text-xs text-gray-400">{meta.description}</p>
       </div>
 
@@ -88,7 +88,7 @@ export default function NodeProperties({ type, data, variables, onChange, onRemo
         <>
           <MessageText data={data} onChange={onChange} label="Pergunta do menu" />
           <div className="space-y-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Opções</span>
+            <span className="text-xs font-semibold text-gray-400">Opções</span>
             {options.map((option, index) => (
               <div key={option.id} className="flex items-center gap-2">
                 <span className="w-5 text-sm text-gray-400">{index + 1}.</span>

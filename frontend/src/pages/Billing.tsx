@@ -114,7 +114,7 @@ export default function Billing() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="page">
       <h2 className="text-2xl font-bold mb-6">Faturamento</h2>
       {error && <p role="alert" className="text-red-300 mb-4">{error} <button onClick={loadData}>Tentar novamente</button></p>}
       <label className="block mb-4">E-mail do pagador <input type="email" value={payerEmail} onChange={event => setPayerEmail(event.target.value)} className="bg-gray-700 p-2 rounded" /></label>
@@ -126,7 +126,7 @@ export default function Billing() {
       {pix && <div className="mb-4"><img alt="QR Code Pix" className="w-56" src={'data:image/png;base64,' + pix.qr_code_base64} /><textarea aria-label="Pix copia e cola" readOnly value={pix.qr_code} className="bg-gray-700 w-full" /><button disabled={busy} onClick={confirm}>Verificar pagamento</button></div>}
 
       {planInfo && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
           <h3 className="text-lg font-bold text-white mb-4">Plano Atual</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
@@ -161,7 +161,7 @@ export default function Billing() {
         </div>
       )}
 
-      <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+      <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
         <div className="p-4 border-b border-gray-700">
           <h3 className="text-lg font-bold text-white">Histórico de Faturas</h3>
         </div>

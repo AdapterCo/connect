@@ -60,12 +60,12 @@ export default function WhatsApp() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="page">
       <h2 className="text-2xl font-bold mb-2">Conexões WhatsApp</h2>
       <p className="text-gray-400 mb-6">Cadastre e gerencie múltiplos chips de WhatsApp integrados ao CRM.</p>
 
       {isManager && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-6">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-6">
           <div className="flex flex-col sm:flex-row gap-3">
             <input
               type="text"
@@ -79,16 +79,16 @@ export default function WhatsApp() {
               onChange={(e) => setSelectedUserId(e.target.value)}
               className="bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
             >
-              <option value="">🏢 Geral da Empresa (Triagem)</option>
+              <option value="">Geral da Empresa (Triagem)</option>
               {users.map(u => (
-                <option key={u.id} value={u.id}>👤 {u.name} ({u.role})</option>
+                <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
               ))}
             </select>
             <button
               onClick={handleCreate}
-              className="px-6 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 whitespace-nowrap"
+              className="px-6 bg-indigo-500 text-gray-950 rounded-lg font-medium hover:bg-indigo-400 whitespace-nowrap"
             >
-              ➕ Adicionar Conexão
+              Adicionar Conexão
             </button>
           </div>
         </div>
@@ -96,7 +96,7 @@ export default function WhatsApp() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {instances.map(instance => (
-          <div key={instance.id} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+          <div key={instance.id} className="bg-gray-800 border border-gray-700 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-white">{instance.name}</h3>
               <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -109,7 +109,7 @@ export default function WhatsApp() {
             </div>
 
             {instance.phone && (
-              <p className="text-sm text-gray-400 mb-2">📱 +{instance.phone}</p>
+              <p className="text-sm text-gray-400 mb-2">+{instance.phone}</p>
             )}
 
             <div className="mb-3">
@@ -121,15 +121,15 @@ export default function WhatsApp() {
                     onChange={(e) => handleAssignUser(instance.id, e.target.value)}
                     className="w-full bg-gray-700/80 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="">🏢 Geral da Empresa</option>
+                    <option value="">Geral da Empresa</option>
                     {users.map(u => (
-                      <option key={u.id} value={u.id}>👤 {u.name}</option>
+                      <option key={u.id} value={u.id}>{u.name}</option>
                     ))}
                   </select>
                 </div>
               ) : (
                 <p className="text-xs text-gray-400">
-                  👤 Atendente: {users.find(u => u.id === instance.user_id)?.name || 'Geral da Empresa'}
+                  Atendente: {users.find(u => u.id === instance.user_id)?.name || 'Geral da Empresa'}
                 </p>
               )}
             </div>
@@ -138,7 +138,7 @@ export default function WhatsApp() {
               {instance.status !== 'open' ? (
                 <button
                   onClick={() => handleConnect(instance.id)}
-                  className="flex-1 px-3 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
+                  className="flex-1 px-3 py-2 bg-indigo-500 text-gray-950 rounded text-sm font-medium hover:bg-indigo-400"
                 >
                   Conectar
                 </button>
@@ -153,9 +153,7 @@ export default function WhatsApp() {
               <button
                 onClick={() => handleDelete(instance.id)}
                 className="px-3 py-2 border border-gray-600 text-gray-400 rounded text-sm hover:bg-gray-700"
-              >
-                🗑️
-              </button>
+              >Excluir</button>
             </div>
           </div>
         ))}
@@ -163,7 +161,7 @@ export default function WhatsApp() {
 
       {showQr && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 max-w-md w-full mx-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-white">Conectar WhatsApp</h3>
               <button onClick={() => setQrInstanceId(null)} className="text-gray-400 hover:text-white text-2xl">×</button>

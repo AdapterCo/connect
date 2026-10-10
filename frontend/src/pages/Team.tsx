@@ -106,21 +106,21 @@ export default function Team() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="page">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Gestão de Equipe</h2>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700"
+          className="px-4 py-2 bg-indigo-500 text-gray-950 rounded-lg font-medium hover:bg-indigo-400"
         >
-          {showForm ? 'Cancelar' : '➕ Novo Atendente'}
+          {showForm ? 'Cancelar' : 'Novo Atendente'}
         </button>
       </div>
 
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
 
       {showForm && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6 max-w-md">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6 max-w-md">
           <h3 className="font-bold text-white mb-4">Cadastrar Novo Atendente</h3>
           <div className="space-y-3">
             <input
@@ -128,14 +128,14 @@ export default function Team() {
               placeholder="Nome Completo"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+              className="input"
             />
             <input
               type="text"
               placeholder="Usuário (Login)"
               value={formData.username}
               onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+              className="input"
             />
             <input
               type="email"
@@ -143,14 +143,14 @@ export default function Team() {
               maxLength={254}
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+              className="input"
             />
             <input
               type="text"
               placeholder="WhatsApp / Telefone (ex: 21985080634)"
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+              className="input"
             />
             <input
               type="password"
@@ -159,7 +159,7 @@ export default function Team() {
               maxLength={128}
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+              className="input"
             />
             <div className="grid grid-cols-2 gap-2">
               <select
@@ -190,7 +190,7 @@ export default function Team() {
             </div>
             <button
               onClick={handleCreate}
-              className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700"
+              className="w-full bg-indigo-500 text-gray-950 py-2 rounded-lg font-medium hover:bg-indigo-400"
             >
               Cadastrar
             </button>
@@ -198,7 +198,7 @@ export default function Team() {
         </div>
       )}
 
-      <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+      <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-700/50">
             <tr>
@@ -225,7 +225,7 @@ export default function Team() {
                     return inst ? (
                       <div className="mt-1">
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-700 text-indigo-300 border border-gray-600 inline-block">
-                          📱 {inst.name}
+                          {inst.name}
                         </span>
                       </div>
                     ) : null;
@@ -256,17 +256,17 @@ export default function Team() {
                 </td>
                 <td className="px-4 py-3 text-right space-x-3">
                   {canEditSector() && (
-                    <button onClick={() => handleSector(user)} className="text-amber-400 hover:text-amber-300 text-sm">
+                    <button onClick={() => handleSector(user)} className="text-sm text-gray-300 hover:text-gray-50">
                       Setor
                     </button>
                   )}
                   {canEditPhone(user) && (
-                    <button onClick={() => handlePhone(user)} className="text-emerald-400 hover:text-emerald-300 text-sm">
+                    <button onClick={() => handlePhone(user)} className="text-sm text-gray-300 hover:text-gray-50">
                       WhatsApp
                     </button>
                   )}
                   {canEditEmail(user) && (
-                    <button onClick={() => handleEmail(user)} className="text-indigo-300 hover:text-indigo-200 text-sm">
+                    <button onClick={() => handleEmail(user)} className="text-sm text-gray-300 hover:text-gray-50">
                       E-mail
                     </button>
                   )}

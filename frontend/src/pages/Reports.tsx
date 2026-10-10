@@ -24,7 +24,7 @@ export default function Reports() {
   if (error) {
     return (
       <div className="h-full flex items-center justify-center p-6">
-        <div className="bg-gray-800 border border-red-500/40 rounded-xl p-6 max-w-md text-center">
+        <div className="bg-gray-800 border border-red-500/40 rounded-lg p-6 max-w-md text-center">
           <h2 className="text-lg font-bold text-white mb-2">Erro ao carregar relatorios</h2>
           <p className="text-sm text-red-300">{error}</p>
         </div>
@@ -48,7 +48,7 @@ export default function Reports() {
   ];
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="page">
       <button onClick={exportCsv} className="mb-4 bg-indigo-600 px-4 py-2 rounded">Exportar CSV</button>
       <h2 className="text-2xl font-bold mb-6">Relatórios e Métricas</h2>
 
@@ -60,7 +60,7 @@ export default function Reports() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
           <h3 className="font-bold text-white mb-4">Volume de Mensagens (7 dias)</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -76,7 +76,7 @@ export default function Reports() {
           </div>
         </div>
 
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
           <h3 className="font-bold text-white mb-4">Distribuição por Setor</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -93,7 +93,7 @@ export default function Reports() {
         </div>
       </div>
 
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
         <h3 className="font-bold text-white mb-4">Desempenho da Equipe</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -134,7 +134,7 @@ export default function Reports() {
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
       <p className="text-2xl font-bold text-white">{value}</p>
       <p className="text-sm text-gray-400">{label}</p>
     </div>

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import api, { apiErrorMessage } from '../services/api';
+import AuthShell from '../components/AuthShell';
 
 export default function ForgotPassword() {
   const [username, setUsername] = useState('');
@@ -25,73 +26,42 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-900">
-      <div className="w-full max-w-md p-6">
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 shadow-2xl">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <span className="text-3xl font-bold text-white">A</span>
-            </div>
-            <h2 className="text-2xl font-bold text-white">Recuperar Senha</h2>
-            <p className="text-gray-400 mt-2">Informe seu usuário ou e-mail para receber um link de recuperação</p>
-          </div>
+    <AuthShell
+      title={success ? 'Confira seu e-mail' : 'Recuperar acesso'}
+      description={success ? undefined : 'Informe seu usuário ou e-mail. Enviaremos um link para criar uma nova senha.'}
+    >
+      {error && (
+        <div role="alert" className="mb-5 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>
+      )}
 
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg mb-4 text-sm">
-              {error}
-            </div>
-          )}
-
-          {success ? (
-            <div className="text-center">
-              <div className="text-4xl mb-4">📧</div>
-              <h3 className="text-lg font-bold text-white mb-2">Solicitação Enviada!</h3>
-              <p className="text-gray-400 text-sm mb-4">
-                Se a conta existir e tiver e-mail cadastrado, enviamos um link válido por 1 hora. Sem e-mail cadastrado, peça ao administrador para cadastrar o seu e-mail na Gestão de Equipe.
-              </p>
-              <Link
-                to="/login"
-                className="text-indigo-400 hover:text-indigo-300 text-sm"
-              >
-                Voltar ao Login
-              </Link>
-            </div>
-          ) : (
-            <>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Usuário ou e-mail
-                  </label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Ex: admin ou voce@empresa.com"
-                    required
-                    className="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  {loading ? 'Processando...' : 'Gerar Link de Recuperação'}
-                </button>
-              </form>
-              <div className="mt-4 text-center">
-                <Link
-                  to="/login"
-                  className="text-indigo-400 hover:text-indigo-300 text-sm"
-                >
-                  Voltar ao Login
-                </Link>
-              </div>
-            </>
-          )}
+      {success ? (
+        <div className="space-y-6">
+          <p className="text-sm text-gray-300">
+            Se a conta existir e tiver e-mail cadastrado, o link chega em instantes e vale por 1 hora.
+            Sem e-mail cadastrado, peça ao administrador da loja para incluí-lo em Equipe.
+          </p>
+          <Link to="/login" className="btn btn-secondary w-full">Voltar para o login</Link>
         </div>
-      </div>
-    </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label htmlFor="forgot-identifier" className="mb-1.5 block text-sm font-medium text-gray-200">Usuário ou e-mail</label>
+            <input
+              id="forgot-identifier"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              autoFocus
+              className="input"
+            />
+          </div>
+          <button type="submit" disabled={loading} className="btn btn-primary w-full py-2.5">
+            {loading ? 'Enviando...' : 'Enviar link'}
+          </button>
+          <Link to="/login" className="block text-center text-sm text-indigo-300 hover:text-indigo-200">Voltar para o login</Link>
+        </form>
+      )}
+    </AuthShell>
   );
 }
