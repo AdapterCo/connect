@@ -96,6 +96,11 @@ Documentos historicos de auditoria: `SECURITY_AUDIT_REPORT.md`, `AUDIT_IMPLEMENT
 | `DOMAIN` | Dominio publico de producao |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Servidor de e-mail para o link de recuperacao de senha (sem `SMTP_HOST` o e-mail nao e enviado) |
 | `APP_URL` | URL publica do painel usada nos links de e-mail (padrao `https://DOMAIN`) |
+| `MEDIA_QUOTA_MB` | Limite de midia por empresa em MB (padrao 1024) |
+| `VISION_ENABLED` | Analise de imagens recebidas com a chave Gemini da empresa (`false` por padrao) |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Chaves das notificacoes push; sem elas um par e gerado e salvo no banco |
+| `UPLOAD_DIR` | Pasta das midias (padrao `public/uploads`) |
+| `WHATSAPP_LOG_LEVEL` | Nivel de log da conexao WhatsApp (padrao `silent`) |
 | `RETENTION_ENABLED` | Ativa rotina de retencao LGPD/GDPR (`false` por padrao) |
 | `AUDIT_LOG_RETENTION_DAYS` | Retencao de logs de auditoria |
 | `SYSTEM_LOG_RETENTION_DAYS` | Retencao de logs operacionais |

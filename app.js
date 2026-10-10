@@ -64,11 +64,12 @@ const corsOptions = {
   credentials: true
 };
 
-app.use((req, res, next) => {
-  const json = res.json.bind(res);
-  res.json = data => json(JSON.parse(JSON.stringify(data, (_key, value) => value && typeof value === 'object' && value.constructor?.name === 'Decimal' ? Number(value) : value), (key, value) => ['price', 'amount', 'down_payment'].includes(key) && typeof value === 'string' && /^\d+(\.\d+)?$/.test(value) ? Number(value) : value));
-  next();
-});
+// Valores monetarios Decimal do Prisma chegam ao JSON como texto (toJSON); estes
+// campos vao como numero. Feito na propria serializacao, sem converter duas vezes.
+const NUMERIC_JSON_KEYS = new Set(['price', 'amount', 'down_payment']);
+app.set('json replacer', (key, value) => (
+  NUMERIC_JSON_KEYS.has(key) && typeof value === 'string' && /^\d+(\.\d+)?$/.test(value) ? Number(value) : value
+));
 app.use(cors(corsOptions));
 app.use(requestId);
 app.use(noStoreApi);

@@ -16,45 +16,63 @@ function cleanMimeType(mimeType) {
   return 'audio/ogg';
 }
 
-const busy = new Set();
-async function transcribeAudio(mediaInfo, companyId) {
-  if (busy.has(companyId)) return null;
-  busy.add(companyId);
-  try { return await transcribeAudioImpl(mediaInfo, companyId); } finally { busy.delete(companyId); }
+// Ate MAX_CONCURRENT transcricoes por empresa; as demais aguardam numa fila
+// curta em vez de serem descartadas. Acima de MAX_QUEUED o audio fica sem texto.
+const MAX_CONCURRENT = 3;
+const MAX_QUEUED = 20;
+const slots = new Map();
+
+function acquireSlot(companyId) {
+  const slot = slots.get(companyId) || { running: 0, waiting: [] };
+  slots.set(companyId, slot);
+  if (slot.running < MAX_CONCURRENT) {
+    slot.running++;
+    return Promise.resolve(true);
+  }
+  if (slot.waiting.length >= MAX_QUEUED) return Promise.resolve(false);
+  return new Promise(resolve => slot.waiting.push(() => resolve(true)));
 }
-async function transcribeAudioImpl(mediaInfo, companyId) {
+
+function releaseSlot(companyId) {
+  const slot = slots.get(companyId);
+  if (!slot) return;
+  const next = slot.waiting.shift();
+  if (next) return next();
+  slot.running--;
+  if (!slot.running) slots.delete(companyId);
+}
+
+async function transcribeAudio(mediaInfo, companyId) {
   if (!mediaInfo || mediaInfo.mediaType !== 'audio') return null;
+  if (!await acquireSlot(companyId)) {
+    console.warn('[GeminiAudio] Fila de transcricao cheia; audio sem transcricao.');
+    return null;
+  }
+  try { return await transcribeAudioImpl(mediaInfo, companyId); } finally { releaseSlot(companyId); }
+}
 
+// O audio do cliente so vai para o Gemini quando a empresa ativou a IA e
+// cadastrou a propria chave: nada de chave da plataforma nem envio sem opcao.
+async function companyGeminiConfig(companyId) {
+  const settings = await prisma.settings.findFirst({ where: { company_id: companyId } });
+  if (!settings?.ai_enabled || !settings.gemini_key) return null;
+  let key = '';
+  try { key = decrypt(settings.gemini_key) || ''; } catch { return null; }
+  return key ? { key, model: settings.gemini_model || 'gemini-2.5-flash' } : null;
+}
+
+async function transcribeAudioImpl(mediaInfo, companyId) {
   try {
-    let geminiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_KEY || '';
-    let preferredModel = 'gemini-2.5-flash';
-
-    if (prisma.settings) {
-      try {
-        const settings = await prisma.settings.findFirst({
-          where: { company_id: companyId }
-        });
-        if (settings?.gemini_key) {
-          try {
-            const decrypted = decrypt(settings.gemini_key);
-            if (decrypted) geminiKey = decrypted;
-          } catch {}
-        }
-        if (settings?.gemini_model) {
-          preferredModel = settings.gemini_model;
-        }
-      } catch {}
-    }
-
-    if (!geminiKey) {
-      return null;
-    }
+    const config = await companyGeminiConfig(companyId);
+    if (!config) return null;
+    const geminiKey = config.key;
+    const preferredModel = config.model;
 
     let buffer = mediaInfo.buffer;
     if (!buffer && mediaInfo.savePath && fs.existsSync(mediaInfo.savePath)) {
       buffer = await fs.promises.readFile(mediaInfo.savePath);
     } else if (!buffer && mediaInfo.fileName) {
-      const filePath = path.join(UPLOAD_DIR, mediaInfo.fileName);
+      const filePath = path.join(UPLOAD_DIR, path.basename(String(mediaInfo.fileName)));
       if (fs.existsSync(filePath)) {
         buffer = await fs.promises.readFile(filePath);
       }

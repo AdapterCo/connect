@@ -54,7 +54,6 @@ export default function SalesCatalog({ mode = 'sales' }: { mode?: 'products' | '
     api.get<{ items: Unit[] }>('/products', { params: { page: 1, status: 'stock', model_id: sale.model_id, search: sale.serial } }).then(({ data }) => { if (!disposed) setUnits(data.items); }).catch(() => {});
     return () => { disposed = true; };
   }, [catalog, sale.model_id, sale.serial]);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- State changes after the HTTP requests resolve.
   useEffect(() => { load().catch(error => setMessage(apiErrorMessage(error, 'Erro ao carregar produtos.'))); }, [load]);
   async function run(work: () => Promise<unknown>, success: string) {
     setBusy(true); setMessage('');

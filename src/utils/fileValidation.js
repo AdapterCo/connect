@@ -24,7 +24,7 @@ async function validateUpload(req, res, next) {
   try {
     const buffer = await fs.promises.readFile(req.file.path);
     if (!validContent(buffer, req.file.mimetype)) throw new Error('Conteudo do arquivo nao corresponde ao tipo informado.');
-    await require('../services/mediaStorageService').withMediaLock(req.user.company_id, () => require('../services/mediaStorageService').checkQuota(req.user.company_id));
+    await require('../services/mediaStorageService').withMediaLock(req.user.company_id, () => require('../services/mediaStorageService').checkQuota(req.user.company_id, req.file.size, { stored: true }));
     next();
   } catch (error) {
     await fs.promises.unlink(req.file.path).catch(() => {});
