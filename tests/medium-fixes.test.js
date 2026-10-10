@@ -82,7 +82,7 @@ test('messages, schedules and tags reject malformed input', async () => {
 test('AI settings validate types and prompt size', async () => {
   seed();
   assert.equal((await call('a1', '/api/settings', 'POST', { ai_enabled: 'false' })).status, 400);
-  assert.equal((await call('a1', '/api/settings', 'POST', { system_prompt: 'x'.repeat(8001) })).status, 400);
+  assert.equal((await call('a1', '/api/settings', 'POST', { system_prompt: 'x'.repeat(20001) })).status, 400);
   assert.equal((await call('a1', '/api/settings', 'POST', { openai_key: { key: 1 } })).status, 400);
 });
 

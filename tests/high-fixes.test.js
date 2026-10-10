@@ -118,24 +118,40 @@ test('password reset stores only a hash and a token works once', async () => {
   assert.equal((await call('/api/password-reset/reset', { method: 'POST', body: { token, newPassword: 'outra-senha' } })).status, 400);
 });
 
-test('AI status defaults to the first stage and handoff flag is kept', () => {
-  assert.deepEqual(normalizePaymentCopy({ message: 'Oi', status: 'qualquer' }), { message: 'Oi', status: 'iniciada', disable_ai: false });
+test('AI status defaults to the first stage and only an explicit flag turns the AI off', () => {
+  assert.deepEqual(normalizePaymentCopy({ message: 'Oi', status: 'qualquer' }), {
+    message: 'Oi',
+    status: 'iniciada',
+    intent: 'question',
+    qualification: { product: null, variant: null, payment: null },
+    request_human: false,
+    disable_ai: false
+  });
   assert.equal(normalizePaymentCopy({ message: 'Oi', status: 'interesse em compra' }).status, 'interesse em compra');
   assert.equal(normalizePaymentCopy({ message: 'Vou chamar alguem', disable_ai: true }).disable_ai, true);
-  assert.equal(normalizePaymentCopy({ message: 'Ok', status: 'transbordo' }).disable_ai, true);
-  assert.equal(normalizePaymentCopy({ message: 'Vou encaminhar', request_human: true }).disable_ai, true);
+
+  // "transbordo" nao e mais um status aceito: cai na primeira etapa sem desligar a IA.
+  const legacy = normalizePaymentCopy({ message: 'Ok', status: 'transbordo' });
+  assert.equal(legacy.status, 'iniciada');
+  assert.equal(legacy.disable_ai, false);
+
+  // Pedir um humano solicita o encaminhamento, mas a IA continua ativa.
+  const handoff = normalizePaymentCopy({ message: 'Vou encaminhar', request_human: true });
+  assert.equal(handoff.request_human, true);
+  assert.equal(handoff.disable_ai, false);
 });
 
 test('AI receives attendance state and instructions to keep answering without repeating a transfer', () => {
   assert.equal(humanAttendanceContext({ status: 'iniciada' }), '');
   const assigned = humanAttendanceContext({ status: 'interesse em compra', assigned_to: 's1' });
-  assert.match(assigned, /JA foi encaminhado/);
-  assert.match(assigned, /Continue respondendo duvidas gerais/);
-  assert.match(assigned, /nao troque o vendedor/);
-  assert.match(assigned, /IA permanece ativa/);
+  assert.match(assigned, /JÁ foi encaminhado/);
+  assert.match(assigned, /Continue respondendo dúvidas gerais/);
+  assert.match(assigned, /Não troque o vendedor/);
+  assert.match(assigned, /A IA continua ativa/);
   const waiting = humanAttendanceContext({ status: 'interesse em compra', assigned_to: null });
-  assert.match(waiting, /JA esta na fila/);
-  assert.match(waiting, /peca para aguardar/);
+  assert.match(waiting, /JÁ está na fila/);
+  assert.match(waiting, /Não faça um novo encaminhamento/);
+  assert.match(waiting, /Não invente tempo de espera/);
 });
 
 test('AI history excludes internal notes and does not repeat the last message', () => {
