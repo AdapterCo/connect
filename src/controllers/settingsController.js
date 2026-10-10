@@ -6,7 +6,7 @@ const OpenAI = require('openai');
 
 const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
 // Limite das instrucoes enviadas a cada chamada de IA (custo e tamanho do prompt).
-const MAX_SYSTEM_PROMPT = 20000;
+const MAX_SYSTEM_PROMPT = 120000;
 const AI_PROVIDERS = new Set(['mock', 'gemini', 'openai', 'groq']);
 
 const VALID_OPENAI_MODELS = new Set(['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-mini', 'o1']);

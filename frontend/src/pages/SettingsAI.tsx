@@ -254,7 +254,7 @@ export default function SettingsAI() {
             <label className="block text-sm font-medium text-gray-300 mb-2">Prompt de Sistema</label>
             <textarea
               value={formData.system_prompt}
-              maxLength={20000}
+              maxLength={120000}
               onChange={(e) => updateFormData({ system_prompt: e.target.value })}
               rows={10}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 font-mono text-sm focus:outline-none focus:border-indigo-500"
