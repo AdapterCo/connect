@@ -183,7 +183,7 @@ export default function Sidebar() {
         <div className="flex items-center gap-3">
           <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-700 text-sm font-semibold text-gray-100">
             {user?.name?.charAt(0).toUpperCase() || 'U'}
-            <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-gray-800 ${online ? 'bg-telemetry' : 'bg-gray-500'}`} />
+            <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-gray-700 ${online ? 'bg-telemetry' : 'bg-gray-500'}`} />
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-gray-50">{user?.name}</p>

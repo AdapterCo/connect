@@ -83,13 +83,13 @@ export default function SuperAdmin() {
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => setTab('companies')}
-          className={`px-4 py-2 rounded-lg font-medium ${tab === 'companies' ? 'bg-indigo-500 text-gray-950' : 'bg-gray-700 text-gray-300'}`}
+          className={`px-4 py-2 rounded-lg font-medium ${tab === 'companies' ? 'bg-indigo-500 text-ink' : 'bg-gray-700 text-gray-300'}`}
         >
           Empresas ({companies.length})
         </button>
         <button
           onClick={() => setTab('plans')}
-          className={`px-4 py-2 rounded-lg font-medium ${tab === 'plans' ? 'bg-indigo-500 text-gray-950' : 'bg-gray-700 text-gray-300'}`}
+          className={`px-4 py-2 rounded-lg font-medium ${tab === 'plans' ? 'bg-indigo-500 text-ink' : 'bg-gray-700 text-gray-300'}`}
         >
           Planos ({plans.length})
         </button>
@@ -99,7 +99,7 @@ export default function SuperAdmin() {
         <div>
           <button
             onClick={() => setShowCompanyForm(!showCompanyForm)}
-            className="mb-4 px-4 py-2 bg-indigo-500 text-gray-950 rounded-lg font-medium hover:bg-indigo-400"
+            className="mb-4 px-4 py-2 bg-indigo-500 text-ink rounded-lg font-medium hover:bg-indigo-400"
           >
             {showCompanyForm ? 'Cancelar' : 'Nova Empresa'}
           </button>
@@ -124,7 +124,7 @@ export default function SuperAdmin() {
                 {companies.map(company => (
                   <tr key={company.id} className="hover:bg-gray-700/30">
                     <td className="px-4 py-3">
-                      <div className="text-white font-medium">{company.name}</div>
+                      <div className="text-gray-50 font-medium">{company.name}</div>
                       <div className="text-gray-500 text-xs">{company.slug}</div>
                     </td>
                     <td className="px-4 py-3">
@@ -132,16 +132,16 @@ export default function SuperAdmin() {
                         {company.plan_relation?.name || company.plan}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center text-white">
+                    <td className="px-4 py-3 text-center text-gray-50">
                       {company._count.users}/{company.max_users}
                     </td>
-                    <td className="px-4 py-3 text-center text-white">
+                    <td className="px-4 py-3 text-center text-gray-50">
                       {company._count.instances}/{company.max_instances}
                     </td>
-                    <td className="px-4 py-3 text-center text-white">
+                    <td className="px-4 py-3 text-center text-gray-50">
                       {company._count.products}/{company.max_products}
                     </td>
-                    <td className="px-4 py-3 text-center text-white">{company._count.chats}</td>
+                    <td className="px-4 py-3 text-center text-gray-50">{company._count.chats}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`px-2 py-1 rounded text-xs ${company.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                         {company.is_active ? 'Ativo' : 'Inativo'}
@@ -173,7 +173,7 @@ export default function SuperAdmin() {
         <div>
           <button
             onClick={() => { setShowPlanForm(!showPlanForm); setEditingPlan(null); }}
-            className="mb-4 px-4 py-2 bg-indigo-500 text-gray-950 rounded-lg font-medium hover:bg-indigo-400"
+            className="mb-4 px-4 py-2 bg-indigo-500 text-ink rounded-lg font-medium hover:bg-indigo-400"
           >
             {showPlanForm ? 'Cancelar' : 'Novo Plano'}
           </button>
@@ -184,12 +184,12 @@ export default function SuperAdmin() {
             {plans.map(plan => (
               <div key={plan.id} className="bg-gray-800 border border-gray-700 rounded-lg p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-white">{plan.name}</h3>
+                  <h3 className="text-lg font-bold text-gray-50">{plan.name}</h3>
                   <span className={`px-2 py-1 rounded text-xs ${plan.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                     {plan.is_active ? 'Ativo' : 'Inativo'}
                   </span>
                 </div>
-                <div className="text-3xl font-bold text-indigo-400 mb-4">
+                <div className="text-3xl font-bold text-indigo-300 mb-4">
                   R$ {plan.price.toFixed(2)}
                   <span className="text-sm text-gray-400 font-normal">/mês</span>
                 </div>
@@ -201,7 +201,7 @@ export default function SuperAdmin() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => { setEditingPlan(plan); setShowPlanForm(true); }}
-                    className="flex-1 px-3 py-2 bg-gray-700 text-white rounded text-sm hover:bg-gray-600"
+                    className="flex-1 px-3 py-2 bg-gray-700 text-gray-50 rounded text-sm hover:bg-gray-600"
                   >
                     Editar
                   </button>
@@ -244,7 +244,7 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-4 max-w-lg">
-      <h3 className="font-bold text-white mb-4">Nova Empresa</h3>
+      <h3 className="font-bold text-gray-50 mb-4">Nova Empresa</h3>
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
       <div className="space-y-3">
         <input
@@ -264,7 +264,7 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
         <select
           value={formData.plan_id}
           onChange={(e) => setFormData({ ...formData, plan_id: e.target.value })}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
         >
           <option value="">Selecionar Plano</option>
           {plans.filter(p => p.is_active).map(plan => (
@@ -307,7 +307,7 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
         />
         <button
           onClick={handleSubmit}
-          className="w-full bg-indigo-500 text-gray-950 py-2 rounded-lg font-medium hover:bg-indigo-400"
+          className="w-full bg-indigo-500 text-ink py-2 rounded-lg font-medium hover:bg-indigo-400"
         >
           Criar Empresa
         </button>
@@ -343,7 +343,7 @@ function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; on
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-4 max-w-md">
-      <h3 className="font-bold text-white mb-4">{plan ? 'Editar Plano' : 'Novo Plano'}</h3>
+      <h3 className="font-bold text-gray-50 mb-4">{plan ? 'Editar Plano' : 'Novo Plano'}</h3>
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
       <div className="space-y-3">
         <input
@@ -360,7 +360,7 @@ function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; on
               type="number"
               value={formData.max_instances}
               onChange={(e) => setFormData({ ...formData, max_instances: parseInt(e.target.value) })}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
             />
           </div>
           <div>
@@ -369,7 +369,7 @@ function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; on
               type="number"
               value={formData.max_users}
               onChange={(e) => setFormData({ ...formData, max_users: parseInt(e.target.value) })}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
             />
           </div>
         </div>
@@ -379,7 +379,7 @@ function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; on
             type="number"
             value={formData.max_products}
             onChange={(e) => setFormData({ ...formData, max_products: parseInt(e.target.value) })}
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
           />
         </div>
         <div>
@@ -389,7 +389,7 @@ function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; on
             step="0.01"
             value={formData.price}
             onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) })}
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
           />
         </div>
         <label className="flex items-center gap-2 text-sm text-gray-300">
@@ -403,7 +403,7 @@ function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; on
         </label>
         <button
           onClick={handleSubmit}
-          className="w-full bg-indigo-500 text-gray-950 py-2 rounded-lg font-medium hover:bg-indigo-400"
+          className="w-full bg-indigo-500 text-ink py-2 rounded-lg font-medium hover:bg-indigo-400"
         >
           {plan ? 'Atualizar' : 'Criar'} Plano
         </button>

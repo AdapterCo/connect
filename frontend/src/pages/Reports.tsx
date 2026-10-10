@@ -25,7 +25,7 @@ export default function Reports() {
     return (
       <div className="h-full flex items-center justify-center p-6">
         <div className="bg-gray-800 border border-red-500/40 rounded-lg p-6 max-w-md text-center">
-          <h2 className="text-lg font-bold text-white mb-2">Erro ao carregar relatorios</h2>
+          <h2 className="text-lg font-bold text-gray-50 mb-2">Erro ao carregar relatorios</h2>
           <p className="text-sm text-red-300">{error}</p>
         </div>
       </div>
@@ -41,10 +41,10 @@ export default function Reports() {
   }
 
   const sectorData = [
-    { name: 'Vendas', value: stats.sectors.sales, fill: '#6366f1' },
-    { name: 'Suporte', value: stats.sectors.support, fill: '#10b981' },
-    { name: 'Financeiro', value: stats.sectors.finance, fill: '#f59e0b' },
-    { name: 'Sem Setor', value: stats.sectors.none, fill: '#6b7280' },
+    { name: 'Vendas', value: stats.sectors.sales, fill: '#3d4855' },
+    { name: 'Suporte', value: stats.sectors.support, fill: '#1f9e83' },
+    { name: 'Financeiro', value: stats.sectors.finance, fill: '#f5a524' },
+    { name: 'Sem Setor', value: stats.sectors.none, fill: '#a3adb8' },
   ];
 
   return (
@@ -61,23 +61,23 @@ export default function Reports() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-          <h3 className="font-bold text-white mb-4">Volume de Mensagens (7 dias)</h3>
+          <h3 className="font-bold text-gray-50 mb-4">Volume de Mensagens (7 dias)</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats.history}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="label" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" />
-                <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }} />
-                <Bar dataKey="clientMessages" name="Clientes" fill="#6366f1" />
-                <Bar dataKey="attendantMessages" name="Atendentes" fill="#10b981" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e9ee" />
+                <XAxis dataKey="label" stroke="#737f8c" />
+                <YAxis stroke="#737f8c" />
+                <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e5e9ee', borderRadius: '8px' }} />
+                <Bar dataKey="clientMessages" name="Clientes" fill="#3d4855" />
+                <Bar dataKey="attendantMessages" name="Atendentes" fill="#1f9e83" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-          <h3 className="font-bold text-white mb-4">Distribuição por Setor</h3>
+          <h3 className="font-bold text-gray-50 mb-4">Distribuição por Setor</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -86,7 +86,7 @@ export default function Reports() {
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }} />
+                <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e5e9ee', borderRadius: '8px' }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -94,7 +94,7 @@ export default function Reports() {
       </div>
 
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-        <h3 className="font-bold text-white mb-4">Desempenho da Equipe</h3>
+        <h3 className="font-bold text-gray-50 mb-4">Desempenho da Equipe</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -111,17 +111,17 @@ export default function Reports() {
             <tbody className="divide-y divide-gray-700">
               {stats.attendants.map(att => (
                 <tr key={att.id} className="hover:bg-gray-700/30">
-                  <td className="py-3 px-4 text-white">{att.name}</td>
+                  <td className="py-3 px-4 text-gray-50">{att.name}</td>
                   <td className="py-3 px-4 text-gray-400">{att.role}</td>
                   <td className="py-3 px-4 text-center">
                     <span className={`inline-flex items-center gap-1 ${att.status === 'online' ? 'text-green-400' : 'text-gray-500'}`}>
                       <span className={`w-2 h-2 rounded-full ${att.status === 'online' ? 'bg-green-400' : 'bg-gray-500'}`} />
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-center text-white">{att.activeChats}</td>
-                  <td className="py-3 px-4 text-center text-white">{att.repliesCount}</td>
-                  <td className="py-3 px-4 text-center text-white">{att.tmr}s</td>
-                  <td className="py-3 px-4 text-center text-white">{att.tma}s</td>
+                  <td className="py-3 px-4 text-center text-gray-50">{att.activeChats}</td>
+                  <td className="py-3 px-4 text-center text-gray-50">{att.repliesCount}</td>
+                  <td className="py-3 px-4 text-center text-gray-50">{att.tmr}s</td>
+                  <td className="py-3 px-4 text-center text-gray-50">{att.tma}s</td>
                 </tr>
               ))}
             </tbody>
@@ -135,7 +135,7 @@ export default function Reports() {
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-      <p className="text-2xl font-bold text-white">{value}</p>
+      <p className="text-2xl font-bold text-gray-50">{value}</p>
       <p className="text-sm text-gray-400">{label}</p>
     </div>
   );

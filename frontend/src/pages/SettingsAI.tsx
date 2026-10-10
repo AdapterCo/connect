@@ -132,7 +132,7 @@ export default function SettingsAI() {
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 max-w-3xl">
         <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-700">
           <div>
-            <h3 className="font-bold text-white">Ativar Atendente Virtual (IA)</h3>
+            <h3 className="font-bold text-gray-50">Ativar Atendente Virtual (IA)</h3>
             <p className="text-sm text-gray-400">Permite que a IA responda aos clientes automaticamente.</p>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
@@ -152,7 +152,7 @@ export default function SettingsAI() {
             <select
               value={formData.ai_provider}
               onChange={(e) => updateFormData({ ai_provider: e.target.value })}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
             >
               <option value="mock">Modo Demonstrativo (Mock)</option>
               <option value="gemini">Google Gemini</option>
@@ -170,7 +170,7 @@ export default function SettingsAI() {
                   value={formData.gemini_key}
                   onChange={(e) => updateFormData({ gemini_key: e.target.value })}
                   placeholder="AIzaSy..."
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
                 />
               </div>
               <div>
@@ -178,7 +178,7 @@ export default function SettingsAI() {
                 <select
                   value={formData.gemini_model}
                   onChange={(e) => updateFormData({ gemini_model: e.target.value })}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
                 >
                   <option value="gemini-3.8-flash">gemini-3.8-flash</option>
                   <option value="gemini-2.5-flash">gemini-2.5-flash (recomendado)</option>
@@ -200,7 +200,7 @@ export default function SettingsAI() {
                   value={formData.openai_key}
                   onChange={(e) => updateFormData({ openai_key: e.target.value })}
                   placeholder="sk-proj-..."
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
                 />
               </div>
               <div>
@@ -208,7 +208,7 @@ export default function SettingsAI() {
                 <select
                   value={formData.openai_model}
                   onChange={(e) => updateFormData({ openai_model: e.target.value })}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
                 >
                   <option value="gpt-4o-mini">gpt-4o-mini (recomendado — rápido e barato)</option>
                   <option value="gpt-4o">gpt-4o (mais inteligente)</option>
@@ -230,7 +230,7 @@ export default function SettingsAI() {
                   value={formData.groq_key}
                   onChange={(e) => updateFormData({ groq_key: e.target.value })}
                   placeholder="gsk_..."
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
                 />
               </div>
               <div>
@@ -238,7 +238,7 @@ export default function SettingsAI() {
                 <select
                   value={formData.groq_model}
                   onChange={(e) => updateFormData({ groq_model: e.target.value })}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
                 >
                   <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (recomendado)</option>
                   <option value="llama-3.1-70b-versatile">llama-3.1-70b-versatile</option>
@@ -257,7 +257,7 @@ export default function SettingsAI() {
               maxLength={20000}
               onChange={(e) => updateFormData({ system_prompt: e.target.value })}
               rows={10}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white font-mono text-sm focus:outline-none focus:border-indigo-500"
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 font-mono text-sm focus:outline-none focus:border-indigo-500"
             />
             <p className="text-xs text-gray-500 mt-1">Defina as regras de negócio e como o bot deve conduzir a conversa.</p>
           </div>
@@ -266,7 +266,7 @@ export default function SettingsAI() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 bg-indigo-500 text-gray-950 py-3 rounded-lg font-medium hover:bg-indigo-400 disabled:opacity-50"
+              className="flex-1 bg-indigo-500 text-ink py-3 rounded-lg font-medium hover:bg-indigo-400 disabled:opacity-50"
             >
               {saving ? 'Salvando...' : 'Salvar Configurações'}
             </button>
@@ -275,7 +275,7 @@ export default function SettingsAI() {
               <button
                 onClick={handleTestKey}
                 disabled={testingKey || saving}
-                className="px-5 bg-gray-700 text-white py-3 rounded-lg font-medium hover:bg-gray-600 disabled:opacity-50 border border-gray-600 whitespace-nowrap"
+                className="px-5 bg-gray-700 text-gray-50 py-3 rounded-lg font-medium hover:bg-gray-600 disabled:opacity-50 border border-gray-600 whitespace-nowrap"
                 title="Testa a chave com uma chamada real à API do provedor selecionado"
               >
                 {testingKey ? 'Testando...' : 'Testar Chave'}

@@ -72,12 +72,12 @@ export default function WhatsApp() {
               value={newInstanceName}
               onChange={(e) => setNewInstanceName(e.target.value)}
               placeholder="Ex: WhatsApp Vendas, Suporte RJ..."
-              className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+              className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 placeholder-gray-500 focus:outline-none focus:border-indigo-500"
             />
             <select
               value={selectedUserId}
               onChange={(e) => setSelectedUserId(e.target.value)}
-              className="bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+              className="bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
             >
               <option value="">Geral da Empresa (Triagem)</option>
               {users.map(u => (
@@ -86,7 +86,7 @@ export default function WhatsApp() {
             </select>
             <button
               onClick={handleCreate}
-              className="px-6 bg-indigo-500 text-gray-950 rounded-lg font-medium hover:bg-indigo-400 whitespace-nowrap"
+              className="px-6 bg-indigo-500 text-ink rounded-lg font-medium hover:bg-indigo-400 whitespace-nowrap"
             >
               Adicionar Conexão
             </button>
@@ -98,7 +98,7 @@ export default function WhatsApp() {
         {instances.map(instance => (
           <div key={instance.id} className="bg-gray-800 border border-gray-700 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-white">{instance.name}</h3>
+              <h3 className="font-bold text-gray-50">{instance.name}</h3>
               <span className={`px-2 py-1 rounded text-xs font-medium ${
                 instance.status === 'open' ? 'bg-green-500/20 text-green-400' :
                 instance.status === 'connecting' || instance.status === 'qr' ? 'bg-amber-500/20 text-amber-400' :
@@ -119,7 +119,7 @@ export default function WhatsApp() {
                   <select
                     value={instance.user_id || ''}
                     onChange={(e) => handleAssignUser(instance.id, e.target.value)}
-                    className="w-full bg-gray-700/80 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-gray-700/80 border border-gray-600 rounded px-2 py-1 text-xs text-gray-50 focus:outline-none focus:border-indigo-500"
                   >
                     <option value="">Geral da Empresa</option>
                     {users.map(u => (
@@ -138,7 +138,7 @@ export default function WhatsApp() {
               {instance.status !== 'open' ? (
                 <button
                   onClick={() => handleConnect(instance.id)}
-                  className="flex-1 px-3 py-2 bg-indigo-500 text-gray-950 rounded text-sm font-medium hover:bg-indigo-400"
+                  className="flex-1 px-3 py-2 bg-indigo-500 text-ink rounded text-sm font-medium hover:bg-indigo-400"
                 >
                   Conectar
                 </button>
@@ -163,8 +163,8 @@ export default function WhatsApp() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 max-w-md w-full mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white">Conectar WhatsApp</h3>
-              <button onClick={() => setQrInstanceId(null)} className="text-gray-400 hover:text-white text-2xl">×</button>
+              <h3 className="text-lg font-bold text-gray-50">Conectar WhatsApp</h3>
+              <button onClick={() => setQrInstanceId(null)} className="text-gray-400 hover:text-gray-50 text-2xl">×</button>
             </div>
 
             {qrInstance?.qr ? (
@@ -175,7 +175,7 @@ export default function WhatsApp() {
                 <div className="bg-white p-4 rounded-lg inline-block mb-4">
                   <img src={qrInstance.qr} alt="QR Code" className="w-56 h-56" />
                 </div>
-                <p className="text-sm text-indigo-400 font-medium">Aguardando leitura...</p>
+                <p className="text-sm text-indigo-300 font-medium">Aguardando leitura...</p>
               </div>
             ) : (
               <div className="text-center py-8">

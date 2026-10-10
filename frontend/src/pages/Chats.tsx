@@ -90,7 +90,7 @@ export default function Chats() {
             placeholder="Buscar cliente..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-50 placeholder-gray-500 focus:outline-none focus:border-indigo-500"
           />
           
           {isManager ? (
@@ -98,7 +98,7 @@ export default function Chats() {
               <select
                 value={sectorFilter}
                 onChange={(e) => setSectorFilter(e.target.value)}
-                className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white"
+                className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-50"
               >
                 <option value="">Todos os Setores</option>
                 <option value="sales">Vendas</option>
@@ -110,7 +110,7 @@ export default function Chats() {
                 <select
                   value={instanceFilter}
                   onChange={(e) => setInstanceFilter(e.target.value)}
-                  className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white truncate"
+                  className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-50 truncate"
                 >
                   <option value="">Todas Conexões</option>
                   {instances.map((inst) => (
@@ -152,7 +152,7 @@ export default function Chats() {
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`flex-1 py-2 rounded font-medium transition-colors ${
-                  filter === f ? 'bg-indigo-500 text-gray-950' : 'text-gray-400 hover:bg-gray-700'
+                  filter === f ? 'bg-indigo-500 text-ink' : 'text-gray-400 hover:bg-gray-700'
                 }`}
               >
                 {f === 'my' ? 'Meus' : f === 'queue' ? 'Fila' : f === 'favorite' ? 'Favoritas' : f === 'archive' ? 'Arquivadas' : 'Todos'}
@@ -213,13 +213,13 @@ export default function Chats() {
               <div className="flex gap-2 mb-2">
                 <button
                   onClick={() => setIsNote(false)}
-                  className={`px-3 py-1 rounded text-xs font-medium ${!isNote ? 'bg-indigo-500 text-gray-950' : 'bg-gray-700 text-gray-400'}`}
+                  className={`px-3 py-1 rounded text-xs font-medium ${!isNote ? 'bg-indigo-500 text-ink' : 'bg-gray-700 text-gray-400'}`}
                 >
                   Mensagem
                 </button>
                 <button
                   onClick={() => setIsNote(true)}
-                  className={`px-3 py-1 rounded text-xs font-medium ${isNote ? 'bg-amber-600 text-white' : 'bg-gray-700 text-gray-400'}`}
+                  className={`px-3 py-1 rounded text-xs font-medium ${isNote ? 'bg-amber-600 text-gray-50' : 'bg-gray-700 text-gray-400'}`}
                 >
                   Nota Interna
                 </button>
@@ -230,12 +230,12 @@ export default function Chats() {
                   onChange={(e) => setMessageText(e.target.value)}
                   onKeyDown={handleKeyPress}
                   placeholder={isNote ? 'Nota interna (não será enviada ao cliente)...' : 'Digite uma mensagem...'}
-                  className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 resize-none"
+                  className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 placeholder-gray-500 focus:outline-none focus:border-indigo-500 resize-none"
                   rows={2}
                 />
                 <button
                   onClick={handleSend}
-                  className="px-6 bg-indigo-500 text-gray-950 rounded-lg font-medium hover:bg-indigo-400"
+                  className="px-6 bg-indigo-500 text-ink rounded-lg font-medium hover:bg-indigo-400"
                 >
                   Enviar
                 </button>
@@ -279,7 +279,7 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: Chat; isSelected: b
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <p className="font-medium text-white truncate">{chat.client_name}</p>
+            <p className="font-medium text-gray-50 truncate">{chat.client_name}</p>
             {chat.is_favorite && <span className="text-amber-400">★</span>}
           </div>
           <p className="text-xs text-gray-400 truncate">
@@ -329,7 +329,7 @@ function ChatHeader({ chat, users, currentUser, onUpdateStatus, onAssign, onTogg
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-white">{chat.client_name}</h3>
+              <h3 className="font-bold text-gray-50">{chat.client_name}</h3>
               <button
                 onClick={() => onToggleFavorite(chat.id, !chat.is_favorite)}
                 className={`text-lg ${chat.is_favorite ? 'text-amber-400' : 'text-gray-500'}`}
@@ -369,7 +369,7 @@ function ChatHeader({ chat, users, currentUser, onUpdateStatus, onAssign, onTogg
           <select
             value={chat.assigned_to || ''}
             onChange={(e) => onAssign(chat.id, e.target.value || null)}
-            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
+            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-gray-50"
           >
             <option value="">Fila de Espera</option>
             {users.map((u) => (
@@ -386,7 +386,7 @@ function ChatHeader({ chat, users, currentUser, onUpdateStatus, onAssign, onTogg
           <select
             value={chat.sector || ''}
             onChange={(e) => onUpdateSector(chat.id, (e.target.value || null) as Chat['sector'])}
-            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
+            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-gray-50"
           >
             <option value="">Sem Setor</option>
             <option value="sales">Vendas</option>
@@ -402,7 +402,7 @@ function ChatHeader({ chat, users, currentUser, onUpdateStatus, onAssign, onTogg
         <select
           value={chat.status}
           onChange={(e) => onUpdateStatus(chat.id, e.target.value as Chat['status'])}
-          className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
+          className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-gray-50"
         >
           <option value="iniciada">Iniciada</option>
           <option value="interesse em compra">Interesse em Compra</option>
@@ -413,7 +413,7 @@ function ChatHeader({ chat, users, currentUser, onUpdateStatus, onAssign, onTogg
 
         <button
           onClick={() => onToggleArchive(chat.id, !chat.is_archived)}
-          className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-white hover:bg-gray-600"
+          className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-gray-50 hover:bg-gray-600"
         >
           {chat.is_archived ? 'Desarquivar' : 'Arquivar'}
         </button>
@@ -447,13 +447,13 @@ function ChatHeader({ chat, users, currentUser, onUpdateStatus, onAssign, onTogg
             }}
             onBlur={() => setShowTagInput(false)}
             placeholder="Nome da tag"
-            className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white w-24"
+            className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-gray-50 w-24"
             autoFocus
           />
         ) : (
           <button
             onClick={() => setShowTagInput(true)}
-            className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-gray-400 hover:text-white"
+            className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-gray-400 hover:text-gray-50"
           >
             + Tag
           </button>
@@ -485,8 +485,8 @@ function MessageBubble({ message }: { message: Message }) {
           isNote
             ? 'bg-amber-500/20 border border-amber-500/30 text-amber-200'
             : isClient
-            ? 'bg-gray-700 text-white'
-            : 'bg-indigo-500 text-gray-950'
+            ? 'bg-gray-700 text-gray-50'
+            : 'bg-indigo-500 text-ink'
         }`}
       >
         {message.media_url && (

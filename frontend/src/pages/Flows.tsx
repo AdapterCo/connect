@@ -77,9 +77,9 @@ export default function Flows() {
           value={name}
           onChange={(e) => setName(e.target.value.slice(0, 80))}
           placeholder="Nome do novo fluxo (ex.: Captação de leads)"
-          className="flex-1 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+          className="flex-1 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-gray-50 placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
         />
-        <button type="submit" disabled={creating} className="rounded-lg bg-indigo-500 px-5 font-medium text-gray-950 hover:bg-indigo-400 disabled:opacity-50">
+        <button type="submit" disabled={creating} className="rounded-lg bg-indigo-500 px-5 font-medium text-ink hover:bg-indigo-400 disabled:opacity-50">
           {creating ? 'Criando...' : '+ Novo fluxo'}
         </button>
       </form>
@@ -95,7 +95,7 @@ export default function Flows() {
           {flows.map(flow => (
             <div key={flow.id} className="rounded-lg border border-gray-700 bg-gray-800 p-4">
               <div className="mb-2 flex items-start justify-between gap-2">
-                <h3 className="font-bold text-white">{flow.name}</h3>
+                <h3 className="font-bold text-gray-50">{flow.name}</h3>
                 <span className={`rounded px-2 py-1 text-xs font-medium ${flow.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-600/40 text-gray-300'}`}>
                   {flow.is_active ? 'Ativo' : 'Inativo'}
                 </span>
@@ -104,7 +104,7 @@ export default function Flows() {
                 {flow.node_count} {flow.node_count === 1 ? 'nó' : 'nós'} · atualizado em {new Date(flow.updated_at).toLocaleString('pt-BR')}
               </p>
               <div className="flex gap-2">
-                <Link to={`/fluxos/${flow.id}`} className="flex-1 rounded bg-indigo-500 px-3 py-2 text-center text-sm font-medium text-gray-950 hover:bg-indigo-400">Editar</Link>
+                <Link to={`/fluxos/${flow.id}`} className="flex-1 rounded bg-indigo-500 px-3 py-2 text-center text-sm font-medium text-ink hover:bg-indigo-400">Editar</Link>
                 <button type="button" onClick={() => toggle(flow)} className="rounded border border-gray-600 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700">
                   {flow.is_active ? 'Desativar' : 'Ativar'}
                 </button>

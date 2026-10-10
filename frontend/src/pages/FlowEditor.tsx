@@ -185,12 +185,12 @@ function Editor() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center gap-3 border-b border-gray-700 bg-gray-800 px-4 py-3">
-        <button type="button" onClick={goBack} className="text-sm text-gray-300 hover:text-white">← Voltar</button>
+        <button type="button" onClick={goBack} className="text-sm text-gray-300 hover:text-gray-50">← Voltar</button>
         <input
           value={name}
           onChange={(e) => { setName(e.target.value.slice(0, 80)); setDirty(true); }}
           aria-label="Nome do fluxo"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-lg font-bold text-white hover:border-gray-600 focus:border-indigo-500 focus:outline-none"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-lg font-bold text-gray-50 hover:border-gray-600 focus:border-indigo-500 focus:outline-none"
         />
         {error && <span className="max-w-md text-sm text-rose-400">{error}</span>}
         {!error && notice && <span className="text-sm text-emerald-400">{notice}</span>}
@@ -211,7 +211,7 @@ function Editor() {
           type="button"
           onClick={save}
           disabled={saving}
-          className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-indigo-400 disabled:opacity-50"
+          className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-ink hover:bg-indigo-400 disabled:opacity-50"
         >
           {saving ? 'Salvando...' : 'Salvar'}
         </button>
@@ -249,7 +249,7 @@ function Editor() {
             onEdgesChange={handleEdgesChange}
             onConnect={onConnect}
             isValidConnection={isValidConnection}
-            colorMode="dark"
+            colorMode="light"
             fitView
             fitViewOptions={{ maxZoom: 1 }}
             deleteKeyCode={['Delete']}

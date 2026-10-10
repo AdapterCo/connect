@@ -99,7 +99,7 @@ export default function Kanban() {
         <input aria-label="Criado ate" type="date" value={to} onChange={event => setTo(event.target.value)} className="bg-gray-700 p-2 rounded" />
       </div>}
       <form onSubmit={createColumn} className="flex flex-wrap gap-2">
-        <input aria-label="Nome da nova coluna" className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white max-w-full" placeholder="Ex.: Visita agendada" value={name} onChange={event => setName(event.target.value)} maxLength={60} required />
+        <input aria-label="Nome da nova coluna" className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-gray-50 max-w-full" placeholder="Ex.: Visita agendada" value={name} onChange={event => setName(event.target.value)} maxLength={60} required />
         <button className="bg-indigo-600 rounded-lg px-4 py-2 disabled:opacity-50" disabled={busy}>Criar minha coluna</button>
       </form>
       {error && <p role="alert" className="text-red-300">{error}</p>}
@@ -130,7 +130,7 @@ export default function Kanban() {
                   const seller = users.find(user => user.id === chat.assigned_to);
                   return <Draggable key={chat.id} draggableId={chat.id} index={index} isDragDisabled={busy}>
                     {provided => <article ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="bg-gray-700 border border-gray-600 rounded-lg p-3 hover:border-indigo-500">
-                      <p className="font-medium text-white text-sm truncate">{chat.client_name}</p>
+                      <p className="font-medium text-gray-50 text-sm truncate">{chat.client_name}</p>
                       <p className="text-xs text-gray-400">+{chat.client_phone.slice(-4)}</p>
                       <p className="text-xs text-gray-300 mt-2">Responsável: {seller?.name || 'Aguardando vendedor online'}</p>
                       {seconds !== null && <p className="text-xs text-amber-300 mt-1">{seconds > 0 ? `Responder em ${seconds}s` : 'Verificando próximo vendedor…'}</p>}

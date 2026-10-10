@@ -75,7 +75,7 @@ export default function SalesCatalog({ mode = 'sales' }: { mode?: 'products' | '
     }, 'Cliente vinculado.');
   }
   if (!allowed) return <p className="p-6">Acesso restrito à equipe de vendas.</p>;
-  return <div className="h-full overflow-y-auto p-6 space-y-6 text-white">
+  return <div className="h-full overflow-y-auto p-6 space-y-6 text-gray-50">
     <header><h1 className="text-2xl font-bold">{catalog ? 'Produtos' : manager ? 'Vendas' : 'Cadastrar venda'}</h1><p className="text-gray-400">{catalog ? 'Gerencie os modelos, preços e fotos do catálogo.' : 'Registre uma venda vinculada ao cliente usando um produto cadastrado.'}</p></header>
     <p role="status" className="text-indigo-200">{message}</p>
     <div className="flex flex-wrap items-end gap-3"><label>{catalog ? 'Buscar produto' : 'Buscar produto para vender'}<input className={field} value={search} maxLength={160} onChange={e => { setSearch(e.target.value); setPage(1); if (!catalog) setSale({ ...sale, model_id: '' }); }} /></label><button disabled={page === 1 || busy} onClick={() => setPage(page - 1)}>Anterior</button><span>Página {page} de {Math.max(1, Math.ceil(total / 25))}</span><button disabled={page * 25 >= total || busy} onClick={() => { setPage(page + 1); if (!catalog) setSale({ ...sale, model_id: '' }); }}>Próxima</button></div>

@@ -127,21 +127,21 @@ export default function Billing() {
 
       {planInfo && (
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
-          <h3 className="text-lg font-bold text-white mb-4">Plano Atual</h3>
+          <h3 className="text-lg font-bold text-gray-50 mb-4">Plano Atual</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
               <p className="text-sm text-gray-400">Plano</p>
-              <p className="text-xl font-bold text-indigo-400">{planInfo.plan.name}</p>
+              <p className="text-xl font-bold text-indigo-300">{planInfo.plan.name}</p>
             </div>
             <div>
               <p className="text-sm text-gray-400">Valor</p>
-              <p className="text-xl font-bold text-white">
+              <p className="text-xl font-bold text-gray-50">
                 R$ {planInfo.plan.price.toFixed(2)}/mês
               </p>
             </div>
             <div>
               <p className="text-sm text-gray-400">Produtos</p>
-              <p className="text-xl font-bold text-white">
+              <p className="text-xl font-bold text-gray-50">
                 {planInfo.usage.products}/{planInfo.plan.max_products}
               </p>
             </div>
@@ -153,7 +153,7 @@ export default function Billing() {
             </div>
             <div>
               <p className="text-sm text-gray-400">Expira em</p>
-              <p className="text-xl font-bold text-white">
+              <p className="text-xl font-bold text-gray-50">
                 {planInfo.expires_at ? new Date(planInfo.expires_at).toLocaleDateString('pt-BR') : 'N/A'}
               </p>
             </div>
@@ -163,7 +163,7 @@ export default function Billing() {
 
       <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
         <div className="p-4 border-b border-gray-700">
-          <h3 className="text-lg font-bold text-white">Histórico de Faturas</h3>
+          <h3 className="text-lg font-bold text-gray-50">Histórico de Faturas</h3>
         </div>
         <table className="w-full text-sm">
           <thead className="bg-gray-700/50">
@@ -186,13 +186,13 @@ export default function Billing() {
             ) : (
               invoices.map(invoice => (
                 <tr key={invoice.id} className="hover:bg-gray-700/30">
-                  <td className="px-4 py-3 text-white">
+                  <td className="px-4 py-3 text-gray-50">
                     {new Date(invoice.created_at).toLocaleDateString('pt-BR')}
                   </td>
                   <td className="px-4 py-3 text-gray-300">
                     {invoice.subscription?.plan?.name || 'N/A'}
                   </td>
-                  <td className="px-4 py-3 text-white font-medium">
+                  <td className="px-4 py-3 text-gray-50 font-medium">
                     R$ {invoice.amount.toFixed(2)}
                   </td>
                   <td className="px-4 py-3 text-gray-300">
@@ -206,7 +206,7 @@ export default function Billing() {
                         href={invoice.mp_payment_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-indigo-400 hover:text-indigo-300 text-sm"
+                        className="text-indigo-300 hover:text-indigo-300 text-sm"
                       >
                         Pagar
                       </a>

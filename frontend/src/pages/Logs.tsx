@@ -105,7 +105,7 @@ export default function Logs() {
         <select
           value={entityFilter}
           onChange={(e) => { setEntityFilter(e.target.value); setPage(1); }}
-          className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+          className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-50 focus:outline-none focus:border-indigo-500"
         >
           <option value="">Todas as Entidades</option>
           {Object.entries(entityLabels).map(([key, label]) => (
@@ -116,7 +116,7 @@ export default function Logs() {
         <select
           value={actionFilter}
           onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
-          className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+          className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-50 focus:outline-none focus:border-indigo-500"
         >
           <option value="">Todas as Ações</option>
           {Object.entries(actionLabels).map(([key, label]) => (
@@ -156,7 +156,7 @@ export default function Logs() {
                     <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString('pt-BR')}
                     </td>
-                    <td className="px-4 py-3 text-white">
+                    <td className="px-4 py-3 text-gray-50">
                       {log.user_name || 'Sistema'}
                     </td>
                     <td className="px-4 py-3">
@@ -185,7 +185,7 @@ export default function Logs() {
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-sm text-white disabled:opacity-50"
+            className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-sm text-gray-50 disabled:opacity-50"
           >
             Anterior
           </button>
@@ -195,7 +195,7 @@ export default function Logs() {
           <button
             onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
             disabled={page === data.totalPages}
-            className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-sm text-white disabled:opacity-50"
+            className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-sm text-gray-50 disabled:opacity-50"
           >
             Próxima
           </button>

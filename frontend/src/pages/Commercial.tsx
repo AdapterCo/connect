@@ -68,7 +68,7 @@ export default function Commercial() {
     useAppStore.getState().selectChat(data[0].id); navigate('/chats');
   }
   const submit = (event: FormEvent, work: () => Promise<unknown>, success: string) => { event.preventDefault(); void run(work, success); };
-  return <div className="h-full overflow-y-auto p-6 space-y-6 text-white">
+  return <div className="h-full overflow-y-auto p-6 space-y-6 text-gray-50">
     <header className="flex flex-wrap items-center gap-4"><div className="mr-auto"><h1 className="text-2xl font-bold">Gestão Comercial</h1><p className="text-gray-400">Leads, vendas e continuidade do atendimento.</p></div><button className={button} disabled={busy} onClick={() => void run(load, 'Dados atualizados.')}>Atualizar</button></header>
     <nav aria-label="Áreas comerciais" className="flex flex-wrap gap-2">{[['leads', 'Leads'], ['tasks', `Retornos (${pendingTasks.length})`], ['sales', 'Recebíveis e comissões'], ['after', 'Pós-venda'], ['replies', 'Respostas compartilhadas']].filter(([id]) => manager || id !== 'sales').map(([id, label]) => <button key={id} onClick={() => setTab(id)} className={`px-4 py-2 rounded ${tab === id ? 'bg-indigo-600' : 'bg-gray-800'}`}>{label}</button>)}</nav>
     {message && <p role="status" className="bg-gray-800 rounded p-3 text-indigo-200">{message}</p>}

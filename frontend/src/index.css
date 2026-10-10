@@ -2,48 +2,81 @@
 @import "tailwindcss";
 
 /*
- * Identidade visual: painel de instrumentos.
- * Base grafite-petroleo (uso o dia todo, pouco brilho) e um unico destaque
- * ambar de "luz-espia", reservado para a acao principal e para o que pede
- * atencao. As escalas gray e indigo do Tailwind sao redefinidas aqui, entao
- * todas as telas herdam a paleta sem trocar classes.
+ * Identidade visual: painel de instrumentos, em tema claro (fundo #FFFFFF).
+ * Um unico destaque ambar de "luz-espia", reservado para a acao principal e
+ * para o que pede atencao.
+ *
+ * As escalas do Tailwind sao redefinidas aqui pelo PAPEL de cada tom, entao
+ * todas as telas herdam a paleta sem trocar classes:
+ *   gray-900 fundo da pagina (#FFFFFF), 950/800 superficies, 700/600 bordas,
+ *   500/400 texto secundario, 300..50 texto (50 = titulos).
+ *   indigo = ambar: 500 e o destaque; 100..300 sao tons escuros para texto.
+ *   Cores de status (red, green, amber...): 200..400 sao tons escuros, legiveis
+ *   como texto sobre branco.
  */
 @theme {
   --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
 
-  --color-gray-50: #f1f5f8;
-  --color-gray-100: #e4ecf1;
-  --color-gray-200: #c9d5de;
-  --color-gray-300: #a9b9c6;
-  --color-gray-400: #8596a6;
-  --color-gray-500: #627586;
-  --color-gray-600: #3a4b59;
-  --color-gray-700: #26343f;
-  --color-gray-800: #18232c;
-  --color-gray-900: #10181e;
-  --color-gray-950: #0a1014;
+  --color-gray-50: #111820;
+  --color-gray-100: #1c242d;
+  --color-gray-200: #2b3540;
+  --color-gray-300: #3d4855;
+  --color-gray-400: #5b6774;
+  --color-gray-500: #737f8c;
+  --color-gray-600: #cdd4dc;
+  --color-gray-700: #e5e9ee;
+  --color-gray-800: #f7f8fa;
+  --color-gray-900: #ffffff;
+  --color-gray-950: #f2f4f7;
 
-  /* "indigo" passa a ser o ambar sinal (texto escuro sobre ele). */
-  --color-indigo-50: #fff8e6;
-  --color-indigo-100: #feecc2;
-  --color-indigo-200: #fdd98a;
-  --color-indigo-300: #fbc556;
-  --color-indigo-400: #f7b23a;
+  --color-indigo-50: #5c3400;
+  --color-indigo-100: #6b3d00;
+  --color-indigo-200: #7d4800;
+  --color-indigo-300: #915400;
+  --color-indigo-400: #e8981c;
   --color-indigo-500: #f5a524;
-  --color-indigo-600: #e08e12;
-  --color-indigo-700: #b8710c;
-  --color-indigo-800: #8a540b;
-  --color-indigo-900: #5c380a;
-  --color-indigo-950: #3a2306;
+  --color-indigo-600: #d98a0c;
+  --color-indigo-700: #b06c06;
+  --color-indigo-800: #fde7b8;
+  --color-indigo-900: #fff1d6;
+  --color-indigo-950: #fff8eb;
+
+  --color-red-200: oklch(44.4% 0.177 26.899);
+  --color-red-300: oklch(50.5% 0.213 27.518);
+  --color-red-400: oklch(57.7% 0.245 27.325);
+  --color-green-200: oklch(44.8% 0.119 151.328);
+  --color-green-300: oklch(52.7% 0.154 150.069);
+  --color-green-400: oklch(62.7% 0.194 149.214);
+  --color-emerald-200: oklch(43.2% 0.095 166.913);
+  --color-emerald-300: oklch(50.8% 0.118 165.612);
+  --color-emerald-400: oklch(59.6% 0.145 163.225);
+  --color-amber-200: oklch(47.3% 0.137 46.201);
+  --color-amber-300: oklch(55.5% 0.163 48.998);
+  --color-amber-400: oklch(66.6% 0.179 58.318);
+  --color-blue-200: oklch(42.4% 0.199 265.638);
+  --color-blue-300: oklch(48.8% 0.243 264.376);
+  --color-blue-400: oklch(54.6% 0.245 262.881);
+  --color-cyan-200: oklch(45% 0.085 224.283);
+  --color-cyan-300: oklch(52% 0.105 223.128);
+  --color-cyan-400: oklch(60.9% 0.126 221.723);
+  --color-rose-200: oklch(45.5% 0.188 13.697);
+  --color-rose-300: oklch(51.4% 0.222 16.935);
+  --color-rose-400: oklch(58.6% 0.253 17.585);
+  --color-sky-200: oklch(44.3% 0.11 240.79);
+  --color-sky-300: oklch(50% 0.134 242.749);
+  --color-sky-400: oklch(58.8% 0.158 241.966);
+  --color-violet-200: oklch(43.2% 0.232 292.759);
+  --color-violet-300: oklch(49.1% 0.27 292.581);
+  --color-violet-400: oklch(54.1% 0.281 293.009);
 
   --color-ink: #10181e;
   --color-signal: #f5a524;
-  --color-telemetry: #2eb89a;
+  --color-telemetry: #1f9e83;
 }
 
 @layer base {
   html {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   body {
@@ -79,11 +112,11 @@
   }
 
   /* Canvas do editor de fluxos (React Flow) na mesma paleta do painel. */
-  .react-flow.dark {
-    --xy-background-color-default: var(--color-gray-900);
-    --xy-background-pattern-color-default: var(--color-gray-700);
-    --xy-minimap-background-color-default: var(--color-gray-800);
-    --xy-controls-button-background-color-default: var(--color-gray-800);
+  .react-flow {
+    --xy-background-color-default: var(--color-gray-950);
+    --xy-background-pattern-color-default: var(--color-gray-600);
+    --xy-minimap-background-color-default: var(--color-gray-900);
+    --xy-controls-button-background-color-default: var(--color-gray-900);
     --xy-controls-button-background-color-hover-default: var(--color-gray-700);
     --xy-controls-button-border-color-default: var(--color-gray-700);
     --xy-edge-stroke-default: var(--color-gray-500);
@@ -148,7 +181,7 @@
     width: 100%;
     border-radius: 0.375rem;
     border: 1px solid var(--color-gray-600);
-    background: var(--color-gray-950);
+    background: #ffffff;
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
     color: var(--color-gray-50);

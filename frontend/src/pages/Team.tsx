@@ -111,7 +111,7 @@ export default function Team() {
         <h2 className="text-2xl font-bold">Gestão de Equipe</h2>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-indigo-500 text-gray-950 rounded-lg font-medium hover:bg-indigo-400"
+          className="px-4 py-2 bg-indigo-500 text-ink rounded-lg font-medium hover:bg-indigo-400"
         >
           {showForm ? 'Cancelar' : 'Novo Atendente'}
         </button>
@@ -121,7 +121,7 @@ export default function Team() {
 
       {showForm && (
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6 max-w-md">
-          <h3 className="font-bold text-white mb-4">Cadastrar Novo Atendente</h3>
+          <h3 className="font-bold text-gray-50 mb-4">Cadastrar Novo Atendente</h3>
           <div className="space-y-3">
             <input
               type="text"
@@ -169,7 +169,7 @@ export default function Team() {
                   const defaultSector = role === 'seller' ? 'sales' : role === 'support' ? 'support' : role === 'other' ? 'finance' : formData.sector;
                   setFormData({ ...formData, role, sector: defaultSector });
                 }}
-                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
               >
                 <option value="seller">Vendedor</option>
                 <option value="support">Suporte</option>
@@ -181,7 +181,7 @@ export default function Team() {
               <select
                 value={formData.sector}
                 onChange={(e) => setFormData({ ...formData, sector: e.target.value })}
-                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
               >
                 <option value="sales">Setor: Vendas</option>
                 <option value="support">Setor: Suporte</option>
@@ -190,7 +190,7 @@ export default function Team() {
             </div>
             <button
               onClick={handleCreate}
-              className="w-full bg-indigo-500 text-gray-950 py-2 rounded-lg font-medium hover:bg-indigo-400"
+              className="w-full bg-indigo-500 text-ink py-2 rounded-lg font-medium hover:bg-indigo-400"
             >
               Cadastrar
             </button>
@@ -215,7 +215,7 @@ export default function Team() {
           <tbody className="divide-y divide-gray-700">
             {users.map(user => (
               <tr key={user.id} className="hover:bg-gray-700/30">
-                <td className="px-4 py-3 text-white">{user.name}</td>
+                <td className="px-4 py-3 text-gray-50">{user.name}</td>
                 <td className="px-4 py-3 text-gray-400">{user.username}</td>
                 <td className="px-4 py-3 text-gray-400">
                   {user.phone ? `+${user.phone}` : <span className="text-gray-500 text-sm">sem WhatsApp</span>}

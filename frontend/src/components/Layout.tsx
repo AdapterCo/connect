@@ -60,7 +60,7 @@ export default function Layout() {
         <span className="font-semibold text-gray-50 [font-stretch:112.5%]">Adapter Connect</span>
       </header>
 
-      {navOpen && <div className="fixed inset-0 z-30 bg-gray-950/70 lg:hidden" onClick={() => setNavOpen(false)} aria-hidden="true" />}
+      {navOpen && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setNavOpen(false)} aria-hidden="true" />}
 
       <div
         onClick={closeOnNavigate}

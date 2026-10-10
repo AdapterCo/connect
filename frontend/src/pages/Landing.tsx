@@ -345,7 +345,7 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100">
-      <header className="border-b border-gray-800">
+      <header className="border-b border-gray-700">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
             <BrandMark className="h-9 w-9" />
@@ -440,7 +440,7 @@ export default function Landing() {
                     <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} minLength={8} maxLength={128} required className="input py-2.5" />
                   </div>
 
-                  <button type="submit" disabled={submitting || !selectedPlanId} className="rounded-lg bg-indigo-500 px-4 py-3 font-semibold text-gray-950 hover:bg-indigo-400 disabled:opacity-50">
+                  <button type="submit" disabled={submitting || !selectedPlanId} className="rounded-lg bg-indigo-500 px-4 py-3 font-semibold text-ink hover:bg-indigo-400 disabled:opacity-50">
                     {submitting ? 'Criando conta...' : 'Continuar para pagamento'}
                   </button>
                 </div>
@@ -462,7 +462,7 @@ export default function Landing() {
                 {paymentApproved ? (
                   <div className="mt-5 rounded-lg border border-green-500/30 bg-green-500/10 p-4 text-green-300">
                     Pagamento aprovado. Sua conta foi ativada.
-                    <Link to="/login" className="mt-3 block rounded-lg bg-indigo-500 px-4 py-2 text-center font-semibold text-gray-950 hover:bg-indigo-400">
+                    <Link to="/login" className="mt-3 block rounded-lg bg-indigo-500 px-4 py-2 text-center font-semibold text-ink hover:bg-indigo-400">
                       Ir para login
                     </Link>
                   </div>
@@ -475,17 +475,17 @@ export default function Landing() {
                     )}
 
                     <div className="mt-5 grid grid-cols-2 gap-2 rounded-lg bg-gray-800 p-1">
-                      <button type="button" onClick={() => setPaymentMethod('pix')} className={`rounded-md px-3 py-2 text-sm font-semibold ${paymentMethod === 'pix' ? 'bg-indigo-500 text-gray-950' : 'text-gray-300 hover:bg-gray-700'}`}>
+                      <button type="button" onClick={() => setPaymentMethod('pix')} className={`rounded-md px-3 py-2 text-sm font-semibold ${paymentMethod === 'pix' ? 'bg-indigo-500 text-ink' : 'text-gray-300 hover:bg-gray-700'}`}>
                         Pix
                       </button>
-                      <button type="button" onClick={() => setPaymentMethod('card')} className={`rounded-md px-3 py-2 text-sm font-semibold ${paymentMethod === 'card' ? 'bg-indigo-500 text-gray-950' : 'text-gray-300 hover:bg-gray-700'}`}>
+                      <button type="button" onClick={() => setPaymentMethod('card')} className={`rounded-md px-3 py-2 text-sm font-semibold ${paymentMethod === 'card' ? 'bg-indigo-500 text-ink' : 'text-gray-300 hover:bg-gray-700'}`}>
                         Credito ou Debito
                       </button>
                     </div>
 
                     {paymentMethod === 'pix' && (
                       <div className="mt-5 space-y-4">
-                        <button type="button" onClick={createPixPayment} disabled={creatingPayment || !checkoutConfig?.pix_enabled} className="w-full rounded-lg bg-indigo-500 px-4 py-3 font-semibold text-gray-950 hover:bg-indigo-400 disabled:opacity-50">
+                        <button type="button" onClick={createPixPayment} disabled={creatingPayment || !checkoutConfig?.pix_enabled} className="w-full rounded-lg bg-indigo-500 px-4 py-3 font-semibold text-ink hover:bg-indigo-400 disabled:opacity-50">
                           {creatingPayment ? 'Gerando Pix...' : 'Gerar QR Code Pix'}
                         </button>
 
