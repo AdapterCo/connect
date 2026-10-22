@@ -3,6 +3,19 @@ const bcrypt = require('bcryptjs');
 const { encrypt } = require('../utils/crypto');
 const { passwordError, normalizeEmail } = require('../middleware/validationMiddleware');
 
+const LIMITS_ERROR = 'Limites devem ser números inteiros entre 1 e 10000.';
+
+// Le os limites enviados; null quando algum valor e invalido.
+function parseLimits(input) {
+  const limits = {};
+  for (const [field, value] of Object.entries(input)) {
+    if (value === undefined) continue;
+    if (!Number.isInteger(value) || value < 1 || value > 10000) return null;
+    limits[field] = value;
+  }
+  return limits;
+}
+
 async function listCompanies(req, res) {
   try {
     const companies = await prisma.company.findMany({
@@ -183,9 +196,11 @@ async function updateCompany(req, res) {
         updateData.max_products = plan.max_products;
       }
     }
-    if (max_instances !== undefined && !plan_id) updateData.max_instances = max_instances;
-    if (max_users !== undefined && !plan_id) updateData.max_users = max_users;
-    if (max_products !== undefined && !plan_id) updateData.max_products = max_products;
+    if (!plan_id) {
+      const limits = parseLimits({ max_instances, max_users, max_products });
+      if (!limits) return res.status(400).json({ error: LIMITS_ERROR });
+      Object.assign(updateData, limits);
+    }
     if (is_active !== undefined) updateData.is_active = is_active;
     if (expires_at !== undefined) updateData.expires_at = expires_at ? new Date(expires_at) : null;
 
@@ -273,8 +288,8 @@ async function createPlan(req, res) {
 
 async function updatePlan(req, res) {
   try {
-    const { name, max_instances, max_users, max_products, price, is_active } = req.body;
-    
+    const { name, max_instances, max_users, max_products, price, is_active, apply_to_companies } = req.body;
+
     const plan = await prisma.plan.findUnique({ where: { id: req.params.id } });
     if (!plan) {
       return res.status(404).json({ error: 'Plano não encontrado.' });
@@ -284,11 +299,11 @@ async function updatePlan(req, res) {
       return res.status(400).json({ error: 'Valor do plano deve ser maior que zero.' });
     }
 
-    const updateData = {};
+    const limits = parseLimits({ max_instances, max_users, max_products });
+    if (!limits) return res.status(400).json({ error: LIMITS_ERROR });
+
+    const updateData = { ...limits };
     if (name !== undefined) updateData.name = name;
-    if (max_instances !== undefined) updateData.max_instances = max_instances;
-    if (max_users !== undefined) updateData.max_users = max_users;
-    if (max_products !== undefined) updateData.max_products = max_products;
     if (price !== undefined) updateData.price = price;
     if (is_active !== undefined) updateData.is_active = is_active;
 
@@ -297,7 +312,17 @@ async function updatePlan(req, res) {
       data: updateData
     });
 
-    res.json({ success: true, plan: updated });
+    // As empresas guardam uma copia dos limites; so mudam quando pedido.
+    let companiesUpdated = 0;
+    if (apply_to_companies === true) {
+      const result = await prisma.company.updateMany({
+        where: { plan_id: plan.id },
+        data: { max_instances: updated.max_instances, max_users: updated.max_users, max_products: updated.max_products }
+      });
+      companiesUpdated = result.count;
+    }
+
+    res.json({ success: true, plan: updated, companies_updated: companiesUpdated });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao atualizar plano.' });
   }

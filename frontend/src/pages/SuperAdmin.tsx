@@ -38,6 +38,7 @@ export default function SuperAdmin() {
   const [showCompanyForm, setShowCompanyForm] = useState(false);
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
 
   const fetchCompanies = useCallback(async () => {
     const res = await api.get('/superadmin/companies');
@@ -106,6 +107,15 @@ export default function SuperAdmin() {
 
           {showCompanyForm && <CompanyForm plans={plans} onClose={() => setShowCompanyForm(false)} onSave={fetchCompanies} />}
 
+          {editingCompany && (
+            <CompanyLimitsForm
+              key={editingCompany.id}
+              company={editingCompany}
+              onClose={() => setEditingCompany(null)}
+              onSave={() => { fetchCompanies(); setEditingCompany(null); }}
+            />
+          )}
+
           <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-700/50">
@@ -149,6 +159,12 @@ export default function SuperAdmin() {
                     </td>
                     <td className="px-4 py-3 text-right space-x-2">
                       <button
+                        onClick={() => setEditingCompany(company)}
+                        className="text-xs text-indigo-300"
+                      >
+                        Editar limites
+                      </button>
+                      <button
                         onClick={() => handleToggleCompany(company.id, company.is_active)}
                         className={`text-xs ${company.is_active ? 'text-red-400' : 'text-green-400'}`}
                       >
@@ -178,7 +194,7 @@ export default function SuperAdmin() {
             {showPlanForm ? 'Cancelar' : 'Novo Plano'}
           </button>
 
-          {showPlanForm && <PlanForm plan={editingPlan} onClose={() => { setShowPlanForm(false); setEditingPlan(null); }} onSave={() => { fetchPlans(); setShowPlanForm(false); }} />}
+          {showPlanForm && <PlanForm key={editingPlan?.id || 'new'} plan={editingPlan} onClose={() => { setShowPlanForm(false); setEditingPlan(null); }} onSave={() => { fetchPlans(); fetchCompanies(); setShowPlanForm(false); }} />}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {plans.map(plan => (
@@ -316,6 +332,70 @@ function CompanyForm({ plans, onClose, onSave }: { plans: Plan[]; onClose: () =>
   );
 }
 
+// Limites proprios de uma empresa, independentes do plano.
+function CompanyLimitsForm({ company, onClose, onSave }: { company: Company; onClose: () => void; onSave: () => void }) {
+  const [limits, setLimits] = useState({
+    max_instances: company.max_instances,
+    max_users: company.max_users,
+    max_products: company.max_products
+  });
+  const [error, setError] = useState('');
+
+  const fields: { key: keyof typeof limits; label: string; used: number }[] = [
+    { key: 'max_instances', label: 'Conexões WhatsApp', used: company._count.instances },
+    { key: 'max_users', label: 'Usuários', used: company._count.users },
+    { key: 'max_products', label: 'Produtos', used: company._count.products }
+  ];
+
+  const handleSubmit = async () => {
+    setError('');
+    try {
+      await api.put(`/superadmin/companies/${company.id}`, limits);
+      onSave();
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Erro ao salvar limites.'));
+    }
+  };
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-4 max-w-lg">
+      <h3 className="font-bold text-gray-50">Limites de {company.name}</h3>
+      <p className="text-xs text-gray-400 mb-4">Vale só para esta empresa. Trocar o plano dela depois volta aos limites do plano.</p>
+      {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {fields.map(({ key, label, used }) => (
+          <div key={key}>
+            <label className="text-xs text-gray-400">{label}</label>
+            <input
+              type="number"
+              min={1}
+              max={10000}
+              value={limits[key]}
+              onChange={(e) => setLimits({ ...limits, [key]: parseInt(e.target.value) })}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-50 focus:outline-none focus:border-indigo-500"
+            />
+            <span className="text-xs text-gray-500">Em uso: {used}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 mt-4">
+        <button
+          onClick={handleSubmit}
+          className="flex-1 bg-indigo-500 text-ink py-2 rounded-lg font-medium hover:bg-indigo-400"
+        >
+          Salvar limites
+        </button>
+        <button
+          onClick={onClose}
+          className="px-4 py-2 bg-gray-700 text-gray-50 rounded-lg hover:bg-gray-600"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; onSave: () => void }) {
   const [formData, setFormData] = useState({
     name: plan?.name || '',
@@ -325,13 +405,15 @@ function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; on
     price: plan?.price || 0,
     is_active: plan?.is_active ?? true
   });
+  const [applyToCompanies, setApplyToCompanies] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async () => {
     setError('');
     try {
       if (plan) {
-        await api.put(`/superadmin/plans/${plan.id}`, formData);
+        const res = await api.put(`/superadmin/plans/${plan.id}`, { ...formData, apply_to_companies: applyToCompanies });
+        if (applyToCompanies) alert(`Limites aplicados a ${res.data.companies_updated} empresa(s) deste plano.`);
       } else {
         await api.post('/superadmin/plans', formData);
       }
@@ -401,6 +483,20 @@ function PlanForm({ plan, onSave }: { plan: Plan | null; onClose: () => void; on
           />
           Plano Ativo
         </label>
+        {plan && (
+          <label className="flex items-start gap-2 text-sm text-gray-300">
+            <input
+              type="checkbox"
+              checked={applyToCompanies}
+              onChange={(e) => setApplyToCompanies(e.target.checked)}
+              className="mt-0.5 rounded"
+            />
+            <span>
+              Aplicar os novos limites às empresas que já estão neste plano
+              <span className="block text-xs text-gray-500">Sem isso, só empresas que entrarem no plano depois recebem os limites novos.</span>
+            </span>
+          </label>
+        )}
         <button
           onClick={handleSubmit}
           className="w-full bg-indigo-500 text-ink py-2 rounded-lg font-medium hover:bg-indigo-400"

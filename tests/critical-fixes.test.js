@@ -65,6 +65,30 @@ test('superadmin tokens are checked against the database and revocable', async (
   assert.equal((await call('sa', '/api/superadmin/plans')).status, 401);
 });
 
+test('superadmin edits company limits and can push plan limits to existing companies', async () => {
+  seedTenant();
+  db.company[0].plan_id = 'p1';
+  db.company.push({ id: 'c2', plan_id: 'p2', max_instances: 1, max_users: 1, max_products: 1 });
+  Object.assign(db.plan[0], { max_instances: 1, max_users: 2, max_products: 30 });
+
+  assert.equal((await call('a1', '/api/superadmin/companies/c1', 'PUT', { max_instances: 9 })).status, 403);
+  for (const bad of [0, -1, 1.5, '3', null, 10001]) {
+    assert.equal((await call('sa', '/api/superadmin/companies/c1', 'PUT', { max_instances: bad })).status, 400, String(bad));
+  }
+  assert.equal((await call('sa', '/api/superadmin/companies/c1', 'PUT', { max_instances: 8 })).status, 200);
+  assert.equal(db.company[0].max_instances, 8);
+
+  // Sem a opcao, editar o plano nao mexe nas empresas.
+  await call('sa', '/api/superadmin/plans/p1', 'PUT', { max_instances: 4 });
+  assert.equal(db.company[0].max_instances, 8);
+
+  const res = await call('sa', '/api/superadmin/plans/p1', 'PUT', { max_instances: 6, apply_to_companies: true });
+  assert.equal(res.body.companies_updated, 1);
+  assert.equal(db.company[0].max_instances, 6);
+  assert.equal(db.company[0].max_products, 30);
+  assert.equal(db.company.find(c => c.id === 'c2').max_instances, 1);
+});
+
 test('only managers manage WhatsApp instances and see the QR code', async () => {
   seedTenant();
   activeConnections = { inst1: { connectionStatus: 'qr', qrCodeImage: 'data:image/png;base64,QR' } };
