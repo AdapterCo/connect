@@ -80,6 +80,24 @@ test('disconnect removes only the chosen auth directory after pending writes fin
     assert.equal(fs.existsSync(folder), false);
   } finally { gate.resolve(); delete connections[id]; delete connections.inst_lifecycle_other; if (fs.existsSync(folder)) fs.rmSync(folder, { recursive: true }); }
 });
+test('boot restores connected lines and lines that still have a saved session', async () => {
+  const root = path.resolve(__dirname, '../auth_info_baileys');
+  const saved = 'inst_boot_saved_' + process.pid, folder = path.join(root, saved);
+  fs.mkdirSync(folder, { recursive: true });
+  fs.writeFileSync(path.join(folder, 'creds.json'), '{}');
+  const { prisma } = require('../src/config/database');
+  prisma.instance = { findMany: async () => [
+    { id: 'inst_boot_connected', company_id: 'c1', status: 'connected' },
+    { id: saved, company_id: 'c1', status: 'disconnected' },
+    { id: 'inst_boot_unpaired', company_id: 'c1', status: 'disconnected' }
+  ] };
+  // A empresa e recusada aqui para nenhum socket real ser aberto.
+  prisma.company = { findUnique: async () => null };
+  try {
+    assert.deepEqual((await whatsapp.restoreInstances()).sort(), ['inst_boot_connected', saved].sort());
+  } finally { delete prisma.instance; fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
 test('invalid session paths cannot trigger recursive filesystem removal', async () => {
   await assert.rejects(whatsapp.stopWhatsAppInstance('../outside', true), /Identificador/);
 });

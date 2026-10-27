@@ -384,12 +384,16 @@ async function startInstance(instanceId, companyId, token) {
           );
 
 
-          await Instance.updateStatus(
-            instanceId,
-            'disconnected',
-            null,
-            companyId
-          );
+          // Queda passageira mantem o status salvo: se o servidor reiniciar
+          // durante a reconexao, o boot ainda religa esta conexao.
+          if (!shouldReconnect) {
+            await Instance.updateStatus(
+              instanceId,
+              'disconnected',
+              null,
+              companyId
+            );
+          }
 
 
           /*
@@ -1158,6 +1162,26 @@ function sessionFolder(instanceId) {
   return folder;
 }
 
+// Sessao pareada no disco: so e apagada por logout ou desconexao manual.
+function hasSavedSession(instanceId) {
+  try {
+    return fs.existsSync(path.join(sessionFolder(instanceId), 'creds.json'));
+  } catch {
+    return false;
+  }
+}
+
+// No boot, religa as conexoes marcadas como conectadas e tambem as que
+// ainda tem sessao salva (caidas durante uma reconexao ou um reinicio).
+async function restoreInstances() {
+  const instances = await prisma.instance.findMany({ select: { id: true, company_id: true, status: true } });
+  const restorable = instances.filter(inst => inst.status === 'connected' || hasSavedSession(inst.id));
+  for (const inst of restorable) {
+    startWhatsAppInstance(inst.id, inst.company_id).catch(error => console.error(`[WhatsApp boot:${inst.id}]`, error.code || error.name, error.message));
+  }
+  return restorable.map(inst => inst.id);
+}
+
 async function stopWhatsAppInstance(instanceId, clearSession = false) {
   sessionFolder(instanceId);
   lifecycle.renew(instanceId); // Invalidate pending starts and late socket events immediately.
@@ -1801,6 +1825,7 @@ async function handleIncomingWhatsAppMessage(
 module.exports = {
   startWhatsAppInstance,
   stopWhatsAppInstance,
+  restoreInstances,
   sendMessage,
   getActiveConnections,
   handleIncomingWhatsAppMessage

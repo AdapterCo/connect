@@ -62,8 +62,8 @@ async function boot() {
   await Log.add('Adapter Connect iniciado.');
   startWorkers();
   server.listen(PORT, () => console.log('Server running on port ' + PORT));
-  const instances = await prisma.instance.findMany({ where: { status: 'connected' } });
-  for (const inst of instances) whatsappService.startWhatsAppInstance(inst.id, inst.company_id).catch(error => console.error('[WhatsApp boot]', error.code || error.name));
+  const restored = await whatsappService.restoreInstances();
+  console.log(`[WhatsApp boot] Religando ${restored.length} conexao(oes).`);
 }
 boot().catch(error => { console.error('[Boot failed]', error.code || error.name); process.exit(1); });
 
