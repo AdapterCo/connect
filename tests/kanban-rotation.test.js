@@ -206,6 +206,19 @@ test('each accepted lead scores one point once, whether accepted by command or b
   assert.equal(points[0].user_id, 's1');
   assert.equal(points[0].entity_id, 'chat1');
 });
+test('chip owner replying to a lead offered to someone else takes it and scores the point', async () => {
+  await enter();
+  await rotation.rotateExpiredChat('chat1', 'c1', after(60000));
+  assert.equal(db.chats[0].assigned_to, 's2');
+  // chat1 esta no chip do s1, que responde pelo proprio celular.
+  await rotation.claimForChipOwner('chat1', 'c1', 's1');
+  await reply({ timestamp: after(61000) });
+  assert.equal(db.chats[0].assigned_to, 's1');
+  assert.equal(db.chats[0].sales_reply_due_at, null);
+  assert.equal(db.chats[0].status, 'em atendimento');
+  const points = db.audit.filter(row => row.action === 'lead_accepted');
+  assert.deepEqual(points.map(row => row.user_id), ['s1']);
+});
 test('archiving the offered lead releases the queue; the worker also releases a stuck queue', async () => {
   await enter();
   db.chats.push({ ...copy(db.chats[0]), id: 'chat2', client_phone: '5521900000002', status: 'iniciada', assigned_to: null, sales_reply_due_at: null });

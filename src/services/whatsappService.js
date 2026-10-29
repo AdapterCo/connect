@@ -1012,14 +1012,20 @@ async function startInstance(instanceId, companyId, token) {
                 };
                 chat = (await require('./chatIdentityService').findOrCreate(companyId, instanceId, senderJid, senderJidAlt, newChatData)).chat;
               } else {
+                // O dono do chip respondeu um lead aguardando aceite: ele assume o lead e o
+                // registro da mensagem abaixo conta como aceite (ponto, dados e fila).
+                const pendingOffer = !!(inst?.user_id && chat.sales_reply_due_at);
+                if (pendingOffer && chat.assigned_to !== inst.user_id) {
+                  await require('./salesRotationService').claimForChipOwner(chat.id, companyId, inst.user_id);
+                }
                 const updates = {
-                  sales_reply_due_at: null,
                   ai_active: false
                 };
+                if (!pendingOffer) updates.sales_reply_due_at = null;
                 if (chat.status === 'iniciada') {
                   updates.status = 'em atendimento';
                 }
-                if (!chat.assigned_to && inst?.user_id) {
+                if (!chat.assigned_to && inst?.user_id && !pendingOffer) {
                   updates.assigned_to = inst.user_id;
                 }
                 chat = await Chat.update(chat.id, updates, companyId);

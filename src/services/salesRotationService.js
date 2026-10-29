@@ -353,7 +353,15 @@ async function checkSalesRotation(now = new Date()) {
   }
 }
 
-module.exports = { INTEREST, REPLY_WINDOW_MS, nextSeller, withCompanyLock, updateChat, recordMessage, rotateExpiredChat, checkSalesRotation, confirmAttendance };
+// O dono do chip assume o lead que aguarda aceite no proprio numero, sem novo aviso.
+async function claimForChipOwner(chatId, companyId, sellerId) {
+  return withCompanyLock(companyId, tx => tx.chat.updateMany({
+    where: { id: chatId, company_id: companyId, status: INTEREST, sales_reply_due_at: { not: null } },
+    data: { assigned_to: sellerId }
+  }));
+}
+
+module.exports = { INTEREST, REPLY_WINDOW_MS, nextSeller, withCompanyLock, updateChat, recordMessage, rotateExpiredChat, checkSalesRotation, confirmAttendance, claimForChipOwner };
 
 async function handoffToHuman(id, companyId, now = new Date()) {
   const result = await updateChat(id, { status: INTEREST, sector: 'sales' }, companyId, null, now, { source: 'handoff' });
