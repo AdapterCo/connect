@@ -67,7 +67,10 @@ const prisma = {
     }
   },
   message: { create: async ({ data }) => { const result = { id: String(db.messages.length + 1), ...copy(data) }; db.messages.push(result); return result; } },
-  auditLog: { create: async ({ data }) => { db.audit.push(copy(data)); return data; } },
+  auditLog: {
+    create: async ({ data }) => { db.audit.push(copy(data)); return data; },
+    findMany: async ({ where }) => copy(db.audit.filter(row => row.company_id === where.company_id && row.action === where.action))
+  },
   metric: { create: async ({ data }) => { db.metrics.push(copy(data)); return data; } },
   kanbanColumn: {
     count: async ({ where }) => db.columns.filter(row => matches(row, where)).length,
@@ -169,12 +172,53 @@ test('unauthorized card moves cannot change another seller conversation', async 
   assert.equal((await request('x1', '/cards/chat1', 'PUT', { column_id: 'finalizada' })).status, 404);
   assert.equal(db.chats[0].status, 'iniciada');
 });
-test('initial assignment rotates fairly across online sellers in the same company', async () => {
+test('only one lead is offered at a time; the next waits in queue and rotates fairly after acceptance', async () => {
   const first = await enter(); assert.equal(first.assigned_to, 's1');
   assert.equal(first.sales_reply_due_at.getTime(), after(60000).getTime());
-  db.chats.push({ ...db.chats[0], id: 'chat2', status: 'iniciada', assigned_to: null, sales_reply_due_at: null });
-  const second = await rotation.updateChat('chat2', { status: rotation.INTEREST }, 'c1', null, now);
-  assert.equal(second.assigned_to, 's2');
+  db.chats.push({ ...copy(db.chats[0]), id: 'chat2', client_phone: '5521900000002', status: 'iniciada', assigned_to: null, sales_reply_due_at: null });
+  db.chats.push({ ...copy(db.chats[0]), id: 'chat3', client_phone: '5521900000003', status: 'iniciada', assigned_to: null, sales_reply_due_at: null });
+  const second = await rotation.updateChat('chat2', { status: rotation.INTEREST }, 'c1', null, after(1000));
+  await rotation.updateChat('chat3', { status: rotation.INTEREST }, 'c1', null, after(2000));
+  assert.equal(second.assigned_to, null);
+  assert.equal(second.sales_reply_due_at, null);
+  assert.deepEqual(second.queued_at, after(1000));
+
+  // Mensagem do cliente nao tira o lead da fila.
+  await rotation.recordMessage('chat2', { chat_id: 'chat2', sender: 'client', text: 'Oi?', timestamp: after(3000) }, after(3000));
+  assert.equal(db.chats.find(chat => chat.id === 'chat2').assigned_to, null);
+
+  const accepted = await rotation.confirmAttendance('c1', 's1', 'chat1', after(5000));
+  assert.equal(accepted.status, 'confirmed');
+  const chat2 = db.chats.find(chat => chat.id === 'chat2'), chat3 = db.chats.find(chat => chat.id === 'chat3');
+  assert.equal(chat2.assigned_to, 's2');
+  assert.equal(chat2.queued_at, null);
+  assert.deepEqual(chat2.sales_reply_due_at, after(65000));
+  assert.equal(chat3.assigned_to, null);
+  assert.ok(chat3.queued_at);
+});
+test('each accepted lead scores one point once, whether accepted by command or by reply', async () => {
+  await enter();
+  await rotation.confirmAttendance('c1', 's1', 'chat1', after(1000));
+  await rotation.confirmAttendance('c1', 's1', 'chat1', after(2000));
+  await reply({ timestamp: after(3000) });
+  const points = db.audit.filter(row => row.action === 'lead_accepted');
+  assert.equal(points.length, 1);
+  assert.equal(points[0].user_id, 's1');
+  assert.equal(points[0].entity_id, 'chat1');
+});
+test('archiving the offered lead releases the queue; the worker also releases a stuck queue', async () => {
+  await enter();
+  db.chats.push({ ...copy(db.chats[0]), id: 'chat2', client_phone: '5521900000002', status: 'iniciada', assigned_to: null, sales_reply_due_at: null });
+  await rotation.updateChat('chat2', { status: rotation.INTEREST }, 'c1', null, after(1000));
+  await rotation.updateChat('chat1', { is_archived: true }, 'c1', null, after(2000));
+  assert.ok(db.chats.find(chat => chat.id === 'chat2').sales_reply_due_at);
+
+  db.chats.push({ ...copy(db.chats[0]), id: 'chat3', client_phone: '5521900000003', status: rotation.INTEREST, is_archived: false, assigned_to: null, sales_reply_due_at: null, queued_at: after(500) });
+  Object.assign(db.chats.find(chat => chat.id === 'chat2'), { status: 'finalizada', sales_reply_due_at: null });
+  await rotation.checkSalesRotation(after(4000));
+  const chat3 = db.chats.find(chat => chat.id === 'chat3');
+  assert.ok(chat3.assigned_to);
+  assert.equal(chat3.queued_at, null);
 });
 test('do not rotate before one minute; concurrent workers transfer only once', async () => {
   await enter();

@@ -60,8 +60,16 @@ test('verified seller confirmation and ambiguity never fall through to AI', asyn
     assert.equal(await handleConfirmation({ command: { chatId: 'chat_abc' }, teamMember: { id: 'seller1' },
       confirm: async (seller, lead) => { assert.equal(seller, 'seller1'); assert.equal(lead, 'chat_abc'); return { status, chat: { client_name: 'Daniel' }, chats: [{ id: 'chat_abc', client_name: 'Daniel' }] }; },
       send: async text => { reply = text; }, log: { warn() {}, info() {} } }), true);
-    assert.equal(/Atendimento confirmado/.test(reply), status === 'confirmed');
+    // No aceite a resposta e a mensagem com os dados do lead, enviada pelo rodizio.
+    assert.equal(reply === undefined, status === 'confirmed');
   }
+});
+test('ACEITAR is the accept command and CONFIRMAR keeps working', () => {
+  const { confirmation } = require('../src/services/sellerIdentityService');
+  assert.deepEqual(confirmation({ conversation: 'aceitar' }), { chatId: null });
+  assert.deepEqual(confirmation({ conversation: 'ACEITAR chat_abc' }), { chatId: 'chat_abc' });
+  assert.deepEqual(confirmation({ conversation: 'CONFIRMAR' }), { chatId: null });
+  assert.equal(confirmation({ conversation: 'aceito o desconto' }), null);
 });
 test('outgoing confirmation echoes are ignored without dispatching or responding', async () => {
   const { handleConfirmation } = require('../src/services/sellerIdentityService');

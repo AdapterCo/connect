@@ -51,8 +51,51 @@ async function assignNext(tx, chat, now, initial = false) {
   return { assigned_to: seller.id, claimed_at: now, sales_alerted_at: null };
 }
 
+// Um lead oferecido por vez: enquanto um aguarda aceite, os novos esperam na fila.
+function offeredLead(tx, companyId, exceptId = null) {
+  return tx.chat.findFirst({ where: {
+    company_id: companyId, status: INTEREST, is_archived: false, is_blocked: false,
+    sales_reply_due_at: { not: null }, ...(exceptId ? { id: { not: exceptId } } : {})
+  } });
+}
+
+async function offerOrQueue(tx, chat, now) {
+  if (await offeredLead(tx, chat.company_id, chat.id)) {
+    return { assigned_to: null, claimed_at: null, sales_reply_due_at: null, queued_at: chat.queued_at || now };
+  }
+  return {
+    ...(await assignNext(tx, chat, now, true) || { assigned_to: null, claimed_at: null }),
+    sales_reply_due_at: new Date(now.getTime() + REPLY_WINDOW_MS), queued_at: null
+  };
+}
+
+// Oferece o lead mais antigo da fila quando nenhum outro aguarda aceite.
+async function releaseQueue(tx, companyId, now) {
+  if (await offeredLead(tx, companyId)) return null;
+  const next = await tx.chat.findFirst({
+    where: { company_id: companyId, status: INTEREST, is_archived: false, is_blocked: false, queued_at: { not: null } },
+    orderBy: { queued_at: 'asc' }
+  });
+  if (!next) return null;
+  const assignment = await assignNext(tx, next, now, true);
+  const chat = await tx.chat.update({ where: { id: next.id }, data: {
+    ...(assignment || { assigned_to: null, claimed_at: null }), sales_reply_due_at: new Date(now.getTime() + REPLY_WINDOW_MS), queued_at: null
+  }, include: messages });
+  return { chat, sellerId: assignment?.assigned_to || null };
+}
+
+function announceReleased(released) {
+  if (!released) return;
+  require('../config/socket').emitToCompany(released.chat.company_id, 'chat_updated', released.chat);
+  if (released.sellerId) require('./leadNotificationService').notifySeller(released.chat, released.sellerId).catch(() => {});
+}
+
+function announceAccepted(accepted) {
+  if (accepted) require('./leadNotificationService').notifyAccepted(accepted.chat, accepted.sellerId).catch(() => {});
+}
+
 async function updateChat(id, data, companyId, actor, now = new Date(), options = {}) {
-  let assignedSellerId = null;
+  let assignedSellerId = null, released = null;
   const result = await withCompanyLock(companyId, async tx => {
     const chat = await tx.chat.findFirst({ where: { id, company_id: companyId } });
     if (!chat) return null;
@@ -65,7 +108,7 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
     }
     if (options.source === 'handoff' && (!chat.ai_active || chat.status === 'finalizada' || chat.is_archived || chat.is_blocked)) return null;
     if (options.source === 'handoff' && !require('./accessService').companyActive(await tx.company.findUnique({ where: { id: companyId } }), now)) return null;
-    if (options.source === 'handoff' && HUMAN_STAGES.includes(chat.status) && (chat.assigned_to || chat.sales_reply_due_at)) {
+    if (options.source === 'handoff' && HUMAN_STAGES.includes(chat.status) && (chat.assigned_to || chat.sales_reply_due_at || chat.queued_at)) {
       return tx.chat.findFirst({ where: { id, company_id: companyId }, include: messages });
     }
     const updates = { ...data };
@@ -89,12 +132,16 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
       } });
       updates.claimed_at = null;
     }
-    if (status !== INTEREST || inactive) updates.sales_reply_due_at = null;
+    if (status !== INTEREST || inactive) Object.assign(updates, { sales_reply_due_at: null, queued_at: null });
     else if (entering || (options.source === 'handoff' && !chat.assigned_to)) {
-      Object.assign(updates, await assignNext(tx, chat, now, true) || { assigned_to: null, claimed_at: null });
-      updates.sales_reply_due_at = new Date(now.getTime() + REPLY_WINDOW_MS);
-    } else if (reassigned || (chat.is_archived && data.is_archived === false) || (chat.is_blocked && data.is_blocked === false)) {
-      updates.sales_reply_due_at = new Date(now.getTime() + REPLY_WINDOW_MS);
+      Object.assign(updates, await offerOrQueue(tx, chat, now));
+    } else if (reassigned) {
+      // Atribuicao manual de um gestor fura a fila.
+      Object.assign(updates, { sales_reply_due_at: new Date(now.getTime() + REPLY_WINDOW_MS), queued_at: null });
+    } else if ((chat.is_archived && data.is_archived === false) || (chat.is_blocked && data.is_blocked === false)) {
+      Object.assign(updates, await offeredLead(tx, companyId, id)
+        ? { sales_reply_due_at: null, queued_at: chat.queued_at || now }
+        : { sales_reply_due_at: new Date(now.getTime() + REPLY_WINDOW_MS) });
     }
     if (updates.assigned_to && updates.assigned_to !== chat.assigned_to) {
       assignedSellerId = updates.assigned_to;
@@ -103,9 +150,12 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
       await tx.kanbanCard.deleteMany({ where: { chat_id: id, company_id: companyId } });
     }
     if (options.source === 'handoff') {
-      if (!updates.sales_reply_due_at && !chat.sales_reply_due_at) updates.sales_reply_due_at = new Date(now.getTime() + REPLY_WINDOW_MS);
+      if (!updates.sales_reply_due_at && !chat.sales_reply_due_at && !updates.queued_at) updates.sales_reply_due_at = new Date(now.getTime() + REPLY_WINDOW_MS);
       const owner = updates.assigned_to !== undefined ? updates.assigned_to : chat.assigned_to;
-      await tx.message.create({ data: { chat_id: id, sender: 'system', text: owner ? 'Atendimento encaminhado ao vendedor responsavel. IA permanece ativa.' : 'Atendimento na fila aguardando vendedor online. IA permanece ativa.' } });
+      const handoffText = updates.queued_at
+        ? 'Atendimento na fila de leads aguardando o aceite de um vendedor. IA permanece ativa.'
+        : owner ? 'Atendimento encaminhado ao vendedor responsavel. IA permanece ativa.' : 'Atendimento na fila aguardando vendedor online. IA permanece ativa.';
+      await tx.message.create({ data: { chat_id: id, sender: 'system', text: handoffText } });
       const context = await tx.chat.findFirst({ where: { id, company_id: companyId }, include: messages });
       const qualification = require('./leadQualificationService').previousQualification(context || chat);
       if (!qualification.context) qualification.context = (context?.messages || []).filter(message => message.sender === 'client' && !message.is_note).slice(-6).map(message => String(message.text || '').slice(0, 500)).join('\n').slice(0, 2000);
@@ -116,6 +166,7 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
       const origin = updates.assigned_to !== undefined ? await tx.instance.findFirst({ where: { id: chat.instance_id, company_id: companyId } }) : null;
       await require('./commercialService').syncChat(tx, updated, undefined, !!origin && !origin.user_id);
     }
+    released = await releaseQueue(tx, companyId, now);
     return updated;
   });
 
@@ -125,6 +176,7 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
       notifySeller(result, assignedSellerId).catch(() => {});
     } catch (e) {}
   }
+  announceReleased(released);
   return result;
 }
 
@@ -143,15 +195,25 @@ async function captureRelated(tx, chat, sellerId, now, reason) {
     status: { in: HUMAN_STAGES }, is_archived: false, is_blocked: false
   }, include: { instance: { select: { user_id: true } }, messages: { orderBy: { timestamp: 'asc' } } } });
   const changed = [];
+  let accepted = null;
   for (const lead of related) {
     if (lead.claimed_at && new Date(lead.claimed_at) > now) continue;
     const status = lead.instance?.user_id ? ATTENDING : FORWARDED;
     if (!lead.sales_reply_due_at && lead.status === status) continue;
-    changed.push(await tx.chat.update({ where: { id: lead.id }, data: { sales_reply_due_at: null, status }, include: messages }));
+    const updated = await tx.chat.update({ where: { id: lead.id }, data: { sales_reply_due_at: null, queued_at: null, status }, include: messages });
+    changed.push(updated);
+    if (lead.sales_reply_due_at && !accepted) accepted = { chat: updated, sellerId };
     await tx.kanbanCard.deleteMany({ where: { chat_id: lead.id, company_id: lead.company_id } });
     await tx.message.create({ data: { chat_id: lead.id, sender: 'system', text: reason } });
   }
-  return changed;
+  // Cada lead aceito vale 1 ponto no ranking do mes.
+  if (accepted) {
+    await tx.auditLog.create({ data: {
+      company_id: chat.company_id, user_id: sellerId, action: require('./leadRankingService').ACCEPTED,
+      entity: 'chat', entity_id: accepted.chat.id, details: JSON.stringify({ chats: changed.map(lead => lead.id) })
+    } });
+  }
+  return { changed, accepted };
 }
 
 function emitCaptured(chats) {
@@ -170,25 +232,28 @@ async function confirmAttendance(companyId, sellerId, chatId = null, now = new D
     const groups = new Set(leads.map(lead => phoneCandidates(lead.client_phone).sort().join('|') || lead.id));
     if (!chatId && groups.size > 1) return { status: 'ambiguous', chats: leads };
     const lead = leads[0];
-    const captured = await captureRelated(tx, lead, sellerId, now, `Vendedor ${seller.name} confirmou atendimento via WhatsApp. Rodizio pausado em todas as conexoes deste lead.`);
+    const { changed, accepted } = await captureRelated(tx, lead, sellerId, now, `Vendedor ${seller.name} aceitou o lead via WhatsApp. Rodizio pausado em todas as conexoes deste lead.`);
     const fresh = await tx.chat.findFirst({ where: { id: lead.id, company_id: companyId, assigned_to: sellerId } });
     const confirmed = fresh && !fresh.sales_reply_due_at && [FORWARDED, ATTENDING].includes(fresh.status);
-    return { status: confirmed ? 'confirmed' : 'unavailable', chat: lead, chats: captured };
+    const released = await releaseQueue(tx, companyId, now);
+    return { status: confirmed ? 'confirmed' : 'unavailable', chat: lead, chats: changed, accepted, released };
   });
   if (result.status === 'confirmed') emitCaptured(result.chats);
+  announceAccepted(result.accepted);
+  announceReleased(result.released);
   return result;
 }
 
 async function recordMessage(chatId, data, now = new Date()) {
   const existing = await prisma.chat.findUnique({ where: { id: chatId }, select: { company_id: true } });
   if (!existing) throw new Error('Conversa não encontrada.');
-  let captured = [];
+  let captured = [], accepted = null, released = null;
   const message = await withCompanyLock(existing.company_id, async tx => {
     const chat = await tx.chat.findFirst({ where: { id: chatId, company_id: existing.company_id } });
     if (!chat) throw new Error('Conversa não encontrada.');
     const result = await tx.message.create({ data });
     if (!HUMAN_STAGES.includes(chat.status) || chat.is_archived || chat.is_blocked) return result;
-    if (chat.status === INTEREST && data.sender === 'client' && !chat.sales_reply_due_at && !chat.assigned_to) {
+    if (chat.status === INTEREST && data.sender === 'client' && !chat.sales_reply_due_at && !chat.assigned_to && !chat.queued_at) {
       if (tx.instance) {
         const sellerChat = await tx.chat.findFirst({
           where: {
@@ -203,19 +268,21 @@ async function recordMessage(chatId, data, now = new Date()) {
           return result;
         }
       }
-      const assignment = !chat.assigned_to ? await assignNext(tx, chat, now, true) : null;
-      await tx.chat.update({ where: { id: chatId }, data: {
-        ...(assignment || {}), sales_reply_due_at: new Date(now.getTime() + REPLY_WINDOW_MS)
-      } });
+      await tx.chat.update({ where: { id: chatId }, data: await offerOrQueue(tx, chat, now) });
     } else if (data.sender === 'attendant' && !data.is_ai && !data.is_note && !data.is_scheduled &&
         data.sender_id && data.sender_id === chat.assigned_to &&
         (!chat.claimed_at || new Date(data.timestamp) >= new Date(chat.claimed_at))) {
       const seller = await tx.user.findFirst({ where: { id: data.sender_id, company_id: chat.company_id, role: 'seller' }, select: { id: true } });
-      if (seller) captured = await captureRelated(tx, chat, seller.id, new Date(data.timestamp), 'Resposta humana recebida. Rodizio pausado em todas as conexoes deste lead.');
+      if (seller) {
+        ({ changed: captured, accepted } = await captureRelated(tx, chat, seller.id, new Date(data.timestamp), 'Resposta humana recebida. Rodizio pausado em todas as conexoes deste lead.'));
+        released = await releaseQueue(tx, chat.company_id, now);
+      }
     }
     return result;
   });
   emitCaptured(captured);
+  announceAccepted(accepted);
+  announceReleased(released);
   if (data.sender === 'client' && !data.is_note) {
     const chat = await prisma.chat.findUnique({ where: { id: chatId }, include: { instance: { select: { user_id: true } } } });
     if (chat?.instance?.user_id && !chat.is_blocked && !chat.is_archived)
@@ -225,7 +292,7 @@ async function recordMessage(chatId, data, now = new Date()) {
 }
 
 async function rotateExpiredChat(id, companyId, now = new Date()) {
-  let assignedSellerId = null;
+  let assignedSellerId = null, accepted = null, released = null;
   const result = await withCompanyLock(companyId, async tx => {
     const chat = await tx.chat.findFirst({ where: { id, company_id: companyId } });
     if (!chat || chat.status !== INTEREST || chat.is_archived || chat.is_blocked ||
@@ -238,7 +305,8 @@ async function rotateExpiredChat(id, companyId, now = new Date()) {
         chat: { company_id: companyId, client_phone: { in: phoneCandidates(chat.client_phone) }, assigned_to: chat.assigned_to, is_archived: false, is_blocked: false }
       } });
       if (proof) {
-        await captureRelated(tx, chat, chat.assigned_to, now, 'Resposta humana ja registrada em outra conexao. Rodizio pausado.');
+        ({ accepted } = await captureRelated(tx, chat, chat.assigned_to, now, 'Resposta humana ja registrada em outra conexao. Rodizio pausado.'));
+        released = await releaseQueue(tx, companyId, now);
         return tx.chat.findFirst({ where: { id, company_id: companyId }, include: messages });
       }
     }
@@ -258,10 +326,21 @@ async function rotateExpiredChat(id, companyId, now = new Date()) {
       notifySeller(result, assignedSellerId).catch(() => {});
     } catch (e) {}
   }
+  announceAccepted(accepted);
+  announceReleased(released);
   return result;
 }
 
 async function checkSalesRotation(now = new Date()) {
+  // Rede de seguranca: libera filas cujo lead oferecido saiu por outro caminho.
+  const waiting = await prisma.chat.findMany({
+    where: { status: INTEREST, is_archived: false, is_blocked: false, queued_at: { not: null } },
+    select: { company_id: true }, take: 500
+  });
+  for (const companyId of new Set(waiting.map(chat => chat.company_id))) {
+    try { announceReleased(await withCompanyLock(companyId, tx => releaseQueue(tx, companyId, now))); }
+    catch (error) { console.error('Lead queue release failed:', error.code || error.name); }
+  }
   const due = await prisma.chat.findMany({
     where: { status: INTEREST, is_archived: false, is_blocked: false, sales_reply_due_at: { lte: now } },
     select: { id: true, company_id: true }, orderBy: { sales_reply_due_at: 'asc' }, take: 100

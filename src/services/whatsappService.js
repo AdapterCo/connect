@@ -231,7 +231,10 @@ async function startInstance(instanceId, companyId, token) {
       const corrected = await prisma.chat.findMany({ where: { company_id: companyId, instance_id: instanceId, remote_jid: lid, client_phone: { not: phone } } });
       for (const chat of corrected) {
         const updated = await prisma.chat.update({ where: { id: chat.id }, data: { client_phone: phone } });
-        if (updated.assigned_to && updated.status === 'interesse em compra') await require('./leadNotificationService').notifySeller(updated, updated.assigned_to);
+        // Lead ja aceito recebe o telefone recem-identificado; antes do aceite nada e enviado.
+        if (updated.assigned_to && ['encaminhados', 'em atendimento'].includes(updated.status)) {
+          await require('./leadNotificationService').sendLeadDetails(updated, updated.assigned_to, { title: '📱 *Telefone do cliente identificado*' });
+        }
       }
     };
     const rememberContact = contact => rememberPhone(contact.lid || (contact.id?.endsWith('@lid') ? contact.id : null), contact.jid || (contact.id?.endsWith('@s.whatsapp.net') ? contact.id : null));

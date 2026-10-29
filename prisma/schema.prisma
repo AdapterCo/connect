@@ -134,6 +134,7 @@ model Chat {
   opportunity_id String?
   opportunity Opportunity? @relation(fields: [opportunity_id, company_id], references: [id, company_id], onDelete: Restrict)
   sales_reply_due_at DateTime?
+  queued_at     DateTime?
   kanban_cards KanbanCard[]
   id            String    @id
   remote_jid    String?
@@ -166,6 +167,7 @@ model Chat {
   @@unique([company_id, instance_id, remote_jid])
   @@unique([id, company_id])
   @@index([status, sales_reply_due_at])
+  @@index([company_id, status, queued_at])
 }
 
 model KanbanColumn {

@@ -36,11 +36,12 @@ function confirmation(message) {
     content = wrapped;
   }
   const text = content?.conversation || content?.extendedTextMessage?.text || '';
-  const match = /^CONFIRMAR(?:\s+(chat_[a-zA-Z0-9_-]+))?$/i.exec(text.trim());
+  // ACEITAR e o comando atual; CONFIRMAR continua valendo para quem ja usava.
+  const match = /^(?:ACEITAR|CONFIRMAR)(?:\s+(chat_[a-zA-Z0-9_-]+))?$/i.exec(text.trim());
   if (!match) return null;
   const quoted = content?.extendedTextMessage?.contextInfo?.quotedMessage;
   const quotedText = quoted?.conversation || quoted?.extendedTextMessage?.text || '';
-  return { chatId: match[1] || /CONFIRMAR\s+(chat_[a-zA-Z0-9_-]+)/i.exec(quotedText)?.[1] || null };
+  return { chatId: match[1] || /(?:ACEITAR|CONFIRMAR)\s+(chat_[a-zA-Z0-9_-]+)/i.exec(quotedText)?.[1] || null };
 }
 
 async function handleConfirmation({ command, fromMe, teamMember, confirm, send, log = console }) {
@@ -53,11 +54,11 @@ async function handleConfirmation({ command, fromMe, teamMember, confirm, send, 
   }
   const result = await confirm(teamMember.id, command.chatId);
   log.info('[SellerConfirmation]', result.status, 'updated:', result.chats.length);
-  const reply = result.status === 'confirmed'
-    ? 'Atendimento confirmado para ' + result.chat.client_name + '. O rodizio foi pausado para este cliente.'
-    : result.status === 'ambiguous'
-      ? 'Voce tem mais de um cliente aguardando. Responda a notificacao desejada com CONFIRMAR ou envie o comando com o ID:\n' + result.chats.map(lead => lead.client_name + ': CONFIRMAR ' + lead.id).join('\n')
-      : 'Nao foi possivel confirmar um lead pendente atribuido a voce. Verifique no painel; ele pode ter sido encaminhado a outro vendedor.';
+  // No aceite, a resposta e a mensagem com os dados do lead e o ranking.
+  if (result.status === 'confirmed') return true;
+  const reply = result.status === 'ambiguous'
+    ? 'Voce tem mais de um cliente aguardando. Envie o comando com o ID do lead desejado:\n' + result.chats.map(lead => 'ACEITAR ' + lead.id).join('\n')
+    : 'Nao ha lead aguardando o seu aceite. Ele pode ter passado para outro vendedor; verifique no painel.';
   await send(reply);
   return true;
 }
