@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../stores/appStore';
 import { useAuthStore } from '../stores/authStore';
 import { kanbanLeads } from '../utils/kanbanLeads';
+import LeadQueuePanel from '../components/LeadQueuePanel';
 import type { Chat } from '../types';
 
 // Etapas do funil, na ordem em que o cliente percorre.
@@ -92,6 +93,8 @@ export default function Dashboard() {
           })}
         </ol>
       </section>
+
+      <LeadQueuePanel changes={chats} onOpenChat={openChat} />
 
       <div className={`grid gap-6 ${isManager ? 'lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]' : ''}`}>
         <section className="panel" aria-labelledby="waiting-title">

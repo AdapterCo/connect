@@ -39,4 +39,37 @@ async function standing(companyId, sellerId, now = new Date()) {
   return standingText(await ranking(companyId, now), sellerId);
 }
 
-module.exports = { ACCEPTED, monthStart, ranking, standingText, standing };
+// Fila e ranking para o painel. Vendedor so ve o nome do cliente depois do aceite.
+async function queuePanel(user, now = new Date()) {
+  const manager = ['admin', 'supervisor'].includes(user.role);
+  const base = { company_id: user.company_id, status: 'interesse em compra', is_archived: false, is_blocked: false };
+  const [list, offered, queued] = await Promise.all([
+    ranking(user.company_id, now),
+    prisma.chat.findMany({ where: { ...base, sales_reply_due_at: { not: null } }, select: { id: true, client_name: true, assigned_to: true, sales_reply_due_at: true } }),
+    prisma.chat.findMany({ where: { ...base, queued_at: { not: null } }, select: { id: true, client_name: true, queued_at: true } })
+  ]);
+  const names = new Map(list.map(seller => [seller.id, seller.name]));
+  const time = value => new Date(value).getTime();
+  return {
+    month_start: monthStart(now),
+    ranking: list.map(seller => ({ ...seller, me: seller.id === user.id })),
+    offered: offered
+      .sort((a, b) => time(a.sales_reply_due_at) - time(b.sales_reply_due_at))
+      .map(chat => {
+        const mine = chat.assigned_to === user.id;
+        return {
+          id: manager || mine ? chat.id : null,
+          client_name: manager ? chat.client_name : null,
+          seller_id: chat.assigned_to,
+          seller_name: names.get(chat.assigned_to) || null,
+          due_at: chat.sales_reply_due_at,
+          mine
+        };
+      }),
+    queue: queued
+      .sort((a, b) => time(a.queued_at) - time(b.queued_at))
+      .map((chat, index) => ({ id: manager ? chat.id : null, client_name: manager ? chat.client_name : null, queued_at: chat.queued_at, position: index + 1 }))
+  };
+}
+
+module.exports = { ACCEPTED, monthStart, ranking, standingText, standing, queuePanel };

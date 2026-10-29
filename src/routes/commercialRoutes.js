@@ -25,6 +25,7 @@ router.get('/summary', wrap(async (req, res) => {
   ]);
   res.json({ total, open, lost, converted, conversion_rate: total ? Math.round(converted / total * 10000) / 100 : 0 });
 }));
+router.get('/lead-queue', wrap(async (req, res) => res.json(await require('../services/leadRankingService').queuePanel(req.user))));
 router.post('/leads', wrap(async (req, res) => res.status(201).json(await service.createLead(req.user, req.body))));
 router.patch('/leads/:id', wrap(async (req, res) => {
   const lead = await service.updateLead(req.user, req.params.id, req.body);
