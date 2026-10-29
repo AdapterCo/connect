@@ -70,6 +70,8 @@ test('ACEITAR is the accept command and CONFIRMAR keeps working', () => {
   assert.deepEqual(confirmation({ conversation: 'ACEITAR chat_abc' }), { chatId: 'chat_abc' });
   assert.deepEqual(confirmation({ conversation: 'CONFIRMAR' }), { chatId: null });
   assert.equal(confirmation({ conversation: 'aceito o desconto' }), null);
+  for (const text of ['Aceitar.', 'ACEITAR 👍', 'aceitar!!', ' Confirmar ✅ ']) assert.deepEqual(confirmation({ conversation: text }), { chatId: null }, text);
+  assert.equal(confirmation({ conversation: 'vou aceitar' }), null);
 });
 test('outgoing confirmation echoes are ignored without dispatching or responding', async () => {
   const { handleConfirmation } = require('../src/services/sellerIdentityService');

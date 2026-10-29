@@ -46,12 +46,13 @@ async function sendToSeller(chat, sellerId, text) {
 
   const whatsappService = require('./whatsappService');
   const connections = whatsappService.getActiveConnections();
-  let instanceId = chat.instance_id;
-  if (!connections[instanceId] || connections[instanceId].connectionStatus !== 'open') {
-    const openId = Object.keys(connections).find(id => connections[id]?.connectionStatus === 'open' && connections[id]?.companyId === chat.company_id);
-    if (openId) instanceId = openId;
-  }
-  if (!instanceId || connections[instanceId]?.connectionStatus !== 'open') {
+  const open = id => connections[id]?.connectionStatus === 'open' && connections[id]?.companyId === chat.company_id;
+  // Enviar do chip do proprio vendedor cai no "Voce" do WhatsApp dele, onde a resposta
+  // ACEITAR chega como mensagem propria. Prefere a conexao do lead, depois qualquer outra.
+  const otherNumber = id => normalizeDigits(connections[id]?.connectedPhone) !== cleanSellerPhone;
+  const candidates = [chat.instance_id, ...Object.keys(connections).filter(id => id !== chat.instance_id)].filter(id => id && open(id));
+  const instanceId = candidates.find(otherNumber) || candidates[0];
+  if (!instanceId) {
     console.warn('[LeadNotification] No open WhatsApp connection available.');
     return false;
   }

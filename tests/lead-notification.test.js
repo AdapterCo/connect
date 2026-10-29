@@ -52,6 +52,22 @@ test('resolved customer phone is sent even when the chat retains its LID alias',
   await sendLeadDetails({ id: 'chat1', company_id: 'c1', instance_id: 'store' }, 'seller');
   assert.match(sent.text, /wa\.me\/5521985080634/); assert.doesNotMatch(sent.text, /66791506194465/);
 });
+test('notices avoid the seller own chip so the ACEITAR reply is not a self message', async () => {
+  const whatsapp = require('../src/services/whatsappService');
+  const original = whatsapp.getActiveConnections;
+  whatsapp.getActiveConnections = () => ({
+    'seller-chip': { connectionStatus: 'open', companyId: 'c1', connectedPhone: '5511988888888' },
+    store: { connectionStatus: 'open', companyId: 'c1', connectedPhone: '5511977777777' },
+    'other-company': { connectionStatus: 'open', companyId: 'c2', connectedPhone: '5511966666666' }
+  });
+  try {
+    await notifySeller({ id: 'chat1', company_id: 'c1', instance_id: 'seller-chip' }, 'seller');
+    assert.equal(sent.instance, 'store');
+    whatsapp.getActiveConnections = () => ({ 'seller-chip': { connectionStatus: 'open', companyId: 'c1', connectedPhone: '5511988888888' } });
+    await notifySeller({ id: 'chat1', company_id: 'c1', instance_id: 'seller-chip' }, 'seller');
+    assert.equal(sent.instance, 'seller-chip');
+  } finally { whatsapp.getActiveConnections = original; }
+});
 test('ranking shares positions on ties and shows the gap to the next place', () => {
   const list = [{ id: 'a', points: 5, position: 1 }, { id: 'b', points: 3, position: 2 }, { id: 'c', points: 3, position: 2 }, { id: 'd', points: 0, position: 4 }];
   assert.match(standingText(list, 'a'), /1º lugar .* 5 pontos/);

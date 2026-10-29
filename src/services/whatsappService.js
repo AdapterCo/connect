@@ -628,7 +628,12 @@ async function startInstance(instanceId, companyId, token) {
               if (senderJid.endsWith('@lid') && identityResolver.phoneJid(senderJidAlt)) await rememberPhone(senderJid, senderJidAlt);
             } catch (error) { console.error('[SellerIdentity] Resolution failed:', error.code || error.name); }
             const senderIdentifier = senderJid.split('@')[0];
-            const verifiedJid = identityResolver.phoneJid(senderJid) || identityResolver.phoneJid(senderJidAlt);
+            // Conversa do chip consigo mesmo ("Voce"): o dono do chip pode aceitar leads por ali.
+            const ownIds = [sock.user?.id, sock.user?.lid].filter(Boolean).map(jid => jid.split('@')[0].split(':')[0]);
+            const selfChat = !!(command && msg.key?.fromMe && ownIds.includes(senderIdentifier.split(':')[0]));
+            const verifiedJid = selfChat
+              ? identityResolver.phoneJid(`${connectionState.connectedPhone}@s.whatsapp.net`)
+              : identityResolver.phoneJid(senderJid) || identityResolver.phoneJid(senderJidAlt);
             const digits = verifiedJid?.split('@')[0];
             const phonesList = digits ? [...new Set([digits, digits.startsWith('55') ? digits.slice(2) : '55' + digits])] : [];
 
@@ -647,7 +652,7 @@ async function startInstance(instanceId, companyId, token) {
 
             // A control command must never enter the customer/AI pipeline.
             if (await identityResolver.handleConfirmation({
-              command, fromMe: msg.key?.fromMe, teamMember,
+              command, fromMe: msg.key?.fromMe && !selfChat, teamMember,
               confirm: (sellerId, chatId) => require('./salesRotationService').confirmAttendance(companyId, sellerId, chatId),
               send: text => sendMessage(instanceId, senderJid, { text })
             })) continue;

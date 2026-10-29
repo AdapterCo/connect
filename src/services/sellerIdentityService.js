@@ -35,9 +35,10 @@ function confirmation(message) {
     if (!wrapped) break;
     content = wrapped;
   }
-  const text = content?.conversation || content?.extendedTextMessage?.text || '';
+  // Ignora pontuacao e emojis no fim ("Aceitar.", "ACEITAR 👍").
+  const text = String(content?.conversation || content?.extendedTextMessage?.text || '').trim().replace(/[^\p{L}\p{N}_-]+$/u, '');
   // ACEITAR e o comando atual; CONFIRMAR continua valendo para quem ja usava.
-  const match = /^(?:ACEITAR|CONFIRMAR)(?:\s+(chat_[a-zA-Z0-9_-]+))?$/i.exec(text.trim());
+  const match = /^(?:ACEITAR|CONFIRMAR)(?:\s+(chat_[a-zA-Z0-9_-]+))?$/i.exec(text);
   if (!match) return null;
   const quoted = content?.extendedTextMessage?.contextInfo?.quotedMessage;
   const quotedText = quoted?.conversation || quoted?.extendedTextMessage?.text || '';
