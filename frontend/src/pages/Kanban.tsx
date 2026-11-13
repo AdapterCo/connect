@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
 import { isAxiosError } from 'axios';
@@ -33,7 +34,10 @@ export default function Kanban() {
     setCollapsedState({ key: storageKey, ids });
     try { localStorage.setItem(storageKey, JSON.stringify(ids)); } catch { /* The board remains usable without storage. */ }
   }
-  const { chats, users, fetchChats, fetchUsers, updateChat } = useAppStore();
+  const { chats, users, fetchChats, fetchUsers, updateChat, selectChat } = useAppStore();
+  const navigate = useNavigate();
+  // Clique (ou Enter) no card abre a conversa; arrastar continua movendo o card.
+  const openChat = (chatId: string) => { selectChat(chatId); navigate('/chats'); };
   const [board, setBoard] = useState<Board>({ columns: [], placements: [] });
   const [tag, setTag] = useState('');
   const [sellerFilter, setSellerFilter] = useState('');
@@ -129,7 +133,12 @@ export default function Kanban() {
                   const seconds = chat.sales_reply_due_at ? Math.max(0, Math.ceil((Date.parse(chat.sales_reply_due_at) - now) / 1000)) : null;
                   const seller = users.find(user => user.id === chat.assigned_to);
                   return <Draggable key={chat.id} draggableId={chat.id} index={index} isDragDisabled={busy}>
-                    {provided => <article ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="bg-gray-700 border border-gray-600 rounded-lg p-3 hover:border-indigo-500">
+                    {provided => <article ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps}
+                      onClick={() => openChat(chat.id)}
+                      onKeyDown={event => { if (event.key === 'Enter') openChat(chat.id); }}
+                      title="Abrir conversa"
+                      aria-label={`Abrir conversa com ${chat.client_name}`}
+                      className="bg-gray-700 border border-gray-600 rounded-lg p-3 hover:border-indigo-500 cursor-pointer">
                       <p className="font-medium text-gray-50 text-sm truncate">{chat.client_name}</p>
                       <p className="text-xs text-gray-400">+{chat.client_phone.slice(-4)}</p>
                       <p className="text-xs text-gray-300 mt-2">Responsável: {seller?.name || 'Aguardando vendedor online'}</p>

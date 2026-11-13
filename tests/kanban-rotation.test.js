@@ -219,6 +219,27 @@ test('chip owner replying to a lead offered to someone else takes it and scores 
   const points = db.audit.filter(row => row.action === 'lead_accepted');
   assert.deepEqual(points.map(row => row.user_id), ['s1']);
 });
+test('a store chat initiated and idle for 24h goes to the rotation unless it had activity meanwhile', async () => {
+  Object.assign(db.chats[0], { instance_id: 'store', assigned_to: null });
+  db.chats.push({ ...copy(db.chats[0]), id: 'chat2', client_phone: '5521900000002' });
+  const later = after(25 * 60 * 60 * 1000);
+  const originalFindMany = prisma.chat.findMany;
+  let query;
+  prisma.chat.findMany = async args => { query = args; return [{ id: 'chat1', company_id: 'c1' }, { id: 'chat2', company_id: 'c1' }]; };
+  // chat2 recebeu mensagem do cliente depois da busca.
+  prisma.message.findFirst = async ({ where }) => where.chat_id === 'chat2' ? { id: 'recent' } : null;
+  try {
+    assert.equal(await rotation.rotateIdleChats(later), 1);
+  } finally { prisma.chat.findMany = originalFindMany; delete prisma.message.findFirst; }
+  assert.equal(query.where.status, 'iniciada');
+  assert.deepEqual(query.where.instance, { user_id: null });
+  assert.deepEqual(query.where.messages.none.timestamp.gt, new Date(later.getTime() - 24 * 60 * 60 * 1000));
+  assert.equal(db.chats[0].status, rotation.INTEREST);
+  assert.equal(db.chats[0].assigned_to, 's1');
+  assert.ok(db.chats[0].sales_reply_due_at);
+  assert.match(db.messages.at(-1).text, /Sem atividade há 24 horas/);
+  assert.equal(db.chats.find(chat => chat.id === 'chat2').status, 'iniciada');
+});
 test('archiving the offered lead releases the queue; the worker also releases a stuck queue', async () => {
   await enter();
   db.chats.push({ ...copy(db.chats[0]), id: 'chat2', client_phone: '5521900000002', status: 'iniciada', assigned_to: null, sales_reply_due_at: null });

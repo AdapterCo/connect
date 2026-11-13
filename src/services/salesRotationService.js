@@ -5,6 +5,10 @@ const FORWARDED = 'encaminhados';
 const ATTENDING = 'em atendimento';
 const HUMAN_STAGES = [INTEREST, FORWARDED, ATTENDING];
 const REPLY_WINDOW_MS = 60 * 1000;
+const IDLE_MS = 24 * 60 * 60 * 1000;
+// Conversas paradas ha mais tempo que isso nao entram de uma vez na fila.
+const IDLE_WINDOW_MS = 72 * 60 * 60 * 1000;
+const HUMAN_ACTIVITY = { sender: { in: ['client', 'attendant'] }, is_note: false };
 const messages = { messages: { orderBy: { timestamp: 'asc' } } };
 const isManager = user => ['admin', 'supervisor'].includes(user.role);
 
@@ -107,6 +111,9 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
       }
     }
     if (options.source === 'handoff' && (!chat.ai_active || chat.status === 'finalizada' || chat.is_archived || chat.is_blocked)) return null;
+    // Rechecagem sob o lock: a conversa pode ter recebido mensagem desde a busca.
+    if (options.source === 'idle' && (chat.status !== 'iniciada' || chat.is_archived || chat.is_blocked ||
+        await tx.message.findFirst({ where: { chat_id: id, ...HUMAN_ACTIVITY, timestamp: { gt: options.idleSince } } }))) return null;
     if (options.source === 'handoff' && !require('./accessService').companyActive(await tx.company.findUnique({ where: { id: companyId } }), now)) return null;
     if (options.source === 'handoff' && HUMAN_STAGES.includes(chat.status) && (chat.assigned_to || chat.sales_reply_due_at || chat.queued_at)) {
       return tx.chat.findFirst({ where: { id, company_id: companyId }, include: messages });
@@ -160,6 +167,9 @@ async function updateChat(id, data, companyId, actor, now = new Date(), options 
       const qualification = require('./leadQualificationService').previousQualification(context || chat);
       if (!qualification.context) qualification.context = (context?.messages || []).filter(message => message.sender === 'client' && !message.is_note).slice(-6).map(message => String(message.text || '').slice(0, 500)).join('\n').slice(0, 2000);
       await tx.message.create({ data: { chat_id: id, sender: 'system', is_note: true, text: 'Resumo para o vendedor:\n' + require('./leadQualificationService').sellerBrief(qualification) } });
+    }
+    if (options.source === 'idle') {
+      await tx.message.create({ data: { chat_id: id, sender: 'system', text: 'Sem atividade há 24 horas. Lead enviado ao rodízio de vendedores.' } });
     }
     const updated = await tx.chat.update({ where: { id }, data: updates, include: messages });
     if (updates.assigned_to !== undefined || updates.status !== undefined) {
@@ -353,6 +363,30 @@ async function checkSalesRotation(now = new Date()) {
   }
 }
 
+// Conversa "Iniciada" na conexao da loja sem mensagem do cliente ou da equipe ha 24h
+// vai para o rodizio (e para a fila, se outro lead aguarda aceite).
+async function rotateIdleChats(now = new Date()) {
+  const idleSince = new Date(now.getTime() - IDLE_MS);
+  const idle = await prisma.chat.findMany({ where: {
+    status: 'iniciada', is_archived: false, is_blocked: false,
+    company: { is_active: true }, instance: { user_id: null },
+    messages: {
+      some: { ...HUMAN_ACTIVITY, timestamp: { gte: new Date(now.getTime() - IDLE_WINDOW_MS) } },
+      none: { ...HUMAN_ACTIVITY, timestamp: { gt: idleSince } }
+    }
+  }, select: { id: true, company_id: true }, take: 100 });
+  let moved = 0;
+  for (const chat of idle) {
+    try {
+      const updated = await updateChat(chat.id, { status: INTEREST, sector: 'sales' }, chat.company_id, null, now, { source: 'idle', idleSince });
+      if (!updated) continue;
+      moved++;
+      require('../config/socket').emitToCompany(chat.company_id, 'chat_updated', updated);
+    } catch (error) { console.error('Idle lead rotation failed:', error.code || error.name); }
+  }
+  return moved;
+}
+
 // O dono do chip assume o lead que aguarda aceite no proprio numero, sem novo aviso.
 async function claimForChipOwner(chatId, companyId, sellerId) {
   return withCompanyLock(companyId, tx => tx.chat.updateMany({
@@ -361,7 +395,7 @@ async function claimForChipOwner(chatId, companyId, sellerId) {
   }));
 }
 
-module.exports = { INTEREST, REPLY_WINDOW_MS, nextSeller, withCompanyLock, updateChat, recordMessage, rotateExpiredChat, checkSalesRotation, confirmAttendance, claimForChipOwner };
+module.exports = { INTEREST, REPLY_WINDOW_MS, nextSeller, withCompanyLock, updateChat, recordMessage, rotateExpiredChat, checkSalesRotation, confirmAttendance, claimForChipOwner, rotateIdleChats };
 
 async function handoffToHuman(id, companyId, now = new Date()) {
   const result = await updateChat(id, { status: INTEREST, sector: 'sales' }, companyId, null, now, { source: 'handoff' });
