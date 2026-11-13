@@ -234,6 +234,8 @@ test('a store chat initiated and idle for 24h goes to the rotation unless it had
   assert.equal(query.where.status, 'iniciada');
   assert.deepEqual(query.where.instance, { user_id: null });
   assert.deepEqual(query.where.messages.none.timestamp.gt, new Date(later.getTime() - 24 * 60 * 60 * 1000));
+  // Conversas antigas tambem entram: nao ha limite de idade.
+  assert.equal(query.where.messages.some.timestamp, undefined);
   assert.equal(db.chats[0].status, rotation.INTEREST);
   assert.equal(db.chats[0].assigned_to, 's1');
   assert.ok(db.chats[0].sales_reply_due_at);

@@ -6,8 +6,6 @@ const ATTENDING = 'em atendimento';
 const HUMAN_STAGES = [INTEREST, FORWARDED, ATTENDING];
 const REPLY_WINDOW_MS = 60 * 1000;
 const IDLE_MS = 24 * 60 * 60 * 1000;
-// Conversas paradas ha mais tempo que isso nao entram de uma vez na fila.
-const IDLE_WINDOW_MS = 72 * 60 * 60 * 1000;
 const HUMAN_ACTIVITY = { sender: { in: ['client', 'attendant'] }, is_note: false };
 const messages = { messages: { orderBy: { timestamp: 'asc' } } };
 const isManager = user => ['admin', 'supervisor'].includes(user.role);
@@ -364,14 +362,14 @@ async function checkSalesRotation(now = new Date()) {
 }
 
 // Conversa "Iniciada" na conexao da loja sem mensagem do cliente ou da equipe ha 24h
-// vai para o rodizio (e para a fila, se outro lead aguarda aceite).
+// ou mais (inclusive as antigas) vai para o rodizio e para a fila, 100 por minuto.
 async function rotateIdleChats(now = new Date()) {
   const idleSince = new Date(now.getTime() - IDLE_MS);
   const idle = await prisma.chat.findMany({ where: {
     status: 'iniciada', is_archived: false, is_blocked: false,
     company: { is_active: true }, instance: { user_id: null },
     messages: {
-      some: { ...HUMAN_ACTIVITY, timestamp: { gte: new Date(now.getTime() - IDLE_WINDOW_MS) } },
+      some: HUMAN_ACTIVITY,
       none: { ...HUMAN_ACTIVITY, timestamp: { gt: idleSince } }
     }
   }, select: { id: true, company_id: true }, take: 100 });
