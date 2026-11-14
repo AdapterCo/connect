@@ -1741,57 +1741,13 @@ async function handleIncomingWhatsAppMessage(
 
 
       } catch (err) {
-        await Log.add(
-          `Erro ao processar IA para ${chat.client_name}: ${err.message}`,
-          companyId
-        );
-
-
-        await Chat.addMessage(
-          chat.id,
-          {
-            sender:
-              'system',
-
-            text:
-              `⚠️ [Erro na API de IA - Provedor: ${settings.ai_provider}]: ${err.message}. Verifique suas configurações e chaves de API no painel.`,
-
-            timestamp:
-              new Date()
-          }
-        );
-
-
-        const conn =
-          activeConnections[
-            instanceId
-          ];
-
-
-        if (
-          conn &&
-          conn.connectionStatus ===
-            'open' &&
-          conn.sock
-        ) {
-          try {
-            const remoteJid =
-              Chat.getRemoteJid(chat);
-
-
-            await sendMessage(
-              instanceId,
-              remoteJid,
-              {
-                text:
-                  '⚠️ *Erro no Atendente de IA:* Desculpe, não conseguimos processar sua mensagem devido a um erro técnico temporário. Por favor, tente novamente em alguns instantes.'
-              }
-            );
-
-          } catch (waErr) {
-            console.error(waErr);
-          }
-        }
+        await Log.add(`Erro ao processar IA para ${chat.client_name}: ${err.message}`, companyId);
+        await Chat.addMessage(chat.id, {
+          sender: 'system',
+          text: `⚠️ [Erro na API de IA - Provedor: ${settings.ai_provider}]: ${err.message}. O cliente foi encaminhado ao rodizio de vendedores e a IA foi desligada nesta conversa.`,
+          timestamp: new Date()
+        });
+        await aiFailureHandoff(chat, instanceId, companyId);
       }
     }
 
@@ -1836,7 +1792,32 @@ async function handleIncomingWhatsAppMessage(
 }
 
 
+// Medida de seguranca: se a IA falhar (sem creditos, chave invalida, provedor fora
+// do ar), o cliente nao fica sem resposta. A conversa entra no rodizio de vendedores
+// e a IA e desligada nela, para o aviso nao se repetir a cada nova mensagem.
+const AI_FAILURE_MESSAGE = 'Desculpe, tivemos um erro no nosso sistema. Já estou encaminhando seu atendimento para um de nossos vendedores. Por favor, aguarde um pouco que logo você será atendido.';
+
+async function aiFailureHandoff(chat, instanceId, companyId) {
+  try {
+    const handedOff = await require('./salesRotationService').handoffToHuman(chat.id, companyId);
+    if (!handedOff) return;
+    await Chat.update(chat.id, { ai_active: false }, companyId);
+    try {
+      await sendMessage(instanceId, Chat.getRemoteJid(handedOff), { text: AI_FAILURE_MESSAGE });
+      await Chat.addMessage(chat.id, { sender: 'attendant', text: AI_FAILURE_MESSAGE, timestamp: new Date(), is_ai: true });
+    } catch (error) {
+      console.warn('[AI fallback] Aviso ao cliente nao enviado:', error.message);
+    }
+    emitToCompany(companyId, 'chat_updated', await Chat.findById(chat.id, companyId));
+    await Log.add(`IA indisponivel: conversa de ${chat.client_name} encaminhada ao rodizio de vendedores.`, companyId);
+  } catch (error) {
+    console.error('[AI fallback]', error.code || error.name, error.message);
+  }
+}
+
 module.exports = {
+  aiFailureHandoff,
+  AI_FAILURE_MESSAGE,
   startWhatsAppInstance,
   stopWhatsAppInstance,
   restoreInstances,
