@@ -203,7 +203,7 @@ export default function LeadQueuePanel({ changes, onOpenChat }: { changes: unkno
               <TimerOff className="h-4 w-4 text-red-400" strokeWidth={2} aria-hidden="true" />
               {teamView ? 'Leads não aceitos no mês' : 'Seus leads não aceitos no mês'}
             </h2>
-            <span className="text-xs text-gray-400">Lead oferecido que passou do prazo sem ACEITAR</span>
+            <span className="text-xs text-gray-400">Prazo vencido sem ACEITAR, só seg a sáb das 9h às 18h</span>
           </div>
           {!teamView ? (
             <p className="px-5 py-5 text-sm text-gray-300">

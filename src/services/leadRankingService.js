@@ -26,6 +26,16 @@ async function ranking(companyId, now = new Date(), db = prisma) {
     .sort((a, b) => a.position - b.position || String(a.name).localeCompare(String(b.name)));
 }
 
+// O ranking negativo so conta no horario da loja: seg a sab, 9h as 18h (Brasilia).
+// Lead que vence de madrugada, domingo ou depois das 18h nao pesa contra o vendedor.
+const OPEN_HOUR = 9;
+const CLOSE_HOUR = 18;
+function duringStoreHours(value) {
+  const local = new Date(new Date(value).getTime() - BRT_OFFSET_MS);
+  const hour = local.getUTCHours();
+  return local.getUTCDay() !== 0 && hour >= OPEN_HOUR && hour < CLOSE_HOUR;
+}
+
 // Ranking negativo do mes: quem mais deixou leads vencerem sem aceitar.
 // Antes do registro proprio (MISSED), a troca por tempo esgotado ja guardava o
 // vendedor anterior: esses registros contam ate o primeiro MISSED, sem duplicar.
@@ -37,9 +47,9 @@ async function missedRanking(companyId, now = new Date(), db = prisma) {
     db.auditLog.findMany({ where: { company_id: companyId, action: LEGACY_TIMEOUT, timestamp: { gte: since } }, select: { details: true, timestamp: true } })
   ]);
   const cutoff = missed.reduce((first, row) => Math.min(first, new Date(row.timestamp).getTime()), Infinity);
-  const sellerIds = missed.map(row => row.user_id);
+  const sellerIds = missed.filter(row => duringStoreHours(row.timestamp)).map(row => row.user_id);
   for (const row of timeouts) {
-    if (new Date(row.timestamp).getTime() >= cutoff) continue;
+    if (new Date(row.timestamp).getTime() >= cutoff || !duringStoreHours(row.timestamp)) continue;
     try { sellerIds.push(JSON.parse(row.details || '{}').previous_seller); } catch {}
   }
   const counts = new Map(sellers.map(seller => [seller.id, 0]));
@@ -103,4 +113,4 @@ async function queuePanel(user, now = new Date()) {
   };
 }
 
-module.exports = { ACCEPTED, MISSED, monthStart, ranking, missedRanking, standingText, standing, queuePanel };
+module.exports = { ACCEPTED, MISSED, monthStart, duringStoreHours, ranking, missedRanking, standingText, standing, queuePanel };

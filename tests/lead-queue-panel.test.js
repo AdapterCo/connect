@@ -70,20 +70,43 @@ test('sellers see positions and who holds the offer, but no client before accept
 
 test('missed ranking counts expired offers, reuses older timeout records once, and sellers only see their own', async () => {
   seed();
-  const hoursAgo = minutesAgo;
+  const { missedRanking } = require('../src/services/leadRankingService');
+  // Quarta-feira 11/11/2026, 15h em Brasilia (18h UTC).
+  const now = new Date('2026-11-11T18:00:00Z');
+  const brt = text => new Date(text + '-03:00');
   const timeout = (previous, at) => ({ company_id: 'c1', action: 'sales_rotation_timeout', details: JSON.stringify({ previous_seller: previous, seller_id: 'x' }), timestamp: at });
   db.auditLog.push(
     // Historico anterior ao registro proprio: conta pelo vendedor anterior.
-    timeout('s1', hoursAgo(5)),
-    timeout('s1', hoursAgo(4)),
-    timeout('s2', hoursAgo(4)),
+    timeout('s1', brt('2026-11-10T10:00:00')),
+    timeout('s1', brt('2026-11-10T11:00:00')),
+    timeout('s2', brt('2026-11-10T11:30:00')),
     // Depois do primeiro registro proprio, a troca por tempo nao conta de novo.
-    { company_id: 'c1', user_id: 's1', action: 'lead_missed', timestamp: hoursAgo(1) },
-    timeout('s1', hoursAgo(1)),
+    { company_id: 'c1', user_id: 's1', action: 'lead_missed', timestamp: brt('2026-11-11T14:00:00') },
+    timeout('s1', brt('2026-11-11T14:00:00')),
     { company_id: 'c1', user_id: 's1', action: 'lead_missed', timestamp: new Date('2020-01-10T12:00:00Z') }
   );
+  assert.deepEqual((await missedRanking('c1', now)).map(seller => [seller.name, seller.missed]), [['Beatriz', 3], ['Lissa', 1]]);
+
   const manager = (await get('a1')).body;
-  assert.deepEqual(manager.missed.map(seller => [seller.name, seller.missed]), [['Beatriz', 3], ['Lissa', 1]]);
+  assert.deepEqual(manager.missed.map(seller => seller.name).sort(), ['Beatriz', 'Lissa']);
   const seller = (await get('s2')).body;
-  assert.deepEqual(seller.missed.map(row => [row.name, row.missed, row.me]), [['Lissa', 1, true]]);
+  assert.deepEqual(seller.missed.map(row => [row.name, row.me]), [['Lissa', true]]);
+});
+
+test('missed leads only count Monday to Saturday from 9h to 18h Brasilia time', async () => {
+  seed();
+  const { missedRanking, duringStoreHours } = require('../src/services/leadRankingService');
+  const brt = text => new Date(text + '-03:00');
+  const missed = at => ({ company_id: 'c1', user_id: 's1', action: 'lead_missed', timestamp: brt(at) });
+  db.auditLog.push(
+    missed('2026-11-09T09:00:00'), // segunda, abertura: conta
+    missed('2026-11-14T17:59:00'), // sabado, antes de fechar: conta
+    missed('2026-11-09T08:59:00'), // antes de abrir
+    missed('2026-11-09T18:00:00'), // ja fechou
+    missed('2026-11-10T23:30:00'), // noite
+    missed('2026-11-15T11:00:00')  // domingo
+  );
+  assert.equal(duringStoreHours(brt('2026-11-15T11:00:00')), false);
+  const result = await missedRanking('c1', brt('2026-11-16T12:00:00'));
+  assert.equal(result.find(seller => seller.id === 's1').missed, 2);
 });
