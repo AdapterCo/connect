@@ -41,8 +41,9 @@ async function checkUserLimit(req, res, next) {
       return res.status(403).json({ error: 'Empresa não encontrada.' });
     }
 
+    // Cadastros arquivados (removidos com historico) nao ocupam vaga do plano.
     const userCount = await prisma.user.count({
-      where: { company_id: companyId }
+      where: { company_id: companyId, role: { not: require('../models/User').REMOVED_ROLE } }
     });
 
     if (userCount >= company.max_users) {

@@ -1,3 +1,4 @@
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Chat = require('../models/Chat');
 const Log = require('../models/Log');
@@ -74,21 +75,39 @@ async function deleteUser(req, res) {
       return res.status(403).json({ error: 'Acesso negado. Supervisores não podem excluir Administradores ou outros Supervisores.' });
     }
 
-    if (await prisma.product.count({ where: { seller_id: userId, company_id: req.user.company_id } })) return res.status(409).json({ error: 'Vendedor possui produtos ou vendas vinculados.' });
     const userName = targetUser.name;
+    const companyId = req.user.company_id;
+    // Libera as conversas na mesma transacao: nenhuma fica com um usuario removido.
+    const releaseChats = tx => tx.chat.updateMany({ where: { assigned_to: userId, company_id: companyId }, data: { assigned_to: null } });
 
-    // Libera as conversas e remove o usuario juntos: nenhuma conversa fica
-    // atribuida a um usuario inexistente se uma das etapas falhar.
-    await prisma.$transaction(async (tx) => {
-      await tx.chat.updateMany({
-        where: { assigned_to: userId, company_id: req.user.company_id },
-        data: { assigned_to: null }
+    let archived = false;
+    try {
+      await prisma.$transaction(async (tx) => {
+        await releaseChats(tx);
+        await tx.user.deleteMany({ where: { id: userId, company_id: companyId } });
       });
-      await tx.user.deleteMany({ where: { id: userId, company_id: req.user.company_id } });
-    });
+    } catch (error) {
+      // Vendas, leads, tarefas e produtos apontam para o vendedor: apagar quebraria
+      // o historico. O cadastro e arquivado: some da equipe, do rodizio, do ranking e
+      // do login, e o usuario e o e-mail ficam livres para um novo cadastro.
+      if (error.code !== 'P2003') throw error;
+      archived = true;
+      await prisma.$transaction(async (tx) => {
+        await releaseChats(tx);
+        await tx.user.updateMany({ where: { id: userId, company_id: companyId }, data: {
+          role: User.REMOVED_ROLE,
+          status: 'offline',
+          username: `removido_${userId}`,
+          email: null,
+          phone: null,
+          password: await bcrypt.hash(require('crypto').randomBytes(32).toString('hex'), 10),
+          session_version: { increment: 1 }
+        } });
+      });
+    }
     disconnectUser(userId);
 
-    await Log.add(`Atendente ${userName} excluído pelo administrador/supervisor ${req.user.name}.`, req.user.company_id);
+    await Log.add(`Atendente ${userName} ${archived ? 'removido da equipe (histórico de vendas preservado)' : 'excluído'} pelo administrador/supervisor ${req.user.name}.`, companyId);
     
     const allUsers = await User.findAll(req.user.company_id);
     const allChats = await Chat.findForList(req.user.company_id);
@@ -116,7 +135,7 @@ async function revokeSessions(req, res) {
 
     await prisma.user.updateMany({
       where: { id: userId, company_id: req.user.company_id },
-      data: { session_version: { increment: 1 }, status: 'offline' }
+      data: { session_version: { increment: 1 } }
     });
     disconnectUser(userId);
 

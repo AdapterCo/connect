@@ -131,9 +131,10 @@ async function logout(req, res) {
     const userId = req.user.id;
     const companyId = req.user.company_id;
 
+    // Sair encerra a sessao, mas nao muda o status: so o proprio usuario fica offline.
     await prisma.user.updateMany({
       where: { id: userId },
-      data: { status: 'offline', session_version: { increment: 1 } }
+      data: { session_version: { increment: 1 } }
     });
 
     require('../config/socket').disconnectUser(userId);
@@ -223,7 +224,7 @@ async function register(req, res) {
       password: hashedPassword,
       role,
       sector: finalSector,
-      status: 'offline',
+      status: 'online',
       company_id: req.user.company_id
     };
 

@@ -2,7 +2,7 @@ const http = require('http');
 const app = require('./app');
 const { PORT } = require('./src/config/index');
 const { initializeDatabase, prisma } = require('./src/config/database');
-const { initSocket, getIO, sweepPresence, PRESENCE_GRACE_MS } = require('./src/config/socket');
+const { initSocket, getIO } = require('./src/config/socket');
 const whatsappService = require('./src/services/whatsappService');
 const schedulerService = require('./src/services/schedulerService');
 const billingService = require('./src/services/billingService');
@@ -51,11 +51,6 @@ function startWorkers() {
       await Log.add(`Politica de retencao executada: ${JSON.stringify(result)}.`);
     }
   });
-
-  const presenceSweep = setTimeout(() => {
-    sweepPresence().catch(err => console.error('[Presence]', err.code || err.name, err.message));
-  }, PRESENCE_GRACE_MS);
-  presenceSweep.unref();
 }
 
 async function boot() {

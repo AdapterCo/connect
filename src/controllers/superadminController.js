@@ -23,7 +23,7 @@ async function listCompanies(req, res) {
         plan_relation: true,
         _count: {
           select: {
-            users: true,
+            users: { where: { role: { not: require('../models/User').REMOVED_ROLE } } },
             instances: true,
             chats: true,
             products: true

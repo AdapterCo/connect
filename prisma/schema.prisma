@@ -78,7 +78,7 @@ model User {
   password        String
   role            String
   sector          String?
-  status          String               @default("offline")
+  status          String               @default("online")
   session_version Int                  @default(0)
   company_id      String
   created_at      DateTime             @default(now())

@@ -131,7 +131,7 @@ async function resetPassword(req, res) {
 
       await tx.user.update({
         where: { id: resetToken.user_id },
-        data: { password: hashedPassword, session_version: { increment: 1 }, status: 'offline' }
+        data: { password: hashedPassword, session_version: { increment: 1 } }
       });
       userId = resetToken.user_id;
       return 'ok';

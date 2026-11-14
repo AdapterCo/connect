@@ -14,7 +14,6 @@ require.cache[require.resolve('../src/services/whatsappService')] = {
 };
 
 const { generateToken } = require('../src/config/auth');
-const { markOfflineIfDisconnected } = require('../src/config/socket');
 const { removeChatMedia } = require('../src/utils/media');
 const app = require('../app');
 
@@ -45,10 +44,13 @@ test('health reports the database state', async () => {
   assert.equal(res.body.database, 'ok');
 });
 
-test('users without an open connection are marked offline', async () => {
+test('logging out or revoking sessions keeps the seller online in the rotation', async () => {
   seed();
-  await markOfflineIfDisconnected({ id: 's1', company_id: 'c1' });
-  assert.equal(db.user.find(u => u.id === 's1').status, 'offline');
+  assert.equal((await call('s1', '/api/auth/logout', 'POST')).status, 200);
+  assert.equal(db.user.find(u => u.id === 's1').status, 'online');
+  db.user.find(u => u.id === 's1').session_version = 0;
+  assert.equal((await call('a1', '/api/users/s1/revoke-sessions', 'POST')).status, 200);
+  assert.equal(db.user.find(u => u.id === 's1').status, 'online');
 });
 
 test('no profile can permanently delete a conversation through chat or privacy APIs', async () => {

@@ -3,47 +3,10 @@ const { companyActive, canSeeChat } = require('../services/accessService');
 
 let io = null;
 
-// Presenca: quem fecha o navegador sem logout fica "online" e continuaria
-// recebendo leads do rodizio. Sem nenhuma aba conectada por PRESENCE_GRACE_MS
-// (tempo para recarregar a pagina ou oscilar a rede), o status vira offline.
-const PRESENCE_GRACE_MS = 2 * 60 * 1000;
-const presenceTimers = new Map();
-
+// O status online/offline so muda por escolha do usuario no painel (ou de um
+// gestor na Equipe): fechar o navegador ou reiniciar o servidor nao o altera.
 function socketsOf(userId) {
   return io ? [...io.sockets.sockets.values()].filter(socket => socket.user?.id === userId) : [];
-}
-
-function cancelPresenceTimeout(userId) {
-  clearTimeout(presenceTimers.get(userId));
-  presenceTimers.delete(userId);
-}
-
-function schedulePresenceTimeout(user) {
-  if (socketsOf(user.id).length) return;
-  cancelPresenceTimeout(user.id);
-  const timer = setTimeout(() => {
-    presenceTimers.delete(user.id);
-    markOfflineIfDisconnected(user).catch(error => console.error('Presence update failed:', error.code || error.name));
-  }, PRESENCE_GRACE_MS);
-  timer.unref();
-  presenceTimers.set(user.id, timer);
-}
-
-async function markOfflineIfDisconnected(user) {
-  if (socketsOf(user.id).length) return;
-  const { prisma } = require('./database');
-  const result = await prisma.user.updateMany({ where: { id: user.id, status: 'online' }, data: { status: 'offline' } });
-  if (result.count) {
-    emitToCompany(user.company_id, 'users_updated', await require('../models/User').findAll(user.company_id));
-  }
-}
-
-// Apos reiniciar o servidor nenhum evento de desconexao ocorre: quem nao voltou
-// a conectar dentro do prazo de tolerancia deixa de constar como online.
-async function sweepPresence() {
-  const { prisma } = require('./database');
-  const online = await prisma.user.findMany({ where: { status: 'online' }, select: { id: true, company_id: true } });
-  for (const user of online) await markOfflineIfDisconnected(user);
 }
 
 // Encerra as conexoes em tempo real de um usuario excluido ou com sessoes
@@ -94,7 +57,6 @@ function initSocket(server) {
     const companyId = socket.user.company_id;
     const timer = setTimeout(() => socket.disconnect(true), Math.max(0, socket.user.exp * 1000 - Date.now()));
     timer.unref();
-    cancelPresenceTimeout(socket.user.id);
     let refreshing = false;
     const refresh = setInterval(async () => {
       if (refreshing) return;
@@ -114,7 +76,6 @@ function initSocket(server) {
     socket.on('disconnect', () => {
       clearInterval(refresh);
       clearTimeout(timer);
-      schedulePresenceTimeout(socket.user);
     });
 
     try {
@@ -175,8 +136,5 @@ module.exports = {
   getIO,
   emitToCompany,
   disconnectUser,
-  disconnectCompany,
-  markOfflineIfDisconnected,
-  sweepPresence,
-  PRESENCE_GRACE_MS
+  disconnectCompany
 };
