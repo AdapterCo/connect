@@ -318,6 +318,13 @@ async function rotateExpiredChat(id, companyId, now = new Date()) {
         return tx.chat.findFirst({ where: { id, company_id: companyId }, include: messages });
       }
     }
+    // Ranking negativo: o prazo de aceite venceu na mao deste vendedor.
+    if (chat.assigned_to) {
+      await tx.auditLog.create({ data: {
+        company_id: companyId, user_id: chat.assigned_to, action: require('./leadRankingService').MISSED,
+        entity: 'chat', entity_id: id
+      } });
+    }
     const assignment = await assignNext(tx, chat, now, !chat.assigned_to);
     if (assignment) {
       assignedSellerId = assignment.assigned_to;

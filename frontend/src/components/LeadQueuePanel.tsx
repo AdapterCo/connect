@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Trophy } from 'lucide-react';
+import { Trophy, TimerOff } from 'lucide-react';
 import api from '../services/api';
 
 interface RankedSeller { id: string; name: string; points: number; position: number; me: boolean }
 interface OfferedLead { id: string | null; client_name: string | null; seller_id: string | null; seller_name: string | null; due_at: string; mine: boolean }
 interface QueuedLead { id: string | null; client_name: string | null; queued_at: string; position: number }
-interface QueueData { ranking: RankedSeller[]; offered: OfferedLead[]; queue: QueuedLead[] }
+interface MissedSeller { id: string; name: string; missed: number; me: boolean }
+interface QueueData { ranking: RankedSeller[]; missed?: MissedSeller[]; offered: OfferedLead[]; queue: QueuedLead[] }
 
 const REFRESH_MS = 10_000;
 
 const points = (count: number) => (count === 1 ? '1 ponto' : `${count} pontos`);
+const leads = (count: number) => (count === 1 ? '1 lead' : `${count} leads`);
 
 function secondsLeft(due: string, now: number) {
   return Math.max(0, Math.ceil((new Date(due).getTime() - now) / 1000));
@@ -55,6 +57,10 @@ export default function LeadQueuePanel({ changes, onOpenChat }: { changes: unkno
   }, [changes, load]);
 
   const leader = data?.ranking[0]?.points || 0;
+  const missed = data?.missed || [];
+  const worst = Math.max(0, ...missed.map(seller => seller.missed));
+  // Gestor recebe a equipe toda; vendedor recebe so a propria linha.
+  const teamView = missed.length > 1 || (missed.length === 1 && !missed[0].me);
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -190,6 +196,42 @@ export default function LeadQueuePanel({ changes, onOpenChat }: { changes: unkno
           </ol>
         )}
       </section>
+      {data && missed.length > 0 && (
+        <section className="panel lg:col-span-2" aria-labelledby="missed-title">
+          <div className="flex items-baseline justify-between border-b border-gray-700 px-5 py-4">
+            <h2 id="missed-title" className="flex items-center gap-2 font-semibold text-gray-50">
+              <TimerOff className="h-4 w-4 text-red-400" strokeWidth={2} aria-hidden="true" />
+              {teamView ? 'Leads não aceitos no mês' : 'Seus leads não aceitos no mês'}
+            </h2>
+            <span className="text-xs text-gray-400">Lead oferecido que passou do prazo sem ACEITAR</span>
+          </div>
+          {!teamView ? (
+            <p className="px-5 py-5 text-sm text-gray-300">
+              {missed[0].missed === 0
+                ? 'Nenhum lead perdido neste mês. Continue assim!'
+                : <>Você deixou <strong className="text-red-300">{leads(missed[0].missed)}</strong> passar do prazo neste mês. Responda <strong>ACEITAR</strong> a tempo para somar pontos no ranking.</>}
+            </p>
+          ) : worst === 0 ? (
+            <p className="px-5 py-5 text-sm text-gray-400">Nenhum lead deixou de ser aceito neste mês.</p>
+          ) : (
+            <ol className="grid max-h-96 gap-x-6 gap-y-1 overflow-y-auto px-3 py-3 sm:grid-cols-2">
+              {missed.map(seller => (
+                <li key={seller.id} className="flex items-center gap-3 rounded-md px-2 py-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className="truncate text-sm font-medium text-gray-50">{seller.name}</span>
+                      <span className={`shrink-0 text-sm tabular-nums ${seller.missed ? 'text-red-300' : 'text-gray-400'}`}>{leads(seller.missed)}</span>
+                    </span>
+                    <span className="mt-1.5 block h-1 rounded-full bg-gray-700" aria-hidden="true">
+                      <span className="block h-1 rounded-full bg-red-400" style={{ width: `${(seller.missed / worst) * 100}%` }} />
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+      )}
     </div>
   );
 }

@@ -67,3 +67,23 @@ test('sellers see positions and who holds the offer, but no client before accept
   assert.equal(other.offered[0].id, null);
   assert.equal(other.offered[0].seller_name, 'Beatriz');
 });
+
+test('missed ranking counts expired offers, reuses older timeout records once, and sellers only see their own', async () => {
+  seed();
+  const hoursAgo = minutesAgo;
+  const timeout = (previous, at) => ({ company_id: 'c1', action: 'sales_rotation_timeout', details: JSON.stringify({ previous_seller: previous, seller_id: 'x' }), timestamp: at });
+  db.auditLog.push(
+    // Historico anterior ao registro proprio: conta pelo vendedor anterior.
+    timeout('s1', hoursAgo(5)),
+    timeout('s1', hoursAgo(4)),
+    timeout('s2', hoursAgo(4)),
+    // Depois do primeiro registro proprio, a troca por tempo nao conta de novo.
+    { company_id: 'c1', user_id: 's1', action: 'lead_missed', timestamp: hoursAgo(1) },
+    timeout('s1', hoursAgo(1)),
+    { company_id: 'c1', user_id: 's1', action: 'lead_missed', timestamp: new Date('2020-01-10T12:00:00Z') }
+  );
+  const manager = (await get('a1')).body;
+  assert.deepEqual(manager.missed.map(seller => [seller.name, seller.missed]), [['Beatriz', 3], ['Lissa', 1]]);
+  const seller = (await get('s2')).body;
+  assert.deepEqual(seller.missed.map(row => [row.name, row.missed, row.me]), [['Lissa', 1, true]]);
+});

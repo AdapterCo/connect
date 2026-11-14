@@ -1,6 +1,9 @@
 const { prisma } = require('../config/database');
 
 const ACCEPTED = 'lead_accepted';
+// Lead oferecido cujo prazo de aceite venceu sem resposta do vendedor.
+const MISSED = 'lead_missed';
+const LEGACY_TIMEOUT = 'sales_rotation_timeout';
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 // Inicio do mes no horario de Brasilia (sem horario de verao desde 2019).
@@ -23,6 +26,29 @@ async function ranking(companyId, now = new Date(), db = prisma) {
     .sort((a, b) => a.position - b.position || String(a.name).localeCompare(String(b.name)));
 }
 
+// Ranking negativo do mes: quem mais deixou leads vencerem sem aceitar.
+// Antes do registro proprio (MISSED), a troca por tempo esgotado ja guardava o
+// vendedor anterior: esses registros contam ate o primeiro MISSED, sem duplicar.
+async function missedRanking(companyId, now = new Date(), db = prisma) {
+  const since = monthStart(now);
+  const [sellers, missed, timeouts] = await Promise.all([
+    db.user.findMany({ where: { company_id: companyId, role: 'seller' }, select: { id: true, name: true } }),
+    db.auditLog.findMany({ where: { company_id: companyId, action: MISSED, timestamp: { gte: since } }, select: { user_id: true, timestamp: true } }),
+    db.auditLog.findMany({ where: { company_id: companyId, action: LEGACY_TIMEOUT, timestamp: { gte: since } }, select: { details: true, timestamp: true } })
+  ]);
+  const cutoff = missed.reduce((first, row) => Math.min(first, new Date(row.timestamp).getTime()), Infinity);
+  const sellerIds = missed.map(row => row.user_id);
+  for (const row of timeouts) {
+    if (new Date(row.timestamp).getTime() >= cutoff) continue;
+    try { sellerIds.push(JSON.parse(row.details || '{}').previous_seller); } catch {}
+  }
+  const counts = new Map(sellers.map(seller => [seller.id, 0]));
+  for (const id of sellerIds) if (counts.has(id)) counts.set(id, counts.get(id) + 1);
+  return sellers
+    .map(seller => ({ id: seller.id, name: seller.name, missed: counts.get(seller.id) }))
+    .sort((a, b) => b.missed - a.missed || String(a.name).localeCompare(String(b.name)));
+}
+
 const pointsText = count => count === 1 ? '1 ponto' : `${count} pontos`;
 
 function standingText(list, sellerId) {
@@ -43,8 +69,9 @@ async function standing(companyId, sellerId, now = new Date()) {
 async function queuePanel(user, now = new Date()) {
   const manager = ['admin', 'supervisor'].includes(user.role);
   const base = { company_id: user.company_id, status: 'interesse em compra', is_archived: false, is_blocked: false };
-  const [list, offered, queued] = await Promise.all([
+  const [list, missed, offered, queued] = await Promise.all([
     ranking(user.company_id, now),
+    missedRanking(user.company_id, now),
     prisma.chat.findMany({ where: { ...base, sales_reply_due_at: { not: null } }, select: { id: true, client_name: true, assigned_to: true, sales_reply_due_at: true } }),
     prisma.chat.findMany({ where: { ...base, queued_at: { not: null } }, select: { id: true, client_name: true, queued_at: true } })
   ]);
@@ -53,6 +80,10 @@ async function queuePanel(user, now = new Date()) {
   return {
     month_start: monthStart(now),
     ranking: list.map(seller => ({ ...seller, me: seller.id === user.id })),
+    // Gestores veem a equipe toda; o vendedor so ve a propria contagem.
+    missed: missed
+      .filter(seller => manager || seller.id === user.id)
+      .map(seller => ({ ...seller, me: seller.id === user.id })),
     offered: offered
       .sort((a, b) => time(a.sales_reply_due_at) - time(b.sales_reply_due_at))
       .map(chat => {
@@ -72,4 +103,4 @@ async function queuePanel(user, now = new Date()) {
   };
 }
 
-module.exports = { ACCEPTED, monthStart, ranking, standingText, standing, queuePanel };
+module.exports = { ACCEPTED, MISSED, monthStart, ranking, missedRanking, standingText, standing, queuePanel };

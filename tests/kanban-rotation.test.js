@@ -264,6 +264,7 @@ test('do not rotate before one minute; concurrent workers transfer only once', a
   assert.equal(db.chats[0].assigned_to, 's2');
   assert.equal(db.chats[0].sales_reply_due_at.getTime(), after(120000).getTime());
   assert.equal(db.audit.filter(event => event.action === 'sales_rotation_timeout').length, 1);
+  assert.deepEqual(db.audit.filter(event => event.action === 'lead_missed').map(event => event.user_id), ['s1']);
 });
 test('AI, notes, scheduled messages and supervisor responses do not stop the timer', async () => {
   await enter();
@@ -293,7 +294,8 @@ test('offline sellers and other companies are never used as a fallback', async (
   await enter(); db.users.find(user => user.id === 's2').status = 'offline';
   await rotation.rotateExpiredChat('chat1', 'c1', after(60000));
   assert.equal(db.chats[0].assigned_to, 's1');
-  assert.equal(db.audit.length, 1);
+  // Sem outro vendedor online nao ha nova atribuicao, mas o lead vencido conta para s1.
+  assert.deepEqual(db.audit.map(event => event.action), ['sales_rotation_assign', 'lead_missed']);
 });
 test('no online seller leaves lead waiting; a later eligible seller receives it', async () => {
   db.users.filter(user => user.company_id === 'c1' && user.role === 'seller').forEach(user => user.status = 'offline');
