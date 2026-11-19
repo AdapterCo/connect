@@ -416,6 +416,7 @@ test('plain confirmation with distinct clients requires an explicit selection', 
   db.chats.push({ ...copy(db.chats[0]), id: 'another-client', client_phone: '5511988888888' });
   const result = await rotation.confirmAttendance('c1', 's1', null, after(1000));
   assert.equal(result.status, 'ambiguous');
+  assert.deepEqual(result.options.map(lead => lead.id).sort(), ['another-client', 'chat1']);
   assert.ok(db.chats.every(chat => chat.sales_reply_due_at !== null));
 });
 

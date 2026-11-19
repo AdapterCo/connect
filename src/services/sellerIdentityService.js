@@ -37,6 +37,9 @@ function confirmation(message) {
   }
   // Ignora pontuacao e emojis no fim ("Aceitar.", "ACEITAR 👍").
   const text = String(content?.conversation || content?.extendedTextMessage?.text || '').trim().replace(/[^\p{L}\p{N}_-]+$/u, '');
+  // Escolha pela lista numerada: "ACEITAR 2", "CLIENTE 2" ou so "2".
+  const choice = /^(ACEITAR\s+|CONFIRMAR\s+)?(?:CLIENTE\s*)?(\d{1,2})$/i.exec(text);
+  if (choice && Number(choice[2]) > 0) return { chatId: null, index: Number(choice[2]), loose: !choice[1] };
   // ACEITAR e o comando atual; CONFIRMAR continua valendo para quem ja usava.
   const match = /^(?:ACEITAR|CONFIRMAR)(?:\s+(chat_[a-zA-Z0-9_-]+))?$/i.exec(text);
   if (!match) return null;
@@ -45,23 +48,67 @@ function confirmation(message) {
   return { chatId: match[1] || /(?:ACEITAR|CONFIRMAR)\s+(chat_[a-zA-Z0-9_-]+)/i.exec(quotedText)?.[1] || null };
 }
 
+// Ultima lista numerada enviada a cada vendedor, para "2" apontar sempre para o
+// mesmo cliente mesmo que a fila mude entre a lista e a resposta.
+const CHOICE_TTL_MS = 30 * 60 * 1000;
+const pendingChoices = new Map();
+
+function activeChoice(sellerId, now = Date.now()) {
+  const entry = pendingChoices.get(sellerId);
+  if (entry && now - entry.at <= CHOICE_TTL_MS) return entry.options;
+  pendingChoices.delete(sellerId);
+  return null;
+}
+
+function rememberChoice(sellerId, leads, now = Date.now()) {
+  for (const [id, entry] of pendingChoices) if (now - entry.at > CHOICE_TTL_MS) pendingChoices.delete(id);
+  const options = leads.map(lead => {
+    const digits = String(lead.client_phone || '').replace(/\D/g, '');
+    const name = String(lead.client_name || '').trim() || 'Cliente';
+    return { id: lead.id, label: digits.length >= 4 ? `${name} (final ${digits.slice(-4)})` : name };
+  });
+  pendingChoices.set(sellerId, { options, at: now });
+  return options;
+}
+
+function choiceList(options) {
+  return `Voce tem ${options.length} clientes aguardando. Responda so com o numero do cliente que vai atender:\n\n` +
+    options.map((option, i) => `*${i + 1}* - ${option.label}`).join('\n') + '\n\nExemplo: 1';
+}
+
 async function handleConfirmation({ command, fromMe, teamMember, confirm, send, log = console }) {
   if (!command) return false;
+  // Numero solto so e comando para vendedor com lista aberta; para todos os
+  // demais (clientes, mensagens enviadas pela loja) segue o fluxo normal.
+  if (command.loose && (fromMe || !teamMember || !activeChoice(teamMember.id))) return false;
   if (fromMe) return true;
   if (!teamMember) {
     log.warn('[SellerConfirmation] Sender not identified as company staff; command withheld from AI.');
     await send('Nao consegui identificar seu cadastro de vendedor. Confirme o atendimento pelo painel do Connect enquanto a equipe verifica seu telefone cadastrado.');
     return true;
   }
-  const result = await confirm(teamMember.id, command.chatId);
+  let chatId = command.chatId || null;
+  if (command.index) {
+    const options = activeChoice(teamMember.id);
+    if (options && !options[command.index - 1]) {
+      await send('Esse numero nao esta na lista.\n\n' + choiceList(options));
+      return true;
+    }
+    chatId = options ? options[command.index - 1].id : null;
+  }
+  const result = await confirm(teamMember.id, chatId);
   log.info('[SellerConfirmation]', result.status, 'updated:', result.chats.length);
   // No aceite, a resposta e a mensagem com os dados do lead e o ranking.
   if (result.status === 'confirmed') return true;
-  const reply = result.status === 'ambiguous'
-    ? 'Voce tem mais de um cliente aguardando. Envie o comando com o ID do lead desejado:\n' + result.chats.map(lead => 'ACEITAR ' + lead.id).join('\n')
-    : 'Nao ha lead aguardando o seu aceite. Ele pode ter passado para outro vendedor; verifique no painel.';
-  await send(reply);
+  if (result.status === 'ambiguous') {
+    await send(choiceList(rememberChoice(teamMember.id, result.options || result.chats)));
+    return true;
+  }
+  if (chatId && command.index) pendingChoices.delete(teamMember.id);
+  await send(chatId && command.index
+    ? 'Esse cliente nao esta mais aguardando o seu aceite (pode ter passado para outro vendedor). Envie ACEITAR para ver a lista atualizada.'
+    : 'Nao ha lead aguardando o seu aceite. Ele pode ter passado para outro vendedor; verifique no painel.');
   return true;
 }
 
-module.exports = { resolvePhone, confirmation, phoneJid, handleConfirmation };
+module.exports = { resolvePhone, confirmation, phoneJid, handleConfirmation, _pendingChoices: pendingChoices };

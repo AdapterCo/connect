@@ -77,3 +77,37 @@ test('outgoing confirmation echoes are ignored without dispatching or responding
   const { handleConfirmation } = require('../src/services/sellerIdentityService');
   assert.equal(await handleConfirmation({ command: { chatId: null }, fromMe: true, confirm: () => assert.fail(), send: () => assert.fail() }), true);
 });
+
+test('several waiting clients get a numbered list and the seller accepts by number', async () => {
+  const { handleConfirmation, confirmation, _pendingChoices } = require('../src/services/sellerIdentityService');
+  _pendingChoices.clear();
+  const log = { warn() {}, info() {} };
+  const leads = [{ id: 'chat_a', client_name: 'Ana', client_phone: '5521984864194' }, { id: 'chat_b', client_name: 'Bruno', client_phone: '5521977771234' }];
+  const calls = [];
+  let reply;
+  const confirm = async (seller, chatId) => { calls.push(chatId); return chatId ? { status: 'confirmed', chats: [{ id: chatId }] } : { status: 'ambiguous', chats: leads, options: leads }; };
+  const send = async text => { reply = text; };
+  const seller = { id: 's1' };
+  await handleConfirmation({ command: confirmation({ conversation: 'Aceitar' }), teamMember: seller, confirm, send, log });
+  assert.match(reply, /\*1\* - Ana \(final 4194\)/);
+  assert.match(reply, /\*2\* - Bruno \(final 1234\)/);
+  assert.doesNotMatch(reply, /chat_/);
+  for (const text of ['2', 'ACEITAR 2', 'cliente 2', '2️⃣']) {
+    assert.equal(await handleConfirmation({ command: confirmation({ conversation: text }), teamMember: seller, confirm, send, log }), true, text);
+    assert.equal(calls.at(-1), 'chat_b', text);
+  }
+  reply = undefined;
+  await handleConfirmation({ command: confirmation({ conversation: '5' }), teamMember: seller, confirm, send, log });
+  assert.match(reply, /nao esta na lista/);
+});
+
+test('a bare number is a normal message for customers, store echoes and sellers without an open list', async () => {
+  const { handleConfirmation, confirmation, _pendingChoices } = require('../src/services/sellerIdentityService');
+  _pendingChoices.clear();
+  const command = confirmation({ conversation: '1' });
+  const fail = () => assert.fail();
+  assert.equal(await handleConfirmation({ command, teamMember: null, confirm: fail, send: fail }), false);
+  assert.equal(await handleConfirmation({ command, teamMember: { id: 's1' }, confirm: fail, send: fail }), false);
+  assert.equal(await handleConfirmation({ command, fromMe: true, teamMember: { id: 's1' }, confirm: fail, send: fail }), false);
+  assert.equal(confirmation({ conversation: 'tenho 2 filhos' }), null);
+});

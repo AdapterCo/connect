@@ -237,8 +237,13 @@ async function confirmAttendance(companyId, sellerId, chatId = null, now = new D
       is_archived: false, is_blocked: false, ...(chatId ? { id: chatId } : { sales_reply_due_at: { not: null } })
     }, orderBy: { updated_at: 'desc' } });
     if (!leads.length) return { status: 'unavailable', chats: [] };
-    const groups = new Set(leads.map(lead => phoneCandidates(lead.client_phone).sort().join('|') || lead.id));
-    if (!chatId && groups.size > 1) return { status: 'ambiguous', chats: leads };
+    // Um cliente que chegou por mais de uma conexao aparece uma vez so na lista de escolha.
+    const groups = new Map();
+    for (const lead of leads) {
+      const key = phoneCandidates(lead.client_phone).sort().join('|') || lead.id;
+      if (!groups.has(key)) groups.set(key, lead);
+    }
+    if (!chatId && groups.size > 1) return { status: 'ambiguous', chats: leads, options: [...groups.values()] };
     const lead = leads[0];
     const { changed, accepted } = await captureRelated(tx, lead, sellerId, now, `Vendedor ${seller.name} aceitou o lead via WhatsApp. Rodizio pausado em todas as conexoes deste lead.`);
     const fresh = await tx.chat.findFirst({ where: { id: lead.id, company_id: companyId, assigned_to: sellerId } });
