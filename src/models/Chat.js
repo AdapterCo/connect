@@ -1,4 +1,5 @@
 const { prisma } = require('../config/database');
+const { RECENT_MESSAGES } = require('../utils/recentMessages');
 const crypto = require('crypto');
 
 function createChatId(companyId, instanceId, remoteJid) {
@@ -18,9 +19,7 @@ async function findAll(companyId) {
   return prisma.chat.findMany({
     where: { company_id: companyId },
     include: {
-      messages: {
-        orderBy: { timestamp: 'asc' }
-      }
+      messages: RECENT_MESSAGES
     }
   });
 }
@@ -54,8 +53,7 @@ async function findById(id, companyId, limit) {
         select: { id: true, name: true, phone: true, user_id: true }
       },
       messages: {
-        orderBy: limit ? [{ timestamp: 'desc' }, { id: 'desc' }] : { timestamp: 'asc' },
-        ...(limit ? { take: limit } : {})
+        ...(limit ? { orderBy: [{ timestamp: 'desc' }, { id: 'desc' }], take: limit } : RECENT_MESSAGES)
       }
     }
   });
@@ -72,9 +70,7 @@ async function findByRemoteJid(remoteJid, companyId, instanceId) {
       ]
     },
     include: {
-      messages: {
-        orderBy: { timestamp: 'asc' }
-      }
+      messages: RECENT_MESSAGES
     }
   });
 }
@@ -104,9 +100,7 @@ async function create(chat, companyId, database = prisma) {
       claimed_at: chat.claimed_at ? new Date(chat.claimed_at) : null
     },
     include: {
-      messages: {
-        orderBy: { timestamp: 'asc' }
-      }
+      messages: RECENT_MESSAGES
     }
   });
 }

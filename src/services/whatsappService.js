@@ -185,6 +185,9 @@ async function startInstance(instanceId, companyId, token) {
       version,
       auth: state,
       printQRInTerminal: false,
+      // O app nao usa o historico antigo; pedir o historico completo ao parear
+      // baixava e descompactava anos de conversa na RAM. Recentes/LID seguem ativos.
+      syncFullHistory: false,
       logger: pino({
         level: ['silent', 'fatal', 'error', 'warn', 'info', 'debug', 'trace'].includes(process.env.WHATSAPP_LOG_LEVEL)
           ? process.env.WHATSAPP_LOG_LEVEL

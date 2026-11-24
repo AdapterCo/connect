@@ -16,6 +16,8 @@ services:
     build: .
     container_name: adapterconnect-app
     restart: unless-stopped
+    # Teto de RAM do app: se passar disso, so este container reinicia, nao a VPS.
+    mem_limit: ${APP_MEM_LIMIT:-1536m}
 
     expose:
       - "3009"
@@ -23,6 +25,8 @@ services:
     environment:
       - PORT=3009
       - NODE_ENV=production
+      # Teto do heap do Node: o GC trabalha antes de estourar o limite do container.
+      - NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE_MB:-1024}
       - WHATSAPP_LOG_LEVEL=${WHATSAPP_LOG_LEVEL:-silent}
       - JWT_SECRET=${JWT_SECRET}
       - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:?Defina DB_PASSWORD no .env}@db:5432/adapterconnect?schema=public

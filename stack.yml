@@ -22,6 +22,8 @@ services:
     environment:
       - PORT=3009
       - NODE_ENV=production
+      # Teto do heap do Node: o GC trabalha antes de estourar o limite do container.
+      - NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE_MB:-1024}
       - JWT_SECRET=${JWT_SECRET}
       - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:?Defina DB_PASSWORD no .env}@db:5432/adapterconnect?schema=public
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
@@ -68,6 +70,9 @@ services:
       replicas: 1
       restart_policy:
         condition: on-failure
+      resources:
+        limits:
+          memory: 1536M
       labels:
         - "traefik.enable=true"
         - "traefik.docker.network=traefik9"

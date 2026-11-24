@@ -1,4 +1,5 @@
 const { prisma } = require('../config/database');
+const { RECENT_MESSAGES } = require('../utils/recentMessages');
 
 const INTEREST = 'interesse em compra';
 const FORWARDED = 'encaminhados';
@@ -7,7 +8,7 @@ const HUMAN_STAGES = [INTEREST, FORWARDED, ATTENDING];
 const REPLY_WINDOW_MS = 60 * 1000;
 const IDLE_MS = 24 * 60 * 60 * 1000;
 const HUMAN_ACTIVITY = { sender: { in: ['client', 'attendant'] }, is_note: false };
-const messages = { messages: { orderBy: { timestamp: 'asc' } } };
+const messages = { messages: RECENT_MESSAGES };
 const isManager = user => ['admin', 'supervisor'].includes(user.role);
 
 // All routing mutations take the same database lock, including manual moves,
@@ -201,7 +202,7 @@ async function captureRelated(tx, chat, sellerId, now, reason) {
   const related = await tx.chat.findMany({ where: {
     company_id: chat.company_id, OR: [{ id: chat.id }, ...(phones.length ? [{ client_phone: { in: phones } }] : [])], assigned_to: sellerId,
     status: { in: HUMAN_STAGES }, is_archived: false, is_blocked: false
-  }, include: { instance: { select: { user_id: true } }, messages: { orderBy: { timestamp: 'asc' } } } });
+  }, include: { instance: { select: { user_id: true } }, messages: RECENT_MESSAGES } });
   const changed = [];
   let accepted = null;
   for (const lead of related) {

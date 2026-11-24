@@ -1,4 +1,5 @@
 const Chat = require('../models/Chat');
+const { RECENT_MESSAGES } = require('../utils/recentMessages');
 const { withCompanyLock } = require('./salesRotationService');
 
 function identity(remoteJid, alternativeJid) {
@@ -26,7 +27,7 @@ async function findOrCreate(companyId, instanceId, remoteJid, alternativeJid, de
     if (contact.phone) OR.push({ client_phone: contact.phone });
     let chat = await tx.chat.findFirst({
       where: { company_id: companyId, instance_id: instanceId, OR },
-      orderBy: { created_at: 'asc' }, include: { messages: { orderBy: { timestamp: 'asc' } } }
+      orderBy: { created_at: 'asc' }, include: { messages: RECENT_MESSAGES }
     });
     if (chat) {
       const data = {};
@@ -34,7 +35,7 @@ async function findOrCreate(companyId, instanceId, remoteJid, alternativeJid, de
       // Retain the LID alias; PN events can always match client_phone.
       const lid = contact.jids.find(jid => jid.endsWith('@lid'));
       if (lid && chat.remote_jid !== lid) data.remote_jid = lid;
-      if (Object.keys(data).length) chat = await tx.chat.update({ where: { id: chat.id }, data, include: { messages: { orderBy: { timestamp: 'asc' } } } });
+      if (Object.keys(data).length) chat = await tx.chat.update({ where: { id: chat.id }, data, include: { messages: RECENT_MESSAGES } });
       return { chat, created: false };
     }
     chat = await Chat.create({ ...defaults, id: Chat.createChatId(companyId, instanceId, contact.phone ? `${contact.phone}@s.whatsapp.net` : remoteJid), remote_jid: remoteJid, client_phone: contact.phone || remoteJid.split('@')[0], instance_id: instanceId }, companyId, tx);
