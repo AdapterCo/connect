@@ -1009,7 +1009,9 @@ async function startInstance(instanceId, companyId, token) {
                   status: 'em atendimento',
                   assigned_to: inst?.user_id || otherChats[0]?.assigned_to || null,
                   sector: otherChats[0]?.sector || 'sales',
-                  ai_active: false,
+                  // Conversa iniciada a mao pelo celular da loja ja nasce com a IA ligada;
+                  // no chip do vendedor a IA nunca responde.
+                  ai_active: !inst?.user_id,
                   tags: otherChats[0]?.tags || [],
                   is_favorite: false,
                   is_archived: false,
@@ -1026,9 +1028,9 @@ async function startInstance(instanceId, companyId, token) {
                 if (pendingOffer && chat.assigned_to !== inst.user_id) {
                   await require('./salesRotationService').claimForChipOwner(chat.id, companyId, inst.user_id);
                 }
-                const updates = {
-                  ai_active: false
-                };
+                // Resposta manual pelo celular da loja nao desliga mais a IA: a equipe
+                // responde e a IA segue atendendo, sem precisar reativar no painel.
+                const updates = inst?.user_id ? { ai_active: false } : {};
                 if (!pendingOffer) updates.sales_reply_due_at = null;
                 if (chat.status === 'iniciada') {
                   updates.status = 'em atendimento';
